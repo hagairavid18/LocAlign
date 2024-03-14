@@ -1,0 +1,10 @@
+{
+    "protein_names_list": "atp.txt",
+    "ligand_name": "ATP",
+    "pdb_ligand_id": "H_ATP",
+    "alligners": [
+        {"name": "RANSACAlligner", "args": {}},
+        {"name": "Pytorch3dAlligner", "args": {}},
+        {"name": "SVDAlligner", "args": {}}
+    ]
+}

@@ -1,0 +1,4 @@
+*.pdb
+*__pycache__
+*.png
+*.cif
