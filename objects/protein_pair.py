@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 
 class ProteinPair:
-    def __init__(self, ref_proein: Protein, mov_protein: Protein, ligand_name: str, ligand_id_name: str, ref_model_idx: int = 0, mov_model_idx: int = 0, chain_idx: int|None = 0) -> None:
+    def __init__(self, ref_proein: Protein, mov_protein: Protein, ligand_name: str, ligand_id_name: str, ref_model_idx: int = 0, mov_model_idx: int = 0) -> None:
   
         self._ref_protein: Protein = ref_proein
         self._mov_protein: Protein = mov_protein

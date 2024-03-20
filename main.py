@@ -1,3 +1,4 @@
+import re
 import json
 import logging
 
@@ -18,15 +19,22 @@ if __name__ == "__main__":
     pairs = []
     with open(config['protein_names_list']) as f:
         for line in f:
-            pair = line.strip().split()
-            pairs.append(pair)
+            pair = {}
+            proteins_and_chains = re.split(r'[:\s]', line)
+            # assert len(proteins_and_chains) == 5, 'Must have format of "pdb_name1:chain_id1 pdb_name2:chain_id2'
+            pairs.append(
+                dict(
+                    ref_name=proteins_and_chains[0],
+                    ref_chain=proteins_and_chains[1],
+                    mov_name=proteins_and_chains[2],
+                    mov_chain=proteins_and_chains[3],
+                ))
 
     alligners: list[BaseStructureAlligner] = [build_object(alligner, "alligners") for alligner in config['alligners']]
         
-    for pair in pairs:
-        
-        ref_protein = Protein(pair[0], config["ligand_name"])
-        mov_protein = Protein(pair[1], config["ligand_name"])
+    for pair_dict in pairs:
+        ref_protein = Protein(pair_dict["ref_name"], pair_dict["ref_chain"], config["ligand_name"])
+        mov_protein = Protein(pair_dict["mov_name"], pair_dict["mov_chain"], config["ligand_name"])
         pair = ProteinPair(ref_protein, mov_protein, config["ligand_name"], config["pdb_ligand_id"])
     
         for alligner in alligners:
