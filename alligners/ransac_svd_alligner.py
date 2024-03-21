@@ -1,11 +1,8 @@
 import logging
-from matplotlib import pyplot as plt
 from Bio.PDB.Atom import Atom
 import open3d as o3d
-import os
 from open3d.pipelines.registration import registration_ransac_based_on_correspondence, RegistrationResult
 import numpy as np
-from sklearn.cluster import KMeans
 from scipy.cluster import hierarchy
 from scipy.cluster.hierarchy import fcluster
 
@@ -17,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class RANSACAlligner(BaseStructureAlligner):
-    def __init__(self, n_ransac: int = 300, iter_per_ransac: int = 5, criterion_threshold: float = 0.3) -> None:
+    def __init__(self, n_ransac: int = 300, iter_per_ransac: int = 10, criterion_threshold: float = 0.3) -> None:
   
         super().__init__()
         self.name = "RANSACAlligner"
@@ -33,8 +30,9 @@ class RANSACAlligner(BaseStructureAlligner):
         mse_matrix = create_transformation_mse_matrix(transformations, np.stack(mov_points))
             
         linkage_matrix = hierarchy.linkage(mse_matrix, method='average')
-
-        cluster_assignments = fcluster(linkage_matrix, 200, criterion='distance')
+        
+        #TODO: find a proper thresold for unite groups
+        cluster_assignments = fcluster(linkage_matrix, 200, criterion='distance') 
         
         rmse = np.array([res.inlier_rmse for res in ransac_results])
         fitness = np.array([res.fitness for res in ransac_results])
@@ -55,11 +53,9 @@ class RANSACAlligner(BaseStructureAlligner):
     def impose_structure(self, fix_points: list[Atom], mov_points: list[Atom],
                          save_dir: str | None = None) -> tuple[list[np.ndarray], list[np.ndarray]]:
                 
-        fixed_coord, moving_coord, = [], []
-        for i in range(len(fix_points)):
-            fixed_coord.append(fix_points[i].get_coord())
-            moving_coord.append(mov_points[i].get_coord())
-            
+        fixed_coord = [points.get_coord() for points in fix_points]
+        moving_coord = [points.get_coord() for points in mov_points]
+        
         fixed_coord_o3d, moving_coord_o3d = o3d.geometry.PointCloud(), o3d.geometry.PointCloud()
         moving_coord_o3d.points = o3d.utility.Vector3dVector(moving_coord)
         fixed_coord_o3d.points = o3d.utility.Vector3dVector(fixed_coord)
@@ -72,10 +68,8 @@ class RANSACAlligner(BaseStructureAlligner):
                 target=fixed_coord_o3d,
                 corres=corr,
                 max_correspondence_distance=self._criterion_threshold,
-                # o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
                 ransac_n=6,
-                # [],
-                criteria = o3d.pipelines.registration.RANSACConvergenceCriteria(10, 1.0))
+                criteria = o3d.pipelines.registration.RANSACConvergenceCriteria(self._iter_per_ransac))
             
             if result.fitness > 0.3:
                 ransac_results.append(result)        
@@ -83,7 +77,7 @@ class RANSACAlligner(BaseStructureAlligner):
         if len(ransac_results) == 0:
             return [], []
         
-        selected_transformations: list[np.ndarray] =  RANSACAlligner.cluster_and_select_transformations(ransac_results, moving_coord, save_dir)
+        selected_transformations: list[np.ndarray] = RANSACAlligner.cluster_and_select_transformations(ransac_results, moving_coord, save_dir)
                 
         rotations = [np.linalg.inv(trans[:3,:3].astype("f")) for trans in  selected_transformations] 
         translations = [trans[:,3].astype("f") for trans in  selected_transformations]

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     
-    with open('alligned_structures/06U/config.json') as f:
+    with open('alligned_structures/ATP/config.json') as f:
         config = json.load(f)
     
     pairs = []

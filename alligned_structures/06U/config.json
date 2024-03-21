@@ -3,8 +3,6 @@
     "ligand_name": "06U",
     "pdb_ligand_id": "H_06U",
     "alligners": [
-        {"name": "RANSACAlligner", "args": {}},
-        {"name": "Pytorch3dAlligner", "args": {}},
-        {"name": "SVDAlligner", "args": {}}
+        {"name": "RANSACAlligner", "args": {}}
     ]
 }
