@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     
-    with open('config.json') as f:
+    with open('alligned_structures/06U/config.json') as f:
         config = json.load(f)
     
     pairs = []
@@ -33,8 +33,8 @@ if __name__ == "__main__":
     alligners: list[BaseStructureAlligner] = [build_object(alligner, "alligners") for alligner in config['alligners']]
         
     for pair_dict in pairs:
-        ref_protein = Protein(pair_dict["ref_name"], pair_dict["ref_chain"], config["ligand_name"])
-        mov_protein = Protein(pair_dict["mov_name"], pair_dict["mov_chain"], config["ligand_name"])
+        ref_protein = Protein(pair_dict["ref_name"], pair_dict["ref_chain"], config["ligand_name"], config["pdb_ligand_id"])
+        mov_protein = Protein(pair_dict["mov_name"], pair_dict["mov_chain"], config["ligand_name"], config["pdb_ligand_id"])
         pair = ProteinPair(ref_protein, mov_protein, config["ligand_name"], config["pdb_ligand_id"])
     
         for alligner in alligners:

@@ -32,7 +32,6 @@ class ProteinPair:
         
     def _init_models(self, ref_model_idx: int = 0, mov_model_idx: int = 0) -> Model:
         return self._ref_protein.get_model(ref_model_idx), self._ref_protein.get_model(mov_model_idx) 
-  
     def get_ref_model(self):
         pass
     
@@ -41,14 +40,21 @@ class ProteinPair:
         mov_atoms = self._mov_protein.get_ligand_atoms(self._ligand_id_name)
     
         R, t = alligner.impose_structure(ref_atoms, mov_atoms, self._base_dir)
-        logging.info(f'Rotation: {R}, translation: {t}')
-        copy_model = self._mov_protein.get_model(self._mov_model_idx)
-        for atom in copy_model.get_atoms():
-            atom.transform(R[:3, :3], t[:3])
-        self.save_structre(copy_model, alligner.name)
+        # logging.info(f'Rotation: {R}, translation: {t}')
+        if not isinstance(R, list):
+            R = [R]
+            t = [t]
+        for i in range(len(R)):
+            copy_model = self._mov_protein.get_model(self._mov_model_idx).copy()
+            for atom in copy_model.get_atoms():
+                atom.transform(R[i][:3, :3], t[i][:3])
+            self.save_structre(copy_model, alligner.name, str(i))
+            only_ligand_model = Protein.create_ligand_model(copy_model, self._ligand_id_name, self._mov_protein._chain_id)
+            self.save_structre(only_ligand_model, alligner.name, str(i) + '_ligand')
 
-    def save_structre(self, model: Model, alligned_by: str) -> None:        
-        file_path = os.path.join(self._base_dir, f"{alligned_by}.pdb")
+    def save_structre(self, model: Model, alligned_by: str, postfix: str|None = None) -> None:        
+        file_name = f"{alligned_by}.pdb" if not postfix else f"{alligned_by}_{postfix}.pdb"
+        file_path = os.path.join(self._base_dir, file_name)
         io = PDBIO()
         io.set_structure(model)
         io.save(file_path)

@@ -1,0 +1,10 @@
+{
+    "protein_names_list": "alligned_structures/041/041.txt",
+    "ligand_name": "041",
+    "pdb_ligand_id": "H_041",
+    "alligners": [
+        {"name": "RANSACAlligner", "args": {}},
+        {"name": "Pytorch3dAlligner", "args": {}},
+        {"name": "SVDAlligner", "args": {}}
+    ]
+}
