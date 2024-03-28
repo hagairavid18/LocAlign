@@ -51,7 +51,7 @@ class ProteinPair:
         mov_ligand: list[Atom] = self._mov_protein.get_ligand_atoms(self._ligand_id_name)
 
         if not ProteinPair.validate_ligand_pair(ref_ligand, mov_ligand):
-            return int(0)
+            return 0
      
         R, t = alligner.impose_structure(ref_ligand, mov_ligand, self._base_dir)
         if not isinstance(R, list):
