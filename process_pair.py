@@ -1,9 +1,6 @@
-import re
-import json
 import logging
-import os
-from datetime import datetime
-
+from multiprocessing.managers import ListProxy
+from typing import Any
 
 from alligners import *
 from objects import ProteinPair, Protein
@@ -11,9 +8,10 @@ from objects import ProteinPair, Protein
 
 logger = logging.getLogger(__name__)
 
-def process_pair(pair_dict: dict, alligners: list[BaseStructureAlligner], ligand_config, result_list):
+def process_pair(pair_dict: dict, alligners: list[BaseStructureAlligner], ligand_config: dict, result_list: ListProxy[Any]) -> None:
     ref_protein = Protein(pair_dict["ref_name"], pair_dict["ref_chain"], ligand_config["ligand_name"], ligand_config["pdb_ligand_id"])
     mov_protein = Protein(pair_dict["mov_name"], pair_dict["mov_chain"], ligand_config["ligand_name"], ligand_config["pdb_ligand_id"])
+    
     if ref_protein.get_num_of_ligand_atoms() < 10:
         logger.debug(f"Failed to create transformation between {pair_dict['ref_name']} and {pair_dict['mov_name']}. ligand number of atoms is less than 10 atoms, skip")
         return 

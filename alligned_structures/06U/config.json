@@ -1,8 +1,0 @@
-{
-    "protein_names_list": "alligned_structures/06U/06U.txt",
-    "ligand_name": "06U",
-    "pdb_ligand_id": "H_06U",
-    "alligners": [
-        {"name": "RANSACAlligner", "args": {}}
-    ]
-}

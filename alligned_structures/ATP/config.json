@@ -1,8 +1,0 @@
-{
-    "protein_names_list": "alligned_structures/ATP/atp.txt",
-    "ligand_name": "ATP",
-    "pdb_ligand_id": "H_ATP",
-    "alligners": [
-        {"name": "RANSACAlligner", "args": {}}
-    ]
-}

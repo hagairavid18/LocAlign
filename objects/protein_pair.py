@@ -25,7 +25,7 @@ class ProteinPair:
         self._mov_model_idx = mov_model_idx
         self._save_transformed_protein = save_transformed_protein
         
-        self._base_dir = f'alligned_structures/{ligand_name}/{self._ref_protein._pdb_name}_to_{self._mov_protein._pdb_name}' # TODO replace order
+        self._base_dir = f'alligned_structures/{ligand_name}/{self._mov_protein._pdb_name}_to_{self._ref_protein._pdb_name}'
         os.makedirs(self._base_dir, exist_ok=True)
         
         self._ref_model, self._mov_model = self._init_models()
