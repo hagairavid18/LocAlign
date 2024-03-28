@@ -1,20 +1,26 @@
 import logging
+import warnings
 from Bio.PDB.Atom import Atom
 import open3d as o3d
 from open3d.pipelines.registration import registration_ransac_based_on_correspondence, RegistrationResult
 import numpy as np
 from scipy.cluster import hierarchy
-from scipy.cluster.hierarchy import fcluster
+from scipy.cluster.hierarchy import fcluster, ClusterWarning
 
 from alligners import BaseStructureAlligner
 from utils.transformation import create_transformation_mse_matrix
 from utils.plots import plot_mse_matrix, plot_hierarchical_clustring, plot_clustered_rmse_fintness
 
+warnings.filterwarnings("ignore", category=ClusterWarning)
+logging.getLogger('matplotlib').setLevel(logging.ERROR)
+
+
+
 logger = logging.getLogger(__name__)
 
 
 class RANSACAlligner(BaseStructureAlligner):
-    def __init__(self, n_ransac: int = 300, iter_per_ransac: int = 10, criterion_threshold: float = 0.3) -> None:
+    def __init__(self, n_ransac: int = 300, iter_per_ransac: int = 5, criterion_threshold: float = 0.5) -> None:
   
         super().__init__()
         self.name = "RANSACAlligner"
@@ -36,7 +42,10 @@ class RANSACAlligner(BaseStructureAlligner):
         
         rmse = np.array([res.inlier_rmse for res in ransac_results])
         fitness = np.array([res.fitness for res in ransac_results])
-        unique_clusters = np.unique(cluster_assignments)
+        unique_clusters, cluster_counts = np.unique(cluster_assignments, return_counts=True)
+        unique_clusters = unique_clusters[cluster_counts >= np.sum(cluster_counts) * 0.1]
+
+
         cluster_representive = np.zeros(len(unique_clusters))
         for i, cluster in enumerate(unique_clusters):
             represntive_idx = np.argmax(np.add(1 - rmse[cluster_assignments == cluster], fitness[cluster_assignments == cluster]))
@@ -74,10 +83,12 @@ class RANSACAlligner(BaseStructureAlligner):
             if result.fitness > 0.3:
                 ransac_results.append(result)        
                 
-        if len(ransac_results) == 0:
+        logger.debug(f"found {len(ransac_results)} valid allignments")
+        if len(ransac_results) < 2:
             return [], []
         
-        selected_transformations: list[np.ndarray] = RANSACAlligner.cluster_and_select_transformations(ransac_results, moving_coord, save_dir)
+        # selected_transformations: list[np.ndarray] = RANSACAlligner.cluster_and_select_transformations(ransac_results, moving_coord, save_dir)
+        selected_transformations: list[np.ndarray] = RANSACAlligner.cluster_and_select_transformations(ransac_results, moving_coord)
                 
         rotations = [np.linalg.inv(trans[:3,:3].astype("f")) for trans in  selected_transformations] 
         translations = [trans[:,3].astype("f") for trans in  selected_transformations]
