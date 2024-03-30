@@ -20,17 +20,31 @@ logger = logging.getLogger(__name__)
 
 
 class RANSACAlligner(BaseStructureAlligner):
-    def __init__(self, n_ransac: int = 300, iter_per_ransac: int = 5, criterion_threshold: float = 0.5) -> None:
+    def __init__(self, n_ransac: int = 300, iter_per_ransac: int = 5, criterion_threshold: float = 0.5, save_plots: bool = False) -> None:
   
         super().__init__()
         self.name = "RANSACAlligner"
         self._n_ransac = n_ransac
         self._iter_per_ransac = iter_per_ransac
         self._criterion_threshold = criterion_threshold
+        self._save_plots = save_plots
 
-    @staticmethod
-    def cluster_and_select_transformations(ransac_results: list[RegistrationResult], mov_points: list[np.ndarray],
+    def _cluster_and_select_transformations(self, ransac_results: list[RegistrationResult], mov_points: list[np.ndarray],
                                 plot_save_dir: str|None = None) -> list[np.ndarray]:
+        """
+        First, calculates and MSE matrix between all transforamtions. The MSE is between the locations of the trasnformed point.
+        Later it use Hirechical Clustring and fcluster to cluster the points into different clusters, which referes to different
+        groups of transforamtions. The purpose is to get n_clusters that cooresponds to the possible allignments in the 3d space
+        of the two proteins. Finaly, for each cluster we select a representitive transformation by a criterion.
+
+        Args:
+            ransac_results (list[RegistrationResult]): Each results contains the RT that will be later clusterd.
+            mov_points (list[np.ndarray]): NX3 array contains all xyz coordiantes of the ligand we try to allign.
+            plot_save_dir (str | None, optional): If give, plots related the clustring will be saved. Defaults to None.
+
+        Returns:
+            list[np.ndarray]: List of 4X4 rigid transformation matrices, each one is a representitive of one cluster. 
+        """        
         
         transformations = [np.asarray(res.transformation) for res in ransac_results]
         mse_matrix = create_transformation_mse_matrix(transformations, np.stack(mov_points))
@@ -45,13 +59,12 @@ class RANSACAlligner(BaseStructureAlligner):
         unique_clusters, cluster_counts = np.unique(cluster_assignments, return_counts=True)
         unique_clusters = unique_clusters[cluster_counts >= np.sum(cluster_counts) * 0.1]
 
-
         cluster_representive = np.zeros(len(unique_clusters))
         for i, cluster in enumerate(unique_clusters):
             represntive_idx = np.argmax(np.add(1 - rmse[cluster_assignments == cluster], fitness[cluster_assignments == cluster]))
             cluster_representive[i] = np.where(cluster_assignments == cluster)[0][represntive_idx]
         
-        if plot_save_dir:
+        if plot_save_dir and self._save_plots:
             plot_mse_matrix(mse_matrix, plot_save_dir)
             plot_hierarchical_clustring(linkage_matrix, plot_save_dir)
             plot_clustered_rmse_fintness(rmse, fitness, cluster_assignments, plot_save_dir)
@@ -83,12 +96,14 @@ class RANSACAlligner(BaseStructureAlligner):
             if result.fitness > 0.3:
                 ransac_results.append(result)        
                 
-        logger.debug(f"found {len(ransac_results)} valid allignments")
-        if len(ransac_results) < 2:
+        logger.debug(f"Found {len(ransac_results)} valid allignments")
+        if len(ransac_results)  == 0:
             return [], []
         
-        # selected_transformations: list[np.ndarray] = RANSACAlligner.cluster_and_select_transformations(ransac_results, moving_coord, save_dir)
-        selected_transformations: list[np.ndarray] = RANSACAlligner.cluster_and_select_transformations(ransac_results, moving_coord)
+        if len(ransac_results)  > 1: 
+            selected_transformations: list[np.ndarray] = self._cluster_and_select_transformations(ransac_results, moving_coord, save_dir)
+        else:
+            selected_transformations = [np.asarray(ransac_results[0].transformation)]
                 
         rotations = [np.linalg.inv(trans[:3,:3].astype("f")) for trans in  selected_transformations] 
         translations = [trans[:,3].astype("f") for trans in  selected_transformations]
