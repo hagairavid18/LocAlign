@@ -13,7 +13,7 @@ def process_pair(pair_dict: dict, alligner: BaseStructureAlligner, ligand: str, 
     mov_protein = Protein(pair_dict["mov_name"], pair_dict["mov_chain"], ligand, "H_" + ligand)
     
     if ref_protein.get_num_of_ligand_atoms() < 10:
-        logger.debug(f"Failed to create transformation between {pair_dict['ref_name']} and {pair_dict['mov_name']}. ligand number of atoms is less than 10 atoms, skip")
+        logger.info(f"Failed to create transformation between {pair_dict['ref_name']} and {pair_dict['mov_name']}. ligand number of atoms is less than 10 atoms, skip")
         return 
                 
     pair = ProteinPair(ref_protein, mov_protein, ligand,  "H_" + ligand)
@@ -21,8 +21,9 @@ def process_pair(pair_dict: dict, alligner: BaseStructureAlligner, ligand: str, 
     num_trans: int = pair.allign_atoms(alligner)
     
     if num_trans > 0:
-        logger.info(f"{pair_dict['ref_name']}:{pair_dict['ref_chain']} {pair_dict['mov_name']}:{pair_dict['mov_chain']} had {num_trans} transformations")            
-        result_list.append(num_trans)
+        str_pair = f"{pair_dict['ref_name']}:{pair_dict['ref_chain']} {pair_dict['mov_name']}:{pair_dict['mov_chain']}"
+        logger.info(f"{str_pair} had {num_trans} transformations")            
+        result_list.append((str_pair ,num_trans))
         # logger2.info(f"{pair_dict["ref_name"]}:{pair_dict["ref_chain"]} {pair_dict["mov_name"]}:{pair_dict["mov_chain"]}")
     else:
-        logger.debug(f"Failed to create transformation between {pair_dict['ref_name']} and {pair_dict['mov_name']} no transformations")
+        logger.info(f"Failed to create transformation between {pair_dict['ref_name']} and {pair_dict['mov_name']} no transformations")

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 
-def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False) -> None:
+def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False, rewrite_pair_list: bool = True) -> None:
      
      for ligand in ligands:
         logging.info(f"\nProcess ligand: {ligand}\n")
@@ -52,11 +52,18 @@ def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False
 
         pool.close()
         pool.join()
-        positive_results = [n_trans for n_trans in list(result_list) if n_trans > 0]
-        mean_result = sum(positive_results) / len(positive_results) if positive_results else 0
+        n_transformations = [n_trans for (_, n_trans) in list(result_list) if n_trans > 0]
+        mean_result = sum(n_transformations) / len(n_transformations) if n_transformations else 0
         logger.info(f"\nLigand had {mean_result} transformations in average\n\n")
 
-        if len(positive_results) > 0:
+        if rewrite_pair_list:
+            valid_pairs = [pair_str for (pair_str, n_trans) in list(result_list) if n_trans > 0]
+            with open(os.path.join("alligned_structures", ligand, ligand + '.txt'), "w") as file:
+                # Write each string to the file, one after another
+                for pair in valid_pairs:
+                    file.write(pair + "\n")
+
+        if len(n_transformations) > 0:
             logger2.info(ligand)
 
 
