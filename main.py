@@ -6,7 +6,6 @@ from datetime import datetime
 import multiprocessing
 from typing import Any
 
-
 from utils.misc import build_object
 from alligners import *
 from process_pair import process_pair
