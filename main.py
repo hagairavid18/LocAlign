@@ -5,65 +5,53 @@ import os
 from datetime import datetime
 import multiprocessing
 from typing import Any
+import pandas as pd
 
 from utils.misc import build_object
+from utils.constants import RESULTS_COLUMNS
 from alligners import *
 from process_pair import process_pair
 from parsers.utils import parse_protein_pairs
 
-current_time = datetime.now()
-log_filename = current_time.strftime("%Y-%m-%d_%H-%M-%S") + ".log"
-logging.basicConfig(filename=os.path.join("logs", log_filename), level=logging.INFO, format='%(message)s')
+start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+logging.basicConfig(filename=os.path.join("logs", start_time + ".log"), level=logging.INFO, format='%(message)s')
 
-logger2 = logging.getLogger('my_second_logger')
-logger2.setLevel(logging.INFO)  # Set the log level for the second logger
 
-file_handler = logging.FileHandler(os.path.join("logs", "positive_ligands_" + log_filename))
+file_handler = logging.FileHandler(os.path.join("logs", "positive_ligands_" + start_time + ".log"))
 file_handler.setLevel(logging.INFO)  # Set the log level for the file handler
-# formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-logger2.addHandler(file_handler)
 
 logger = logging.getLogger(__name__)
 
 
+def save_results_to_csv(results: list[tuple], base_dir: str = "temp_results") -> None:
+    os.makedirs(base_dir, exist_ok=True)
+    df = pd.DataFrame(results, columns=RESULTS_COLUMNS)
+    df.to_csv(f'{base_dir}/{start_time}_{len(results)}.csv', index=False)
 
-def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False, rewrite_pair_list: bool = True) -> None:
+def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False) -> None:
      
-     for ligand in ligands:
+    alligner: BaseStructureAlligner = build_object(alligner_config, "alligners")
+    manager = multiprocessing.Manager()
+    result_list = manager.list()
+    pool = multiprocessing.Pool()
+    
+    for ligand in ligands:
         logging.info(f"\nProcess ligand: {ligand}\n")
 
-        pairs = parse_protein_pairs(ligand)
+        ligand_pairs: list[dict[str, str]] = parse_protein_pairs(ligand)
         
-        if len(pairs) == 0:
-            continue
-
-        alligner: BaseStructureAlligner = build_object(alligner_config, "alligners")
-        
-        manager = multiprocessing.Manager()
-        result_list = manager.list()
-        pool = multiprocessing.Pool()
-
-        for pair_dict in pairs:
+        for pair_dict in ligand_pairs:
+            if len(list(result_list)) % 100 ==0:
+                save_results_to_csv(list(result_list))
+                
             if not debug:
                 pool.apply(process_pair, (pair_dict, alligner, ligand, result_list))
             else:
                 process_pair(pair_dict, alligner, ligand, result_list)
-
-        pool.close()
-        pool.join()
-        n_transformations = [n_trans for (_, n_trans) in list(result_list) if n_trans > 0]
-        mean_result = sum(n_transformations) / len(n_transformations) if n_transformations else 0
-        logger.info(f"\nLigand had {mean_result} transformations in average\n\n")
-
-        if rewrite_pair_list:
-            valid_pairs = [pair_str for (pair_str, n_trans) in list(result_list) if n_trans > 0]
-            with open(os.path.join("alligned_structures", ligand, ligand + '.txt'), "w") as file:
-                # Write each string to the file, one after another
-                for pair in valid_pairs:
-                    file.write(pair + "\n")
-
-        if len(n_transformations) > 0:
-            logger2.info(ligand)
+    
+    pool.close()
+    pool.join()
+    save_results_to_csv(list(result_list), "results")
 
 
 if __name__ == "__main__":
@@ -80,8 +68,11 @@ if __name__ == "__main__":
         config = json.load(f)
     
     if not config['run_single']:
-        with open (config['ligand_list']) as ligand_file:
-            ligands =  [line.strip() for line in ligand_file]
+        if os.path.exists(config['ligand_list']):
+            with open (config['ligand_list']) as ligand_file:
+                ligands =  [line.strip() for line in ligand_file]
+        else:
+            ligands = os.listdir("alligned_structures")
     else:
         ligands = [os.listdir("alligned_structures")[0]]
 
