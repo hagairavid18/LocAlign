@@ -18,6 +18,6 @@ def process_pair(pair_dict: dict, alligner: BaseStructureAlligner, ligand: str, 
         result_list.append((ligand, pair_dict["ref_name"], pair_dict["mov_name"], pair_dict["ref_chain"], pair_dict["mov_chain"], None, None, None, pair_dict['cath_level'] ,ref_ligand_n_atmos, mov_ligand_n_atmos, "Ligand too small"))
         return 
                 
-    num_trans, rmse, coverage, message = pair.allign_atoms(alligner)
+    num_trans, rmse, coverage, message = pair.find_transformations(alligner)
     
     result_list.append((ligand, pair_dict["ref_name"], pair_dict["mov_name"], pair_dict["ref_chain"], pair_dict["mov_chain"], num_trans, rmse, coverage, pair_dict['cath_level'] , ref_ligand_n_atmos, mov_ligand_n_atmos, message))

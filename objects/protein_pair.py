@@ -1,6 +1,7 @@
 import warnings
 import logging
 import os
+import numpy as np
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
 from Bio.PDB.Model import Model
 from Bio.PDB.Atom import Atom
@@ -44,20 +45,9 @@ class ProteinPair:
                 return f"Ligand atoms are different between the two proteins"
         return ""
 
-    def allign_atoms(self, alligner: BaseStructureAlligner, atom_type: str = "ligand") -> int:
-        ref_ligand: list[Atom] = self._ref_protein.get_ligand_atoms(self._ligand_id_name)
-        mov_ligand: list[Atom] = self._mov_protein.get_ligand_atoms(self._ligand_id_name)
-
-        error_message: str = ProteinPair.validate_ligand_pair(ref_ligand, mov_ligand)
-        if len(error_message) > 1:
-            return 0, (), (), error_message
-     
-        R, t, rmse, coverage = alligner.impose_structure(ref_ligand, mov_ligand, self._base_dir)
-        if not isinstance(R, list):
-            R = [R]
-            t = [t]
-        
-        for i in range(len(R)):
+    def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray], alligner: BaseStructureAlligner) -> None:
+         
+         for i in range(len(R)):
             copy_model = self._mov_protein.get_model(self._mov_model_idx).copy()
             
             for atom in copy_model.get_atoms():
@@ -67,6 +57,19 @@ class ProteinPair:
                 self.save_structre(copy_model, alligner.name, str(i))
             only_ligand_model, _ = Protein.create_ligand_model(copy_model, self._ligand_id_name, self._mov_protein._chain_id)
             self.save_structre(only_ligand_model, alligner.name, str(i) + '_ligand')
+    
+    def find_transformations(self, alligner: BaseStructureAlligner, atom_type: str = "ligand") -> int:
+        ref_ligand: list[Atom] = self._ref_protein.get_ligand_atoms(self._ligand_id_name)
+        mov_ligand: list[Atom] = self._mov_protein.get_ligand_atoms(self._ligand_id_name)
+
+        error_message: str = ProteinPair.validate_ligand_pair(ref_ligand, mov_ligand)
+        if len(error_message) > 1:
+            return 0, (), (), error_message
+     
+        R, t, rmse, coverage = alligner.impose_structure(ref_ligand, mov_ligand, self._base_dir)
+        
+        self._apply_transformations_and_save_transformed_models(R, t, alligner)
+       
         return len(R), tuple(rmse), tuple(coverage), error_message
 
     @property

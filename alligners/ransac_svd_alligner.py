@@ -70,7 +70,7 @@ class RANSACAlligner(BaseStructureAlligner):
             plot_clustered_rmse_fintness(rmse, fitness, cluster_assignments, plot_save_dir)
         
         representive_results: list[RegistrationResult] = [ransac_results[index] for index in list(cluster_representive.astype('int'))]
-        return [np.asarray(ransac_result.transformation) for ransac_result in representive_results]
+        return representive_results
         
     def impose_structure(self, fix_points: list[Atom], mov_points: list[Atom],
                          save_dir: str | None = None) -> tuple[list[np.ndarray], list[np.ndarray]]:
@@ -90,7 +90,7 @@ class RANSACAlligner(BaseStructureAlligner):
                 target=fixed_coord_o3d,
                 corres=corr,
                 max_correspondence_distance=self._criterion_threshold,
-                ransac_n=6,
+                ransac_n=min(6, len(fixed_coord)),
                 criteria = o3d.pipelines.registration.RANSACConvergenceCriteria(self._iter_per_ransac))
             
             if result.fitness > 0.3:
@@ -98,14 +98,17 @@ class RANSACAlligner(BaseStructureAlligner):
                 
         logger.debug(f"Found {len(ransac_results)} valid allignments")
         if len(ransac_results)  == 0:
-            return [], []
+            return [], [], [], []
         
         if len(ransac_results)  > 1: 
-            selected_transformations: list[np.ndarray] = self._cluster_and_select_transformations(ransac_results, moving_coord, save_dir)
+            representive_results: list[np.ndarray] = self._cluster_and_select_transformations(ransac_results, moving_coord, save_dir)
         else:
-            selected_transformations = [np.asarray(ransac_results[0].transformation)]
+            representive_results = ransac_results
+        selected_transformations = [np.asarray(ransac_result.transformation) for ransac_result in representive_results]
                 
         rotations = [np.linalg.inv(trans[:3,:3].astype("f")) for trans in  selected_transformations] 
         translations = [trans[:,3].astype("f") for trans in  selected_transformations]
+        rmse = [trans.inlier_rmse for trans in  representive_results]
+        coverage = [trans.fitness for trans in  representive_results]
         
-        return rotations, translations
+        return rotations, translations, rmse, coverage
