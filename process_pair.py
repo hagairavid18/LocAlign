@@ -1,29 +1,23 @@
-import logging
 from multiprocessing.managers import ListProxy
 
 from alligners import *
 from objects import ProteinPair, Protein
 
-# from main import logger2
+def process_pair(pair_dict: dict, alligner: BaseStructureAlligner, ligand: str, result_list: ListProxy, min_ligand_atoms: int = 3) -> None:
+    if len(pair_dict['ref_chain']) != 1 or len(pair_dict['mov_chain']) != 1:
+        return result_list.append((ligand, pair_dict["ref_name"], pair_dict["mov_name"], pair_dict["ref_chain"], pair_dict["mov_chain"], None, None, None, pair_dict['cath_level'] ,None, None, "invalid chain given"))
 
-logger = logging.getLogger(__name__)
 
-def process_pair(pair_dict: dict, alligner: BaseStructureAlligner, ligand: str, result_list: ListProxy) -> None:
     ref_protein = Protein(pair_dict["ref_name"], pair_dict["ref_chain"], ligand, "H_" + ligand)
     mov_protein = Protein(pair_dict["mov_name"], pair_dict["mov_chain"], ligand, "H_" + ligand)
+    pair = ProteinPair(ref_protein, mov_protein, ligand,  "H_" + ligand)
     
-    if ref_protein.get_num_of_ligand_atoms() < 10:
-        logger.info(f"Failed to create transformation between {pair_dict['ref_name']} and {pair_dict['mov_name']}. ligand number of atoms is less than 10 atoms, skip")
+    ref_ligand_n_atmos, mov_ligand_n_atmos = pair.number_of_ligand_atoms
+
+    if ref_ligand_n_atmos < min_ligand_atoms or mov_ligand_n_atmos < min_ligand_atoms:
+        result_list.append((ligand, pair_dict["ref_name"], pair_dict["mov_name"], pair_dict["ref_chain"], pair_dict["mov_chain"], None, None, None, pair_dict['cath_level'] ,ref_ligand_n_atmos, mov_ligand_n_atmos, "Ligand too small"))
         return 
                 
-    pair = ProteinPair(ref_protein, mov_protein, ligand,  "H_" + ligand)
-            
-    num_trans: int = pair.allign_atoms(alligner)
+    num_trans, rmse, coverage, message = pair.allign_atoms(alligner)
     
-    if num_trans > 0:
-        str_pair = f"{pair_dict['ref_name']}:{pair_dict['ref_chain']} {pair_dict['mov_name']}:{pair_dict['mov_chain']}"
-        logger.info(f"{str_pair} had {num_trans} transformations")            
-        result_list.append((str_pair ,num_trans))
-        # logger2.info(f"{pair_dict["ref_name"]}:{pair_dict["ref_chain"]} {pair_dict["mov_name"]}:{pair_dict["mov_chain"]}")
-    else:
-        logger.info(f"Failed to create transformation between {pair_dict['ref_name']} and {pair_dict['mov_name']} no transformations")
+    result_list.append((ligand, pair_dict["ref_name"], pair_dict["mov_name"], pair_dict["ref_chain"], pair_dict["mov_chain"], num_trans, rmse, coverage, pair_dict['cath_level'] , ref_ligand_n_atmos, mov_ligand_n_atmos, message))

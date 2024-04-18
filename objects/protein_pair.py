@@ -34,26 +34,25 @@ class ProteinPair:
         return self._ref_protein.get_model(ref_model_idx), self._ref_protein.get_model(mov_model_idx) 
     
     @staticmethod
-    def validate_ligand_pair(ligand_atoms_ref: list[Atom], ligand_atoms_mov: list[Atom]) -> bool:
+    def validate_ligand_pair(ligand_atoms_ref: list[Atom], ligand_atoms_mov: list[Atom]) -> str:
         
         if len(ligand_atoms_ref) != len(ligand_atoms_mov):
-            logger.debug(f"ref ligand has {len(ligand_atoms_ref)} and mov ligand has {len(ligand_atoms_mov)}")
-            return False
+            return f"Ligands have different number of atoms"
 
         for atom_idx in range(len(ligand_atoms_ref)):
             if ligand_atoms_ref[atom_idx].id != ligand_atoms_mov[atom_idx].id:
-                logger.debug(f"Ligand atoms are different between he two proteins")
-                return False
-        return True
+                return f"Ligand atoms are different between the two proteins"
+        return ""
 
     def allign_atoms(self, alligner: BaseStructureAlligner, atom_type: str = "ligand") -> int:
         ref_ligand: list[Atom] = self._ref_protein.get_ligand_atoms(self._ligand_id_name)
         mov_ligand: list[Atom] = self._mov_protein.get_ligand_atoms(self._ligand_id_name)
 
-        if not ProteinPair.validate_ligand_pair(ref_ligand, mov_ligand):
-            return 0
+        error_message: str = ProteinPair.validate_ligand_pair(ref_ligand, mov_ligand)
+        if len(error_message) > 1:
+            return 0, (), (), error_message
      
-        R, t = alligner.impose_structure(ref_ligand, mov_ligand, self._base_dir)
+        R, t, rmse, coverage = alligner.impose_structure(ref_ligand, mov_ligand, self._base_dir)
         if not isinstance(R, list):
             R = [R]
             t = [t]
@@ -68,8 +67,12 @@ class ProteinPair:
                 self.save_structre(copy_model, alligner.name, str(i))
             only_ligand_model, _ = Protein.create_ligand_model(copy_model, self._ligand_id_name, self._mov_protein._chain_id)
             self.save_structre(only_ligand_model, alligner.name, str(i) + '_ligand')
-        return len(R)
+        return len(R), tuple(rmse), tuple(coverage), error_message
 
+    @property
+    def number_of_ligand_atoms(self) -> tuple[int]:
+        return self._ref_protein.get_num_of_ligand_atoms(), self._mov_protein.get_num_of_ligand_atoms()
+    
     def save_structre(self, model: Model, alligned_by: str, postfix: str|None = None) -> None:        
         file_name = f"{alligned_by}.pdb" if not postfix else f"{alligned_by}_{postfix}.pdb"
         file_path = os.path.join(self._base_dir, file_name)

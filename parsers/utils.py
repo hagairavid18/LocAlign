@@ -23,6 +23,7 @@ def parse_protein_pairs(ligand: str) -> list[dict[str, str]]:
                     ref_chain=proteins_and_chains[1],
                     mov_name=proteins_and_chains[2],
                     mov_chain=proteins_and_chains[3],
+                    cath_level = proteins_and_chains[4],
                 ))
         logging.debug(f"found {len(pairs)} pairs")
     return pairs
