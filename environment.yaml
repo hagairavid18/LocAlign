@@ -1,0 +1,27 @@
+name: alligner
+
+channels:
+  - defaults  # Add more channels if needed
+  - conda-forge/noarch
+  - conda-forge/linux-64
+  - pytorch/linux-64                 
+  - pytorch/noarch
+  - nvidia/linux-64
+  - nvidia/noarch
+
+dependencies:
+  - python=3.10  
+  - numpy       
+  - pandas      
+  - matplotlib  
+  - biopython
+  - open3d
+  - scipy
+  - pytorch
+  - pytorch-cuda=12.1
+  - torchvision
+
+ 
+# pip:
+#   - package1
+#   - package2
