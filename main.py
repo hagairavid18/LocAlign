@@ -17,10 +17,8 @@ start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 logging.basicConfig(filename=os.path.join("logs", start_time + ".log"), level=logging.INFO, format='%(message)s')
 
 
-file_handler = logging.FileHandler(os.path.join("logs", "positive_ligands_" + start_time + ".log"))
-file_handler.setLevel(logging.INFO)  # Set the log level for the file handler
-
 logger = logging.getLogger(__name__)
+
 
 
 def save_results_to_csv(results: list[tuple], base_dir: str = "temp_results") -> None:
@@ -41,6 +39,7 @@ def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False
         ligand_pairs: list[dict[str, str]] = parse_protein_pairs(ligand)
         
         for pair_dict in ligand_pairs:
+            logging.info(f"{pair_dict['ref_name']} {pair_dict['mov_name']}")
             if len(list(result_list)) % 100 ==0:
                 save_results_to_csv(list(result_list))
                 

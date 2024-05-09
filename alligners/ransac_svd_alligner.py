@@ -81,7 +81,10 @@ class RANSACAlligner(BaseStructureAlligner):
         fixed_coord_o3d, moving_coord_o3d = o3d.geometry.PointCloud(), o3d.geometry.PointCloud()
         moving_coord_o3d.points = o3d.utility.Vector3dVector(moving_coord)
         fixed_coord_o3d.points = o3d.utility.Vector3dVector(fixed_coord)
-        corr = o3d.cpu.pybind.utility.Vector2iVector([[i, i] for i in range(len(fix_points))])
+
+        id_to_index_map = {atom.id: index for index, atom in enumerate(mov_points)}
+        correspondence_list = [[index1, id_to_index_map[atom.id]] for index1, atom in enumerate(fix_points) if atom.id in id_to_index_map]
+        corr = o3d.cpu.pybind.utility.Vector2iVector(correspondence_list)
 
         ransac_results = []
         for _ in range(self._n_ransac):

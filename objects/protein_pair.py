@@ -35,14 +35,14 @@ class ProteinPair:
         return self._ref_protein.get_model(ref_model_idx), self._ref_protein.get_model(mov_model_idx) 
     
     @staticmethod
-    def validate_ligand_pair(ligand_atoms_ref: list[Atom], ligand_atoms_mov: list[Atom]) -> str:
+    def validate_ligand_pair(ligand_atoms_ref: list[Atom], ligand_atoms_mov: list[Atom], max_length_ratio: float = 1.2) -> str:
         
-        if len(ligand_atoms_ref) != len(ligand_atoms_mov):
-            return f"Ligands have different number of atoms"
-
-        for atom_idx in range(len(ligand_atoms_ref)):
-            if ligand_atoms_ref[atom_idx].id != ligand_atoms_mov[atom_idx].id:
-                return f"Ligand atoms are different between the two proteins"
+        if max(len(ligand_atoms_ref), len(ligand_atoms_mov)) / min(len(ligand_atoms_ref), len(ligand_atoms_mov)) > max_length_ratio:
+            return f"The lengths of the lignads differ significantly. The length ratio exceeds {max_length_ratio}"
+        ref_ids = set([atom.id for atom in ligand_atoms_ref]) 
+        mov_ids = set([atom.id for atom in ligand_atoms_mov])
+        if len(ref_ids.intersection(mov_ids)) / min(len(ligand_atoms_mov), len(ligand_atoms_ref)) < 0.8:
+            return f"The lignad atoms lack sufficient overlap, with less than 80% of the smaller one having corresponding atoms in the longer one."        
         return ""
 
     def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray], alligner: BaseStructureAlligner) -> None:
@@ -58,19 +58,33 @@ class ProteinPair:
             only_ligand_model, _ = Protein.create_ligand_model(copy_model, self._ligand_id_name, self._mov_protein._chain_id)
             self.save_structre(only_ligand_model, alligner.name, str(i) + '_ligand')
     
-    def find_transformations(self, alligner: BaseStructureAlligner, atom_type: str = "ligand") -> int:
-        ref_ligand: list[Atom] = self._ref_protein.get_ligand_atoms(self._ligand_id_name)
-        mov_ligand: list[Atom] = self._mov_protein.get_ligand_atoms(self._ligand_id_name)
+    def find_transformations(self, alligner: BaseStructureAlligner, transform_ligand: bool = False, min_ligand_atoms: int = 3) -> tuple[tuple, tuple, tuple, tuple, str]:
+        ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_atoms(self._ligand_id_name)
+        mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_atoms(self._ligand_id_name)
+        all_R, all_t, all_rmse, all_coverage = [], [], [], []
+        for i, ref_residue in enumerate(ref_ligand):
+            for j, mov_residue in enumerate(mov_ligand):
+                if len(ref_residue) < min_ligand_atoms or len(mov_residue) < min_ligand_atoms:
+                    error_message = f"One of the ligands has less than {min_ligand_atoms} atoms"
+                    continue
 
-        error_message: str = ProteinPair.validate_ligand_pair(ref_ligand, mov_ligand)
-        if len(error_message) > 1:
-            return 0, (), (), error_message
-     
-        R, t, rmse, coverage = alligner.impose_structure(ref_ligand, mov_ligand, self._base_dir)
+                error_message: str = ProteinPair.validate_ligand_pair(ref_residue, mov_residue)
+                if len(error_message) > 1:
+                    continue
+            
+                R, t, rmse, coverage = alligner.impose_structure(ref_residue, mov_residue, self._base_dir)
+                all_R.append(R)
+                all_t.append(all_t)
+                all_rmse.append(rmse)
+                all_coverage.append(coverage)
+
+                if transform_ligand:
+                    self._apply_transformations_and_save_transformed_models(R, t, alligner + '_' + i + '_' + j)
         
-        self._apply_transformations_and_save_transformed_models(R, t, alligner)
-       
-        return len(R), tuple(rmse), tuple(coverage), error_message
+        if len(all_R) == 0:
+            return (), (), (), (), error_message
+        
+        return tuple(all_R), tuple(all_t), tuple(all_rmse), tuple(all_coverage), ""
 
     @property
     def number_of_ligand_atoms(self) -> tuple[int]:
