@@ -10,7 +10,7 @@ import pandas as pd
 from utils.misc import build_object
 from utils.constants import RESULTS_COLUMNS
 from alligners import *
-from process_pair import process_pair
+from utils.process_pair import process_pair
 from parsers.utils import parse_protein_pairs
 
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -20,13 +20,12 @@ logging.basicConfig(filename=os.path.join("logs", start_time + ".log"), level=lo
 logger = logging.getLogger(__name__)
 
 
-
 def save_results_to_csv(results: list[tuple], base_dir: str = "temp_results") -> None:
     os.makedirs(base_dir, exist_ok=True)
     df = pd.DataFrame(results, columns=RESULTS_COLUMNS)
     df.to_csv(f'{base_dir}/{start_time}_{len(results)}.csv', index=False)
 
-def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False) -> None:
+def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False, save_transformed_ligand: bool = False) -> None:
      
     alligner: BaseStructureAlligner = build_object(alligner_config, "alligners")
     manager = multiprocessing.Manager()
@@ -44,9 +43,9 @@ def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False
                 save_results_to_csv(list(result_list))
                 
             if not debug:
-                pool.apply(process_pair, (pair_dict, alligner, ligand, result_list))
+                pool.apply(process_pair, (pair_dict, alligner, ligand, result_list, save_transformed_ligand))
             else:
-                process_pair(pair_dict, alligner, ligand, result_list)
+                process_pair(pair_dict, alligner, ligand, result_list, save_transformed_ligand)
     
     pool.close()
     pool.join()
@@ -75,5 +74,5 @@ if __name__ == "__main__":
     else:
         ligands = [os.listdir("alligned_structures")[0]]
 
-    run(ligands, config['alligner'], args.debug)
+    run(ligands, config['alligner'], args.debug, config['save_transformed_ligand'])
     
