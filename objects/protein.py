@@ -72,12 +72,12 @@ class Protein:
         ligand_model.add(ligand_chain)
         return ligand_model, num_atoms
     
-    def _get_atoms(self, id: str = " ") -> list[Atom]:
+    def _get_atoms(self, id: str = " ") -> list[list[Atom]]:
         atoms =  [] 
 
         for residue in list(self.get_model(self._model_idx, True)):
             if residue.id[0] == id:
-                atoms += list(residue)
+                atoms.append(list(residue))
      
         return atoms
     
