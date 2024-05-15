@@ -1,5 +1,5 @@
 {
-    "ligand_list": "good_ligands.txt",
+    "ligand": null,
     "run_single": false,
     "save_transformed_ligand": false,
     "alligner": 

@@ -65,14 +65,11 @@ if __name__ == "__main__":
     with open(args.config) as f:
         config = json.load(f)
     
-    if not config['run_single']:
-        if os.path.exists(config['ligand_list']):
-            with open (config['ligand_list']) as ligand_file:
-                ligands =  [line.strip() for line in ligand_file]
-        else:
-            ligands = os.listdir("alligned_structures")
+    if config['ligand']:
+
+        ligands =  [config['ligand']]
     else:
-        ligands = [os.listdir("alligned_structures")[0]]
+        ligands = os.listdir("alligned_structures")
 
     run(ligands, config['alligner'], args.debug, config['save_transformed_ligand'])
     

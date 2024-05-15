@@ -45,7 +45,7 @@ class ProteinPair:
             return f"The lignad atoms lack sufficient overlap, with less than 80% of the smaller one having corresponding atoms in the longer one."        
         return ""
 
-    def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray], alligner: BaseStructureAlligner) -> None:
+    def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray], alligner: BaseStructureAlligner, ref_residue_index, mov_residue_index) -> None:
          
          for i in range(len(R)):
             copy_model = self._mov_protein.get_model(self._mov_model_idx).copy()
@@ -54,9 +54,9 @@ class ProteinPair:
                 atom.transform(R[i][:3, :3], t[i][:3])
             
             if self._save_transformed_protein:
-                self.save_structre(copy_model, alligner.name, str(i))
+                self.save_structre(copy_model, alligner.name, str(i) + '_protein_' + str(ref_residue_index) + '_' + str(mov_residue_index))
             only_ligand_model, _ = Protein.create_ligand_model(copy_model, self._ligand_id_name, self._mov_protein._chain_id)
-            self.save_structre(only_ligand_model, alligner.name, str(i) + '_ligand')
+            self.save_structre(only_ligand_model, alligner.name, str(i) + '_ligand_' + str(ref_residue_index) + '_' + str(mov_residue_index))
     
     def find_transformations(self, alligner: BaseStructureAlligner, transform_ligand: bool = False, min_ligand_atoms: int = 3) -> tuple[tuple, tuple, tuple, tuple, str]:
         ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_atoms(self._ligand_id_name)
@@ -79,7 +79,7 @@ class ProteinPair:
                 all_coverage.append(coverage)
 
                 if transform_ligand:
-                    self._apply_transformations_and_save_transformed_models(R, t, alligner + '_' + i + '_' + j)
+                    self._apply_transformations_and_save_transformed_models(R, t, alligner, i, j)
         
         if len(all_R) == 0:
             return (), (), (), (), error_message
