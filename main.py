@@ -28,24 +28,22 @@ def save_results_to_csv(results: list[tuple], base_dir: str = "temp_results") ->
 def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False, save_transformed_ligand: bool = False) -> None:
      
     alligner: BaseStructureAlligner = build_object(alligner_config, "alligners")
-    manager = multiprocessing.Manager()
-    result_list = manager.list()
+    result_list = []
     pool = multiprocessing.Pool()
     
-    for ligand in ligands:
+    for i, ligand in enumerate(ligands):
         logging.info(f"\nProcess ligand: {ligand}\n")
 
         ligand_pairs: list[dict[str, str]] = parse_protein_pairs(ligand)
         
-        for pair_dict in ligand_pairs:
-            logging.info(f"{pair_dict['ref_name']} {pair_dict['mov_name']}")
-            if len(list(result_list)) % 100 ==0:
-                save_results_to_csv(list(result_list))
-                
-            if not debug:
-                pool.apply(process_pair, (pair_dict, alligner, ligand, result_list, save_transformed_ligand))
-            else:
-                process_pair(pair_dict, alligner, ligand, result_list, save_transformed_ligand)
+        if not debug:
+            results_async = [pool.apply_async(process_pair, (pair_dict, alligner, ligand, save_transformed_ligand)) for pair_dict in ligand_pairs]
+            result_list += [result.get() for result in results_async]
+        else:
+            result_list = [process_pair(pair_dict, alligner, ligand, save_transformed_ligand) for pair_dict in ligand_pairs]
+        if i % 10 == 0:
+            save_results_to_csv(result_list)
+       
     
     pool.close()
     pool.join()

@@ -8,6 +8,7 @@ from Bio.PDB.Atom import Atom
 from Bio.PDB.PDBIO import PDBIO
 
 from objects import Protein
+from utils.constants import NOT_ENOUGH_ATOMS_MESSAGE, TOO_MUCH_RESIDUES_MESSAGE, LIGAND_RESIDUE_IS_MISSED_MESSAGE, N_ATOMS_RATIO_MESSAGE, LIGAND_OVERLAP_MESSAGE
 from alligners import BaseStructureAlligner
 
 logger = logging.getLogger(__name__)
@@ -16,12 +17,12 @@ warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 
 class ProteinPair:
-    def __init__(self, ref_proein: Protein, mov_protein: Protein, ligand_name: str, ligand_id_name: str,
-                  ref_model_idx: int = 0, mov_model_idx: int = 0, save_transformed_protein: bool = False) -> None:
+    def __init__(self, ref_proein: Protein, mov_protein: Protein, ligand_name: str, ref_model_idx: int = 0,
+                  mov_model_idx: int = 0, save_transformed_protein: bool = False) -> None:
   
         self._ref_protein: Protein = ref_proein
         self._mov_protein: Protein = mov_protein
-        self._ligand_id_name = ligand_id_name
+        self._ligand_name = ligand_name
         self._ref_model_idx = ref_model_idx
         self._mov_model_idx = mov_model_idx
         self._save_transformed_protein = save_transformed_protein
@@ -38,11 +39,11 @@ class ProteinPair:
     def validate_ligand_pair(ligand_atoms_ref: list[Atom], ligand_atoms_mov: list[Atom], max_length_ratio: float = 1.2) -> str:
         
         if max(len(ligand_atoms_ref), len(ligand_atoms_mov)) / min(len(ligand_atoms_ref), len(ligand_atoms_mov)) > max_length_ratio:
-            return f"The lengths of the lignads differ significantly. The length ratio exceeds {max_length_ratio}"
+            return N_ATOMS_RATIO_MESSAGE
         ref_ids = set([atom.id for atom in ligand_atoms_ref]) 
         mov_ids = set([atom.id for atom in ligand_atoms_mov])
         if len(ref_ids.intersection(mov_ids)) / min(len(ligand_atoms_mov), len(ligand_atoms_ref)) < 0.8:
-            return f"The lignad atoms lack sufficient overlap, with less than 80% of the smaller one having corresponding atoms in the longer one."        
+            return LIGAND_OVERLAP_MESSAGE        
         return ""
 
     def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray], alligner: BaseStructureAlligner, ref_residue_index, mov_residue_index) -> None:
@@ -55,17 +56,23 @@ class ProteinPair:
             
             if self._save_transformed_protein:
                 self.save_structre(copy_model, alligner.name, str(i) + '_protein_' + str(ref_residue_index) + '_' + str(mov_residue_index))
-            only_ligand_model, _ = Protein.create_ligand_model(copy_model, self._ligand_id_name, self._mov_protein._chain_id)
+            only_ligand_model, _ = Protein.create_ligand_model(copy_model, self._ligand_name, self._mov_protein._chain_id)
             self.save_structre(only_ligand_model, alligner.name, str(i) + '_ligand_' + str(ref_residue_index) + '_' + str(mov_residue_index))
     
     def find_transformations(self, alligner: BaseStructureAlligner, transform_ligand: bool = False, min_ligand_atoms: int = 3) -> tuple[tuple, tuple, tuple, tuple, str]:
-        ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_atoms(self._ligand_id_name)
-        mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_atoms(self._ligand_id_name)
+        ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_atoms(self._ligand_name)
+        mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_atoms(self._ligand_name)
         all_R, all_t, all_rmse, all_coverage = [], [], [], []
+        if len(ref_ligand) == 0 or len(mov_ligand) == 0:
+            return (), (), (), (), LIGAND_RESIDUE_IS_MISSED_MESSAGE
+        
+        if len(ref_ligand) * len(mov_ligand) > 20:
+            return (), (), (), (), TOO_MUCH_RESIDUES_MESSAGE
+        error_message = ""
         for i, ref_residue in enumerate(ref_ligand):
             for j, mov_residue in enumerate(mov_ligand):
                 if len(ref_residue) < min_ligand_atoms or len(mov_residue) < min_ligand_atoms:
-                    error_message = f"One of the ligands has less than {min_ligand_atoms} atoms"
+                    error_message = NOT_ENOUGH_ATOMS_MESSAGE
                     continue
 
                 error_message: str = ProteinPair.validate_ligand_pair(ref_residue, mov_residue)
