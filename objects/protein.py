@@ -9,6 +9,8 @@ from Bio.PDB.Residue import Residue
 from Bio.PDB.PDBIO import PDBIO
 from Bio.PDB.Structure import Structure
 from Bio.PDB.Atom import Atom
+import numpy as np
+from Bio.PDB.Polypeptide import protein_letters_3to1
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,7 @@ class Protein:
 
         pdb_list = PDBList(verbose=False)
         pdb_file_path = pdb_list.retrieve_pdb_file(self._pdb_name, pdir=f'alligned_structures/{self._ligand_name}', file_format='mmCif')
+        _ = pdb_list.retrieve_pdb_file(self._pdb_name, pdir=f'alligned_structures/{self._ligand_name}', file_format='pdb')
         mmcif_parser = MMCIFParser()
         try:
             structure: Structure = mmcif_parser.get_structure(self._pdb_name, pdb_file_path)
@@ -48,6 +51,12 @@ class Protein:
         return ligand_model, num_of_ligand_atoms
     
     def get_model(self, model_idx: int, only_chain: bool = False) -> Model | Chain:
+        if only_chain:
+            return self._structure[model_idx][self._chain_id]
+        
+        return self._structure[model_idx]
+    
+    def save_chain_model(self, model_idx: int, only_chain: bool = False) -> Model | Chain:
         if only_chain:
             return self._structure[model_idx][self._chain_id]
         
@@ -83,6 +92,17 @@ class Protein:
                 atoms.append(list(residue))
      
         return atoms
+    
+    @staticmethod
+    def get_residue_data(chain: Chain) -> tuple[np.ndarray, str]:
+        coords = []
+        seq = []
+        for residue in chain.get_residues():
+            if "CA" in residue.child_dict and residue.resname in protein_letters_3to1:
+                coords.append(residue.child_dict["CA"].coord)
+                seq.append(protein_letters_3to1[residue.resname])
+
+        return np.vstack(coords), "".join(seq)
     
     def get_num_of_ligand_atoms(self) -> int:
         return self._num_of_ligand_atoms

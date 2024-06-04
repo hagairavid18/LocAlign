@@ -7,8 +7,9 @@ from Bio.PDB.Model import Model
 from Bio.PDB.Atom import Atom
 from Bio.PDB.PDBIO import PDBIO
 
+from alligners.dali_alligner import DaliAligner
 from objects import Protein
-from utils.constants import NOT_ENOUGH_ATOMS_MESSAGE, TOO_MUCH_RESIDUES_MESSAGE, LIGAND_RESIDUE_IS_MISSED_MESSAGE, N_ATOMS_RATIO_MESSAGE, LIGAND_OVERLAP_MESSAGE
+from utils.constants import NOT_ENOUGH_ATOMS_MESSAGE, TOO_MUCH_RESIDUES_MESSAGE, LIGAND_RESIDUE_IS_MISSED_MESSAGE, N_ATOMS_RATIO_MESSAGE, LIGAND_OVERLAP_MESSAGE, ResultHolder
 from alligners import BaseStructureAlligner
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,9 @@ class ProteinPair:
             return LIGAND_OVERLAP_MESSAGE        
         return ""
 
-    def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray], alligner: BaseStructureAlligner, ref_residue_index, mov_residue_index) -> None:
+    def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray],
+                                                           alligner: BaseStructureAlligner,
+                                                            ref_residue_index: int = 0, mov_residue_index: int = 0) -> None:
          
          for i in range(len(R)):
             copy_model = self._mov_protein.get_model(self._mov_model_idx).copy()
@@ -59,20 +62,23 @@ class ProteinPair:
             only_ligand_model, _ = Protein.create_ligand_model(copy_model, self._ligand_name, self._mov_protein._chain_id)
             self.save_structre(only_ligand_model, alligner.name, str(i) + '_ligand_' + str(ref_residue_index) + '_' + str(mov_residue_index))
     
-    def find_transformations(self, alligner: BaseStructureAlligner, transform_ligand: bool = False, min_ligand_atoms: int = 3) -> tuple[tuple, tuple, tuple, tuple, str]:
+    def find_ligand_transformations(self, holder: ResultHolder, alligner: BaseStructureAlligner,
+                                     transform_protein: bool = False, min_ligand_atoms: int = 3) -> None:
         ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_atoms(self._ligand_name)
         mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_atoms(self._ligand_name)
         all_R, all_t, all_rmse, all_coverage = [], [], [], []
         if len(ref_ligand) == 0 or len(mov_ligand) == 0:
-            return (), (), (), (), LIGAND_RESIDUE_IS_MISSED_MESSAGE
+            holder.failure_message =  LIGAND_RESIDUE_IS_MISSED_MESSAGE
+            return
         
         if len(ref_ligand) * len(mov_ligand) > 20:
-            return (), (), (), (), TOO_MUCH_RESIDUES_MESSAGE
+            holder.failure_message = TOO_MUCH_RESIDUES_MESSAGE
+            return
         error_message = ""
         for i, ref_residue in enumerate(ref_ligand):
             for j, mov_residue in enumerate(mov_ligand):
                 if len(ref_residue) < min_ligand_atoms or len(mov_residue) < min_ligand_atoms:
-                    error_message = NOT_ENOUGH_ATOMS_MESSAGE
+                    holder.failure_message = NOT_ENOUGH_ATOMS_MESSAGE
                     continue
 
                 error_message: str = ProteinPair.validate_ligand_pair(ref_residue, mov_residue)
@@ -81,17 +87,41 @@ class ProteinPair:
             
                 R, t, rmse, coverage = alligner.impose_structure(ref_residue, mov_residue, self._base_dir)
                 all_R.append(R)
-                all_t.append(all_t)
+                all_t.append(t)
                 all_rmse.append(rmse)
                 all_coverage.append(coverage)
 
-                if transform_ligand:
+                if transform_protein:
                     self._apply_transformations_and_save_transformed_models(R, t, alligner, i, j)
         
-        if len(all_R) == 0:
-            return (), (), (), (), error_message
         
-        return tuple(all_R), tuple(all_t), tuple(all_rmse), tuple(all_coverage), ""
+        holder.rotations = tuple(all_R)
+        holder.translations = tuple(all_t)
+        holder.rmse = tuple(all_rmse)
+        holder.coverage = tuple(all_coverage)
+        holder.n_transformations = sum([len(rot) for rot in all_R])
+        if len(all_R) == 0:
+            holder.failure_message = error_message
+    
+    def find_protein_transformations(self, holder: ResultHolder, alligner: BaseStructureAlligner | DaliAligner,
+                                      transform_protein: bool = False) -> tuple[tuple, tuple, tuple, tuple, str]:
+        
+        ref_chain = self._ref_protein.get_model(self._ref_model_idx, True)
+        mov_chain = self._mov_protein.get_model(self._mov_model_idx, True)
+        ref_coord, seq1 = Protein.get_residue_data(ref_chain)
+        mov_coord, seq2 = Protein.get_residue_data(mov_chain)
+    
+        if isinstance(alligner, DaliAligner):
+            R, t, rmsd, _ = alligner.impose_structure(self._ref_protein, self._mov_protein, f'alligned_structures/{self._ligand_name}')
+        else:
+            R, t, rmsd, _ = alligner.impose_structure(ref_coord, mov_coord, seq1, seq2, self._base_dir)
+
+        if transform_protein:
+            self._apply_transformations_and_save_transformed_models(R, t, alligner)
+        
+        holder.p_rotations = R
+        holder.p_translations = t
+        holder.p_rmsd = rmsd
 
     @property
     def number_of_ligand_atoms(self) -> tuple[int]:

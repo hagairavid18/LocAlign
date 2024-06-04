@@ -8,7 +8,6 @@ from typing import Any
 import pandas as pd
 
 from utils.misc import build_object
-from utils.constants import RESULTS_COLUMNS
 from alligners import *
 from utils.process_pair import process_pair
 from parsers.utils import parse_protein_pairs
@@ -22,12 +21,13 @@ logger = logging.getLogger(__name__)
 
 def save_results_to_csv(results: list[tuple], base_dir: str = "temp_results") -> None:
     os.makedirs(base_dir, exist_ok=True)
-    df = pd.DataFrame(results, columns=RESULTS_COLUMNS)
+    df = pd.DataFrame([obj.__dict__ for obj in results])
     df.to_csv(f'{base_dir}/{start_time}_{len(results)}.csv', index=False)
 
-def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False, save_transformed_ligand: bool = False) -> None:
+def run(ligands: list[str], ligand_alligner_config: dict[str, Any], protein_alligner_config: dict[str, Any], debug: bool = False, save_transformed_ligand: bool = False) -> None:
      
-    alligner: BaseStructureAlligner = build_object(alligner_config, "alligners")
+    ligand_alligner: BaseStructureAlligner = build_object(ligand_alligner_config, "alligners")
+    protein_alligner: BaseStructureAlligner = build_object(protein_alligner_config, "alligners")
     result_list = []
     pool = multiprocessing.Pool()
     
@@ -36,18 +36,17 @@ def run(ligands: list[str], alligner_config: dict[str, Any], debug: bool = False
 
         ligand_pairs: list[dict[str, str]] = parse_protein_pairs(ligand)
         
-        if not debug:
-            results_async = [pool.apply_async(process_pair, (pair_dict, alligner, ligand, save_transformed_ligand)) for pair_dict in ligand_pairs]
+        if not debug and not protein_alligner:
+            results_async = [pool.apply_async(process_pair, (pair_dict, ligand_alligner, protein_alligner, ligand, save_transformed_ligand)) for pair_dict in ligand_pairs]
             result_list += [result.get() for result in results_async]
         else:
-            result_list = [process_pair(pair_dict, alligner, ligand, save_transformed_ligand) for pair_dict in ligand_pairs]
-        if i % 10 == 0:
+            result_list += [process_pair(pair_dict, ligand_alligner, protein_alligner, ligand, save_transformed_ligand) for pair_dict in ligand_pairs]
+        if i % 2 == 0:
             save_results_to_csv(result_list)
-       
     
     pool.close()
     pool.join()
-    save_results_to_csv(list(result_list), "results")
+    save_results_to_csv(result_list, "results")
 
 
 if __name__ == "__main__":
@@ -69,5 +68,4 @@ if __name__ == "__main__":
     else:
         ligands = os.listdir("alligned_structures")
 
-    run(ligands, config['alligner'], args.debug, config['save_transformed_ligand'])
-    
+    run(ligands, config['ligand_alligner'], config['protein_alligner'], args.debug, config['save_transformed_ligand'])

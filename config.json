@@ -1,13 +1,20 @@
 {
     "ligand": null,
     "run_single": false,
-    "save_transformed_ligand": false,
-    "alligner": 
+    "save_transformed_ligand": true,
+    "ligand_alligner": 
         {
             "name": "RANSACAlligner",
             "args": {
                 "save_plots": false
             }
+          
+        },
+
+    "protein_alligner": 
+        {
+            "name": "DaliAligner"
+          
         }
     
 }
