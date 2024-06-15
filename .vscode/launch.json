@@ -15,12 +15,25 @@
             "name": "allign",
             "type": "debugpy",
             "request": "launch",
-            "program": "main.py",
+            "program": "align.py",
             "console": "integratedTerminal",
             "justMyCode": false, 
             "args": [
                 "--config" ,
-                "config.json",
+                "align_config.json",
+                // "--debug",
+            ]
+        },
+        {
+            "name": "baseline",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "baseline.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+                "--config" ,
+                "rmsd_config.json",
                 "--debug",
             ]
         }

@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 class DaliAligner():
     DAT_PATH = "/home/iscb/wolfson/hagairavid/DaliLite.v5/DAT"
-    IMPORT_PATH = 'DaliLite.v5/bin/import.pl'
-    DALI_PATH = 'DaliLite.v5/bin/dali.pl'
+    IMPORT_PATH = '/home/iscb/wolfson/hagairavid/DaliLite.v5/bin/import.pl'
+    DALI_PATH = '/home/iscb/wolfson/hagairavid/DaliLite.v5/bin/dali.pl'
     def __init__(self) -> None:  
         # super().__init__()
         self.name = "DaliAligner"
@@ -46,19 +46,21 @@ class DaliAligner():
         mov_path = os.path.join("ligand_alligner", ligand_dir, 'pdb' + mov_protein._pdb_name + '.ent')
         ref_path = os.path.join("ligand_alligner", ligand_dir, 'pdb' + ref_name + '.ent')
         try:
-            os.chdir('/home/iscb/wolfson/hagairavid')
+            # temp_dir = f'temp/{mov_name}_{ref_name}'
+            # os.makedirs(temp_dir, exist_ok=True)
+            os.chdir(os.path.join("ligand_alligner", ligand_dir))
             import_1 = subprocess.run([self.IMPORT_PATH, '--pdbfile', mov_path, '--pdbid', mov_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
             import_2 = subprocess.run([self.IMPORT_PATH, '--pdbfile', ref_path, '--pdbid', ref_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
             allign_log = subprocess.run([self.DALI_PATH, '--cd1', ref_name + ref_chain , '--cd2', mov_name + mov_chain,
                                           '--dat1', self.DAT_PATH, '--dat2', self.DAT_PATH, '--title',
-                                            "output options" ,'--outfmt', "summary,alignments,equivalences,transrot",
-                                              "--clean"], capture_output=True, text=True, check=True)
+                                            "output options" ,'--outfmt', "summary,alignments,equivalences,transrot", "--clean"
+                                              ], capture_output=True, text=True, check=True)
 
             matrix, rmsd, _ = DaliAligner.extract_matrices_combined(f'{ref_name}{ref_chain}.txt')
             try:
                 os.remove(ref_name + '.dssp')
                 os.remove(mov_name + '.dssp')
-                os.remove(ref_name + ref_chain + '.txt')
+                # os.remove(ref_name + ref_chain + '.txt')
             except OSError:
                 pass
   
@@ -70,6 +72,6 @@ class DaliAligner():
             else:
                 return [], [], [], []
             
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             print(e)
             return [], [], [], []

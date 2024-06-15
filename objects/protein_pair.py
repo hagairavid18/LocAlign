@@ -64,9 +64,11 @@ class ProteinPair:
     
     def find_ligand_transformations(self, holder: ResultHolder, alligner: BaseStructureAlligner,
                                      transform_protein: bool = False, min_ligand_atoms: int = 3) -> None:
-        ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_atoms(self._ligand_name)
-        mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_atoms(self._ligand_name)
+        ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_residues()
+        mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_residues()
         all_R, all_t, all_rmse, all_coverage = [], [], [], []
+        holder.n_residues_ref_ligand = len(ref_ligand)
+        holder.n_residues_mov_ligand = len(mov_ligand)
         if len(ref_ligand) == 0 or len(mov_ligand) == 0:
             holder.failure_message =  LIGAND_RESIDUE_IS_MISSED_MESSAGE
             return
@@ -79,26 +81,36 @@ class ProteinPair:
             for j, mov_residue in enumerate(mov_ligand):
                 if len(ref_residue) < min_ligand_atoms or len(mov_residue) < min_ligand_atoms:
                     holder.failure_message = NOT_ENOUGH_ATOMS_MESSAGE
+                    all_R.append([])
+                    all_t.append([])
+                    all_rmse.append(-1)
+                    all_coverage.append(-1)
                     continue
 
                 error_message: str = ProteinPair.validate_ligand_pair(ref_residue, mov_residue)
                 if len(error_message) > 1:
+                    all_R.append([])
+                    all_t.append([])
+                    all_rmse.append(-1)
+                    all_coverage.append(-1)
                     continue
             
                 R, t, rmse, coverage = alligner.impose_structure(ref_residue, mov_residue, self._base_dir)
-                all_R.append(R)
-                all_t.append(t)
+                all_R.append([r.tolist() for r in R])
+                all_t.append([tr.tolist() for tr in t])
                 all_rmse.append(rmse)
                 all_coverage.append(coverage)
 
                 if transform_protein:
                     self._apply_transformations_and_save_transformed_models(R, t, alligner, i, j)
         
-        
-        holder.rotations = tuple(all_R)
-        holder.translations = tuple(all_t)
-        holder.rmse = tuple(all_rmse)
-        holder.coverage = tuple(all_coverage)
+
+        if len(all_R) == 3:
+            print('here')
+        holder.rotations = all_R
+        holder.translations = all_t
+        holder.rmse = all_rmse
+        holder.coverage = all_coverage
         holder.n_transformations = sum([len(rot) for rot in all_R])
         if len(all_R) == 0:
             holder.failure_message = error_message
@@ -119,9 +131,22 @@ class ProteinPair:
         if transform_protein:
             self._apply_transformations_and_save_transformed_models(R, t, alligner)
         
-        holder.p_rotations = R
-        holder.p_translations = t
-        holder.p_rmsd = rmsd
+        holder.__setattr__(f"{alligner.name}_rotations", R)
+        holder.__setattr__(f"{alligner.name}_translations", t)
+        holder.__setattr__(f"{alligner.name}_rmsd", rmsd)
+        # holder.p_translations = t
+        # holder.p_rmsd = rmsd # TODO: handle rmsd
+
+    @staticmethod
+    def compute_rmsd(coordiantes: list[Atom], gt_trans: np.ndarray, aligner_trans: np.ndarray) -> float:
+        points_homogeneous = np.hstack([coordiantes, np.ones((coordiantes.shape[0], 1))])
+        transformed_points_1 = (gt_trans @ points_homogeneous.T).T[:, :3]
+        transformed_points_2 = (aligner_trans @ points_homogeneous.T).T[:, :3]
+        
+        squared_diff = np.sum((transformed_points_1 - transformed_points_2) ** 2, axis=1)
+        rmsd_value = np.sqrt(np.mean(squared_diff))
+
+        return rmsd_value
 
     @property
     def number_of_ligand_atoms(self) -> tuple[int]:

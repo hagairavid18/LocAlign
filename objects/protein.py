@@ -1,6 +1,8 @@
 import os
 import logging
 import warnings
+from scipy.spatial.distance import cdist
+
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
 from Bio.PDB import PDBList, MMCIFParser
 from Bio.PDB.Model import Model
@@ -62,17 +64,42 @@ class Protein:
         
         return self._structure[model_idx]
     
-    def get_ligand_atoms(self, ligand_name: int = 0) -> list[Atom]:
+    def get_ligand_residues(self) -> list[Residue]:
         return list(list(self._ligand_model.get_chains())[0])
     
-    staticmethod
+    def get_pocket_atoms(self, residues_thresh: float = 5.0, atoms_thresh: float =  8.0, ligand_res_idx: int = 0) -> list[Atom]:
+        ligand_residue = self.get_ligand_residues()[ligand_res_idx] # TODO: handle ligand with more residues
+        ligand_coors = [atom.coord for atom in ligand_residue.get_atoms() if atom.element != "H"]
+        pocket_residues = []
+        pocket_atoms = []
+        for residue in list(self.get_model(self._model_idx, True)):
+            res_coors = [atom.coord for atom in residue.get_atoms() if atom.element != "H"]
+            distances = cdist(ligand_coors, res_coors, metric='euclidean')
+            # min_dist_idx = np.unravel_index(np.argmin(distances, axis=None), distances.shape)
+            # min_distance = distances[min_dist_idx]
+            # 
+            if distances.min() < residues_thresh:
+                pocket_residues.append(residue)
+                pocket_atoms += list(residue)
+        
+        pocket_atoms_coors = np.array([atom.coord for atom in pocket_atoms if atom.element != "H"])
+        close_atoms = np.empty((0, 3))
+
+        for residue in list(self.get_model(self._model_idx, True)):
+            res_coors = np.array([atom.coord for atom in residue.get_atoms() if atom.element != "H"])
+            distances = cdist(pocket_atoms_coors, res_coors, metric='euclidean')
+            close_atoms = np.vstack((close_atoms, res_coors[np.unique(np.where(distances < atoms_thresh)[1])]))
+    
+        return np.vstack((close_atoms, pocket_atoms_coors))
+    
+    @staticmethod
     def create_ligand_model(model: Model, ligand_name: str, chain_idx: int) -> tuple[Model, list[int]]:
         
         ligand_model = Model(model.id)
         chain: Chain = model[chain_idx]
         ligand_chain = Chain(chain.id)
         for residue in list(chain):
-            if residue.resname == ligand_name: # TODO: There is attribute residue.resname which returns the ligand name itself.
+            if residue.resname == ligand_name:
                 heavy_residue = Residue(residue.id, residue.resname, residue.get_segid())
                 for atom in residue.get_atoms():
                     if atom.element != "H":
