@@ -2,6 +2,8 @@ from typing import Any
 import numpy as np
 
 
+
+LIGAND_DIR = 'ligands'
 RESULTS_COLUMNS = ['Ligand_ID', 'ref_protein', 'mov_protein', 'ref_chain', 'mov_chain',
                     'n_transformations','rotations', 'translations', 'rmse', 'coverage', 'cath_degree',
                      'ref_ligand_n_atoms', 'mov_ligand_n_atoms', "failure_message", 'p_rotations', 'p_translations', 'p_rmsd', "p_coverage", "p_message"]
@@ -24,6 +26,7 @@ class ResultHolder:
         self.translations: list[list[np.ndarray]] = []
         self.rmse: list[list[float]] = []
         self.coverage: list[list[float]] = []
+        self.bbr: list[list[float]] = []
         self.cath_degree: int = pair_dict['cath_level']
         self.ref_ligand_n_atoms: int = -1
         self.mov_ligand_n_atoms: int = -1

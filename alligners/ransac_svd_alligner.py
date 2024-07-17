@@ -11,7 +11,6 @@ from alligners import BaseStructureAlligner
 from utils.transformation import create_transformation_mse_matrix
 from utils.plots import plot_mse_matrix, plot_hierarchical_clustring, plot_clustered_rmse_fintness
 
-warnings.filterwarnings("ignore", category=ClusterWarning)
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
 
@@ -114,4 +113,4 @@ class RANSACAlligner(BaseStructureAlligner):
         rmse = [trans.inlier_rmse for trans in  representive_results]
         coverage = [trans.fitness for trans in  representive_results]
         
-        return rotations, translations, rmse, coverage
+        return np.array(rotations), np.array(translations), np.array(rmse), np.array(coverage)

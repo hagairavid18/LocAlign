@@ -10,6 +10,8 @@ def deserialize_nested_lists(data, col_name):
         return np.array(data)
     elif col_name in ['DaliAligner_translations', 'TMaligner_translations']:
         return np.array(data)
+    else:
+        return data
     
 
 def serialize_nested_lists(data):

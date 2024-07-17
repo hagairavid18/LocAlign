@@ -46,13 +46,15 @@ def run(pairs_df: pd.DataFrame, aligners: list[str], debug: bool = False) -> Non
                         gt_T[:, 3] = row['translations'][ligand_res_idx][j]
                         
                         if not debug:
-                            results_async.append(pool.apply_async(transformations_rmsd, (row['mov_protein'], row['mov_chain'], gt_T, pred_T , ligand, ligand_res_idx // row['n_residues_ref_ligand'])))
+                            results_async.append(pool.apply_async(transformations_rmsd, (row['mov_protein'], row['mov_chain'], gt_T.copy(), pred_T.copy() , ligand, ligand_res_idx // row['n_residues_ref_ligand'])))
                         else:
-                            row_rmsd.append(transformations_rmsd(row['mov_protein'], row['mov_chain'], gt_T, pred_T , ligand, ligand_res_idx // row['n_residues_ref_ligand']))
+                            row_rmsd.append(transformations_rmsd(row['mov_protein'], row['mov_chain'], gt_T.copy(), pred_T.copy() , ligand, ligand_res_idx // row['n_residues_ref_ligand'], save_pocket=True))
                 if not debug:
                     row_rmsd = [result.get() for result in results_async]
-                logging.info(f"{aligner} rmsd: {row_rmsd} cath: {row['cath_degree']} protein_rmsd: {row[f'{aligner}_rmsd']}")
-                pairs_df.at[row_idx, f'{aligner}_rmsd'] = min(row_rmsd) if len(row_rmsd) > 0 else 0
+                    row_rmsd = [rmsd for rmsd in row_rmsd if rmsd[0] is not None]
+                logging.info(f"{aligner} pocket_rmsd: {[rmsd[0] for rmsd in row_rmsd]} ligand_rmsd: {[rmsd[1] for rmsd in row_rmsd]} cath: {row['cath_degree']} protein_rmsd: {row[f'{aligner}_rmsd']}")
+                pairs_df.at[row_idx, f'{aligner}_pocket_rmsd'] = min([rmsd[0] for rmsd in row_rmsd]) if len(row_rmsd) > 0 else 0
+                pairs_df.at[row_idx, f'{aligner}_ligand_rmsd'] = min([rmsd[1] for rmsd in row_rmsd]) if len(row_rmsd) > 0 else 0
         
     pool.close()
     pool.join()
@@ -75,6 +77,7 @@ if __name__ == "__main__":
     pairs = pd.read_csv(config['pairs_df'])
     for col in pairs.columns:
         if pairs[col].apply(lambda x: isinstance(x, str) and x.startswith('[') and x.endswith(']')).any():
+            pairs[col] = pairs[col].fillna('[]')
             
             pairs[col] = pairs[col].apply(lambda x: json.loads(x))
             pairs[col] = pairs[col].apply(lambda x: deserialize_nested_lists(x, col))

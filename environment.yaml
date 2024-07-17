@@ -22,5 +22,5 @@ dependencies:
   - torchvision
 
  
-# pip:
-#   - tmtools
+pip:
+  - tmtools
