@@ -69,7 +69,6 @@ class DaliAligner():
             os.chdir('/home/iscb/wolfson/hagairavid/ligand_alligner')
             try:
                 shutil.rmtree(temp_dir)
-                logging.info('removed temp dir')
             except OSError as e:
                 logging.info(e)
                 pass

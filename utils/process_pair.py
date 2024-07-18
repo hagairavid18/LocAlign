@@ -8,7 +8,8 @@ from utils.constants import ResultHolder, LIGAND_DIR
 logger = logging.getLogger(__name__)
 
 def align_pair(pair_dict: dict, ligand_alligner: BaseStructureAlligner, protein_alligners: list[BaseStructureAlligner],
-                 ligand: str, save_transformed_models: bool = False, min_ligand_atoms: int = 3) -> None:
+             save_transformed_models: bool = False, min_ligand_atoms: int = 3) -> None:
+    ligand = pair_dict['ligand_id']
     holder = ResultHolder(pair_dict, ligand)
     logging.info(f"{pair_dict['ref_name']} {pair_dict['mov_name']}")
     if len(pair_dict['ref_chain']) != 1 or len(pair_dict['mov_chain']) != 1:
