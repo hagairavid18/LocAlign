@@ -55,18 +55,18 @@ class DaliAligner():
         mov_path = os.path.join('..', mov_name + '_non_ligand.ent')
         ref_path = os.path.join('..', ref_name + '_non_ligand.ent')
         try:
-            temp_dir = tempfile.mkdtemp(prefix=os.path.join(self.HOME_PATH, "ligand_alligner", ligand_dir + '/'))
+            temp_dir = tempfile.mkdtemp(prefix=os.path.join(self.HOME_PATH, "ligand_aligner", ligand_dir + '/'))
             os.makedirs(temp_dir, exist_ok=True)
             os.chdir(temp_dir)
             import_1 = subprocess.run([self.IMPORT_PATH, '--pdbfile', mov_path, '--pdbid', mov_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
             import_2 = subprocess.run([self.IMPORT_PATH, '--pdbfile', ref_path, '--pdbid', ref_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
-            allign_log = subprocess.run([self.DALI_PATH, '--cd1', ref_name + ref_chain , '--cd2', mov_name + mov_chain,
+            align_log = subprocess.run([self.DALI_PATH, '--cd1', ref_name + ref_chain , '--cd2', mov_name + mov_chain,
                                           '--dat1', self.DAT_PATH, '--dat2', self.DAT_PATH, '--title',
                                             "output options" ,'--outfmt', "summary,alignments,equivalences,transrot", "--clean"
                                               ], capture_output=True, text=True, check=True)
 
             matrix, rmsd, _ = DaliAligner.extract_matrices_combined(f'{ref_name}{ref_chain}.txt')
-            os.chdir('/home/iscb/wolfson/hagairavid/ligand_alligner')
+            os.chdir('/home/iscb/wolfson/hagairavid/ligand_aligner')
             try:
                 shutil.rmtree(temp_dir)
             except OSError as e:
@@ -81,7 +81,7 @@ class DaliAligner():
                 return [], [], [], []
             
         except Exception as e:
-            os.chdir('/home/iscb/wolfson/hagairavid/ligand_alligner')
+            os.chdir('/home/iscb/wolfson/hagairavid/ligand_aligner')
             logging.info(e)
             try:
                 shutil.rmtree(temp_dir)

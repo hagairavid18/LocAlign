@@ -7,7 +7,7 @@ warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 
 
-class BaseStructureAlligner:
+class BaseStructurealigner:
     def __init__(self) -> None:
         self.name: str = "base"
         pass

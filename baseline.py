@@ -9,7 +9,7 @@ import pandas as pd
 
 from utils.misc import save_results_to_csv
 from utils.loading import deserialize_nested_lists
-from alligners import *
+from aligners import *
 from utils.process_pair import transformations_rmsd
 
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -52,7 +52,7 @@ def run(pairs_df: pd.DataFrame, aligners: list[str], debug: bool = False) -> Non
                 if not debug:
                     row_rmsd = [result.get() for result in results_async]
                     row_rmsd = [rmsd for rmsd in row_rmsd if rmsd[0] is not None]
-                logging.info(f"{aligner} pocket_rmsd: {[rmsd[0] for rmsd in row_rmsd]} ligand_rmsd: {[rmsd[1] for rmsd in row_rmsd]} cath: {row['cath_degree']} protein_rmsd: {row[f'{aligner}_rmsd']}")
+                logging.info(f"{aligner} pocket_rmsd: {[rmsd[0] for rmsd in row_rmsd]} ligand_rmsd: {[rmsd[1] for rmsd in row_rmsd]} cath: {row['cath_degree']}")
                 pairs_df.at[row_idx, f'{aligner}_pocket_rmsd'] = min([rmsd[0] for rmsd in row_rmsd]) if len(row_rmsd) > 0 else 0
                 pairs_df.at[row_idx, f'{aligner}_ligand_rmsd'] = min([rmsd[1] for rmsd in row_rmsd]) if len(row_rmsd) > 0 else 0
         
@@ -82,4 +82,4 @@ if __name__ == "__main__":
             pairs[col] = pairs[col].apply(lambda x: json.loads(x))
             pairs[col] = pairs[col].apply(lambda x: deserialize_nested_lists(x, col))
 
-    run(pairs, config['protein_alligner'], args.debug)
+    run(pairs, config['protein_aligner'], args.debug)

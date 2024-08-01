@@ -1,16 +1,16 @@
 import logging
 from Bio.PDB import  Superimposer
 from Bio.PDB.Atom import Atom
-from alligners import BaseStructureAlligner
+from aligners import BaseStructurealigner
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-class SVDAlligner(BaseStructureAlligner):
+class SVDaligner(BaseStructurealigner):
     def __init__(self) -> None:
         super().__init__()
-        self.name = "SVDAlligner"
+        self.name = "SVDaligner"
   
     def impose_structure(self, fix_points: list[Atom], mov_points: list[Atom], save_dir: str | None = None) -> tuple[np.ndarray, np.ndarray]:
         super_imposer = Superimposer()

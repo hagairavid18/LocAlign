@@ -9,12 +9,12 @@ from Bio.PDB.PDBIO import PDBIO
 from scipy.spatial import distance_matrix
 
 
-from alligners.dali_alligner import DaliAligner
+from aligners.dali_aligner import DaliAligner
 from utils.constants import LIGAND_DIR
 
 from objects import Protein
 from utils.constants import NOT_ENOUGH_ATOMS_MESSAGE, TOO_MUCH_RESIDUES_MESSAGE, LIGAND_RESIDUE_IS_MISSED_MESSAGE, N_ATOMS_RATIO_MESSAGE, LIGAND_OVERLAP_MESSAGE, ResultHolder
-from alligners import BaseStructureAlligner
+from aligners import BaseStructurealigner
 
 logger = logging.getLogger(__name__)
 
@@ -22,22 +22,19 @@ warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 
 def best_buddy_count(P, Q):
-    
-    # Compute the distance matrices
     dist_PQ = distance_matrix(P, Q)
     dist_QP = distance_matrix(Q, P)
-    
-    # Find closest points
     closest_in_Q_to_P = np.argmin(dist_PQ, axis=1)
     closest_in_P_to_Q = np.argmin(dist_QP, axis=1)
     
-    # Find best buddy pairs
     best_buddies = 0
     for i, j in enumerate(closest_in_Q_to_P):
         if closest_in_P_to_Q[j] == i:
             best_buddies += 1
             
     return best_buddies
+
+
 class ProteinPair:
     def __init__(self, ref_proein: Protein, mov_protein: Protein, ligand_name: str, ref_model_idx: int = 0,
                   mov_model_idx: int = 0, save_transformed_models: bool = False) -> None:
@@ -69,7 +66,7 @@ class ProteinPair:
         return ""
 
     def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray],
-                                                           alligner: BaseStructureAlligner,
+                                                           aligner: BaseStructurealigner,
                                                             ref_residue_index: int = 0, mov_residue_index: int = 0) -> None:
 
          for i in range(len(R)):
@@ -79,13 +76,13 @@ class ProteinPair:
                 atom.transform(R[i][:3, :3], t[i][:3])
             
             try:
-                self.save_structre(copy_model, alligner.name, str(i) + '_protein_' + str(ref_residue_index) + '_' + str(mov_residue_index))
+                self.save_structre(copy_model, aligner.name, str(i) + '_protein_' + str(ref_residue_index) + '_' + str(mov_residue_index))
                 only_ligand_model, _ = Protein.create_ligand_model(copy_model, self._ligand_name, self._mov_protein._chain_id)
-                self.save_structre(only_ligand_model, alligner.name, str(i) + '_ligand_' + str(ref_residue_index) + '_' + str(mov_residue_index))
+                self.save_structre(only_ligand_model, aligner.name, str(i) + '_ligand_' + str(ref_residue_index) + '_' + str(mov_residue_index))
             except Exception as e:
                 print(e)
     
-    def _get_best_bodie_ratio(self, R, t, mov_ligand_res_idx, ref_ligand_res_idx) -> float:
+    def _get_best_buddy_ratio(self, R, t, mov_ligand_res_idx, ref_ligand_res_idx) -> float:
         mov_atoms: np.ndarray = self._mov_protein.get_pocket_atoms(ligand_res_idx = mov_ligand_res_idx)
         ref_atoms: np.ndarray = self._ref_protein.get_pocket_atoms(ligand_res_idx = ref_ligand_res_idx)
         transformed_mov_pocket = np.dot(mov_atoms, R) + t[:3]
@@ -93,7 +90,7 @@ class ProteinPair:
         logging.info(f"n bb: {bbc} bbc ratio {bbc / min(mov_atoms.shape[0], ref_atoms.shape[0])}")
         return bbc / min(mov_atoms.shape[0], ref_atoms.shape[0])
     
-    def find_ligand_transformations(self, holder: ResultHolder, alligner: BaseStructureAlligner, min_ligand_atoms: int = 3) -> None:
+    def find_ligand_transformations(self, holder: ResultHolder, aligner: BaseStructurealigner, min_ligand_atoms: int = 3) -> None:
         ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_residues()
         mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_residues()
         holder.n_residues_ref_ligand = len(ref_ligand)
@@ -118,7 +115,7 @@ class ProteinPair:
                 if len(error_message) > 1:
                     continue
             
-                R, t, rmse, coverage = alligner.impose_structure(ref_residue, mov_residue, self._base_dir)
+                R, t, rmse, coverage = aligner.impose_structure(ref_residue, mov_residue, self._base_dir)
                 if len(R) < 1:
                     continue
                 
@@ -127,13 +124,13 @@ class ProteinPair:
                 all_rmse[curr_pair_idx] = rmse
                 all_coverage[curr_pair_idx] = coverage
                 try:
-                    all_bbr[curr_pair_idx] = [self._get_best_bodie_ratio(R[k], t[k], j , i) for k in range(len(R))]
+                    all_bbr[curr_pair_idx] = [self._get_best_buddy_ratio(R[k], t[k], j , i) for k in range(len(R))]
                 except Exception as e:
                     logging.info(e)
                     holder.failure_message = "Failed to compute in bbr"
 
                 if self._save_transformed_models:
-                    self._apply_transformations_and_save_transformed_models(R, t, alligner, i, j)
+                    self._apply_transformations_and_save_transformed_models(R, t, aligner, i, j)
                 curr_pair_idx +=1
         
         holder.rotations = all_R
@@ -145,30 +142,30 @@ class ProteinPair:
         if len(all_R) == 0:
             holder.failure_message = error_message
     
-    def find_protein_transformations(self, holder: ResultHolder, alligner: BaseStructureAlligner | DaliAligner) -> tuple[tuple, tuple, tuple, tuple, str]:
+    def find_protein_transformations(self, holder: ResultHolder, aligner: BaseStructurealigner | DaliAligner) -> tuple[tuple, tuple, tuple, tuple, str]:
         
         ref_chain = self._ref_protein.get_model(self._ref_model_idx, True)
         mov_chain = self._mov_protein.get_model(self._mov_model_idx, True)
         ref_coord, seq1 = Protein.get_residue_data(ref_chain)
         mov_coord, seq2 = Protein.get_residue_data(mov_chain)
     
-        if isinstance(alligner, DaliAligner):
-            R, t, rmsd, _ = alligner.impose_structure(self._ref_protein, self._mov_protein, f'{LIGAND_DIR}/{self._ligand_name}')
+        if isinstance(aligner, DaliAligner):
+            R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, f'{LIGAND_DIR}/{self._ligand_name}')
         else:
-            R, t, rmsd, _ = alligner.impose_structure(ref_coord, mov_coord, seq1, seq2, self._base_dir)
+            R, t, rmsd, _ = aligner.impose_structure(ref_coord, mov_coord, seq1, seq2, self._base_dir)
 
         if self._save_transformed_models:
-            self._apply_transformations_and_save_transformed_models(R, t, alligner)
+            self._apply_transformations_and_save_transformed_models(R, t, aligner)
         
         if len(R) > 0:
             ligand_rmsd =  self._compute_ligand_rmsd(R[0], t[0])
         else:
             ligand_rmsd = None
         
-        holder.__setattr__(f"{alligner.name}_rotations", R)
-        holder.__setattr__(f"{alligner.name}_translations", t)
-        holder.__setattr__(f"{alligner.name}_protein_rmsd", rmsd)
-        holder.__setattr__(f"{alligner.name}_rmsd", ligand_rmsd)
+        holder.__setattr__(f"{aligner.name}_rotations", R)
+        holder.__setattr__(f"{aligner.name}_translations", t)
+        holder.__setattr__(f"{aligner.name}_protein_rmsd", rmsd)
+        holder.__setattr__(f"{aligner.name}_rmsd", ligand_rmsd)
 
     def _compute_ligand_rmsd(self, R, t):
         try:
@@ -208,8 +205,8 @@ class ProteinPair:
     def number_of_ligand_atoms(self) -> tuple[int]:
         return self._ref_protein.get_num_of_ligand_atoms(), self._mov_protein.get_num_of_ligand_atoms()
     
-    def save_structre(self, model: Model, alligned_by: str, postfix: str|None = None) -> None:        
-        file_name = f"{alligned_by}.pdb" if not postfix else f"{alligned_by}_{postfix}.pdb"
+    def save_structre(self, model: Model, aligned_by: str, postfix: str|None = None) -> None:        
+        file_name = f"{aligned_by}.pdb" if not postfix else f"{aligned_by}_{postfix}.pdb"
         file_path = os.path.join(self._base_dir, file_name)
         io = PDBIO()
         io.set_structure(model)

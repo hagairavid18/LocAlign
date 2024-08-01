@@ -7,3 +7,16 @@
 *.log
 *.csv
 *.gz
+*.ent
+*.puu
+*.default
+*.dssp
+*.lock
+*.dccp
+*_output
+*_input
+*.101
+*.101
+*.pkl
+*hparams.yaml
+

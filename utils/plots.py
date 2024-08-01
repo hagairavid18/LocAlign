@@ -16,7 +16,7 @@ def plot_mse_matrix(matrix: np.ndarray, save_dir: str) -> None:
     plt.savefig(os.path.join(save_dir, 'mse_matrix.png')) 
     
     
-def plot_hierarchical_clustring(linkage_matrix: np.ndarray, save_dir: str) -> None:
+def plot_hierarchical_clustering(linkage_matrix: np.ndarray, save_dir: str) -> None:
      # Plot dendrogram
     plt.figure(figsize=(8, 6))
     dendrogram = hierarchy.dendrogram(linkage_matrix)
@@ -28,7 +28,7 @@ def plot_hierarchical_clustring(linkage_matrix: np.ndarray, save_dir: str) -> No
     plt.savefig(os.path.join(save_dir, 'hierarchical_clustring.png'))  
 
 
-def plot_clustered_rmse_fintness(rmse: list[float], fitness: list[float],
+def plot_clustered_rmse_fitness(rmse: list[float], fitness: list[float],
                                  cluster_assignments: np.ndarray,  save_dir: str) -> None:
     
     plt.figure(figsize=(8, 6))
@@ -45,9 +45,9 @@ def plot_clustered_rmse_fintness(rmse: list[float], fitness: list[float],
         color = plt.cm.nipy_spectral(cluster / float(np.max(cluster_assignments)))
         plt.scatter(centroids_feature1[i], centroids_feature2[i], color=color, marker='x', s=100)
         
-    plt.title('Points with Colors based on Cluster Assignments')
-    plt.xlabel('Feature 1')
-    plt.ylabel('Feature 2')
+    plt.title('Clustered transformations')
+    plt.xlabel('RMSE')
+    plt.ylabel('Coverage')
     plt.legend()
     plt.grid(True)
     plt.savefig(os.path.join(save_dir, 'rasnac_results_clusters.png'))  

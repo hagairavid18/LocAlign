@@ -1,4 +1,4 @@
-name: alligner
+name: aligner
 
 channels:
   - defaults  # Add more channels if needed

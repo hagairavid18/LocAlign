@@ -1,13 +1,13 @@
 import numpy as np
 import logging
 
-from alligners import *
+from aligners import *
 from objects import ProteinPair, Protein
 from utils.constants import ResultHolder, LIGAND_DIR
 
 logger = logging.getLogger(__name__)
 
-def align_pair(pair_dict: dict, ligand_alligner: BaseStructureAlligner, protein_alligners: list[BaseStructureAlligner],
+def align_pair(pair_dict: dict, ligand_aligner: BaseStructurealigner, protein_aligners: list[BaseStructurealigner],
              save_transformed_models: bool = False, min_ligand_atoms: int = 3) -> None:
     ligand = pair_dict['ligand_id']
     holder = ResultHolder(pair_dict, ligand)
@@ -27,15 +27,15 @@ def align_pair(pair_dict: dict, ligand_alligner: BaseStructureAlligner, protein_
     holder.ref_ligand_n_atoms = ref_ligand_n_atoms
     holder.mov_ligand_n_atoms = mov_ligand_n_atoms
                 
-    pair.find_ligand_transformations(holder, ligand_alligner, min_ligand_atoms=min_ligand_atoms)
+    pair.find_ligand_transformations(holder, ligand_aligner, min_ligand_atoms=min_ligand_atoms)
     
-    for aligner in protein_alligners:
+    for aligner in protein_aligners:
         pair.find_protein_transformations(holder, aligner)
 
     return holder
 
 
-def transformations_rmsd(mov_name: str, mov_chain: str, gt_trans: np.ndarray, aligner_trans: np.ndarray, ligand: str, ligand_res_idx: int, save_pocket: bool = False) -> None:
+def transformations_rmsd(mov_name: str, mov_chain: str, gt_trans: np.ndarray, aligner_trans: np.ndarray, ligand: str, ligand_res_idx: int, save_pocket: bool = True) -> None:
     mov_protein = Protein(mov_name, mov_chain, ligand, save_models=False)
     try:
         pocket_atoms = mov_protein.get_pocket_atoms(ligand_res_idx = ligand_res_idx)

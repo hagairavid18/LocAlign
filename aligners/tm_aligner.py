@@ -4,7 +4,7 @@ from Bio.PDB.Atom import Atom
 import numpy as np
 from tmtools import tm_align
 
-from alligners import BaseStructureAlligner
+from aligners import BaseStructurealigner
 
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
@@ -12,7 +12,7 @@ logging.getLogger('matplotlib').setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
-class TMaligner(BaseStructureAlligner):
+class TMaligner(BaseStructurealigner):
     def __init__(self) -> None:
   
         super().__init__()

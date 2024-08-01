@@ -5,15 +5,15 @@ import torch
 import numpy as np
 import logging
 
-from alligners import BaseStructureAlligner
+from aligners import BaseStructurealigner
 
 logger = logging.getLogger(__name__)
 
 
-class Pytorch3dAlligner(BaseStructureAlligner):
+class Pytorch3daligner(BaseStructurealigner):
     def __init__(self) -> None:
         super().__init__()
-        self.name = "Pytorch3dAlligner"
+        self.name = "Pytorch3daligner"
   
     def impose_structure(self, points1: list[Atom], points2: list[Atom], save_dir: str | None = None) -> Model:
         # atom_to_int ={key: idx for idx, key in enumerate(set([point.name for point in points1] + [point.name for point in points2]))}
