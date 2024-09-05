@@ -1,16 +1,21 @@
 import logging
 import os
 import torch
+import torch.nn.functional as F
 from datasets import BasePairDataset
 import pickle
 from Bio.PDB.Structure import Structure
 from Bio.PDB.Chain import Chain
 from Bio.PDB import PDBParser
+from Bio.PDB.Atom import PDBConstructionWarning
+import warnings
+warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 logger = logging.getLogger(__name__)
 
 
 class ScannetDataset(BasePairDataset):
+    MAX_SEQUENCE_LENGTH = 1000
     def __init__(self, df_path: str, base_data_path: str, n_samples: int):
         super().__init__(df_path, base_data_path, n_samples)
         self._mmcif_parser = PDBParser()
@@ -21,28 +26,31 @@ class ScannetDataset(BasePairDataset):
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
         try:
-            ref_embedding, ref_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
-            mov_embedding, mov_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+            tar_embedding, tar_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
+            src_embedding, src_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
         except Exception as e:
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
 
+        tar_length, src_length = tar_embedding.shape[0], src_coordinates.shape[0]
         ret = {}
-        ret['ref_embedding'] = ref_embedding
-        ret['ref_coordinates'] = ref_coordinates
-        ret['mov_embedding'] = mov_embedding
-        ret['mov_coordinates'] = mov_coordinates
+        ret['tar_embedding'] = F.pad(tar_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length) )
+        ret['tar_coordinates'] = F.pad(tar_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length) )
+        ret['tar_mask'] = F.pad(torch.ones(tar_length), (0, self.MAX_SEQUENCE_LENGTH - tar_length), value=0).bool()
+        ret['src_embedding'] = F.pad(src_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length) )
+        ret['src_coordinates'] = F.pad(src_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length))
+        ret['src_mask'] = F.pad(torch.ones(src_length), (0, self.MAX_SEQUENCE_LENGTH - src_length), value=0).bool()
+        ret['max_length'] = max(tar_length, src_length)
         ret['metadata'] = row.to_dict()
-        ret['row_idx'] = idx
         
         return ret
     
     def _read_embedding(self, ligand_id: str, chain: str):
-        embedding_path_ref = os.path.join(self._base_data_path, ligand_id,  chain + '_scannet.pkl')
-        if not os.path.exists(embedding_path_ref):
+        embedding_path_tar = os.path.join(self._base_data_path, ligand_id,  chain + '_scannet.pkl')
+        if not os.path.exists(embedding_path_tar):
             logger.info(f"Can't find embedding path for ligand: {ligand_id} protein: {chain}")
             raise ValueError
-        with open(embedding_path_ref, 'rb') as f:
+        with open(embedding_path_tar, 'rb') as f:
             data = pickle.load(f)
         embedding_ids, embeddings = list(data.keys()), list(data.values())
         embeddings = torch.stack([torch.tensor(arr) for arr in embeddings])

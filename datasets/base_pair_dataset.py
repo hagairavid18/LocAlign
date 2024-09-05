@@ -16,7 +16,10 @@ class BasePairDataset(Dataset):
 
     def _read_data_path(self) -> pd.DataFrame:
         assert os.path.exists(self._df_path), f"Can't find path {self._df_path}"
-        pairs = pd.read_csv(self._df_path)[:self._n_samples]
+        pairs = pd.read_csv(self._df_path)
+        if 'index' in pairs.columns:
+            pairs = pairs.drop('index', axis=1)
+        pairs = pairs.reset_index().sample(n=self._n_samples, random_state=42)
         for col in pairs.columns:
             if pairs[col].apply(lambda x: isinstance(x, str) and x.startswith('[') and x.endswith(']')).any():
                 pairs[col] = pairs[col].fillna('[]')
@@ -24,8 +27,6 @@ class BasePairDataset(Dataset):
                 pairs[col] = pairs[col].apply(lambda x: json.loads(x))
                 pairs[col] = pairs[col].apply(lambda x: deserialize_nested_lists(x, col))
         print(f"Read df with {len(pairs)} pairs")
-        pairs['HardBBS_rotations'] = None
-        pairs['HardBBS_translations'] = None
 
         return pairs
 
