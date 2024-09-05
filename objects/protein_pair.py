@@ -14,7 +14,7 @@ from utils.constants import LIGAND_DIR
 
 from objects import Protein
 from utils.constants import NOT_ENOUGH_ATOMS_MESSAGE, TOO_MUCH_RESIDUES_MESSAGE, LIGAND_RESIDUE_IS_MISSED_MESSAGE, N_ATOMS_RATIO_MESSAGE, LIGAND_OVERLAP_MESSAGE, ResultHolder
-from aligners import BaseStructurealigner
+from aligners import BaseStructureAligner
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class ProteinPair:
         return ""
 
     def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray],
-                                                           aligner: BaseStructurealigner,
+                                                           aligner: BaseStructureAligner,
                                                             ref_residue_index: int = 0, mov_residue_index: int = 0) -> None:
 
          for i in range(len(R)):
@@ -90,7 +90,7 @@ class ProteinPair:
         logging.info(f"n bb: {bbc} bbc ratio {bbc / min(mov_atoms.shape[0], ref_atoms.shape[0])}")
         return bbc / min(mov_atoms.shape[0], ref_atoms.shape[0])
     
-    def find_ligand_transformations(self, holder: ResultHolder, aligner: BaseStructurealigner, min_ligand_atoms: int = 3) -> None:
+    def find_ligand_transformations(self, holder: ResultHolder, aligner: BaseStructureAligner, min_ligand_atoms: int = 3) -> None:
         ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_residues()
         mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_residues()
         holder.n_residues_ref_ligand = len(ref_ligand)
@@ -142,7 +142,7 @@ class ProteinPair:
         if len(all_R) == 0:
             holder.failure_message = error_message
     
-    def find_protein_transformations(self, holder: ResultHolder, aligner: BaseStructurealigner | DaliAligner) -> tuple[tuple, tuple, tuple, tuple, str]:
+    def find_protein_transformations(self, holder: ResultHolder, aligner: BaseStructureAligner | DaliAligner) -> tuple[tuple, tuple, tuple, tuple, str]:
         
         ref_chain = self._ref_protein.get_model(self._ref_model_idx, True)
         mov_chain = self._mov_protein.get_model(self._mov_model_idx, True)

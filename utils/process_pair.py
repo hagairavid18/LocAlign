@@ -7,7 +7,7 @@ from utils.constants import ResultHolder, LIGAND_DIR
 
 logger = logging.getLogger(__name__)
 
-def align_pair(pair_dict: dict, ligand_aligner: BaseStructurealigner, protein_aligners: list[BaseStructurealigner],
+def align_pair(pair_dict: dict, ligand_aligner: BaseStructureAligner, protein_aligners: list[BaseStructureAligner],
              save_transformed_models: bool = False, min_ligand_atoms: int = 3) -> None:
     ligand = pair_dict['ligand_id']
     holder = ResultHolder(pair_dict, ligand)

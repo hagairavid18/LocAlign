@@ -6,9 +6,9 @@ def deserialize_nested_lists(data, col_name):
         return [[np.array(trans) for trans in res_trans] for res_trans in data] 
     elif col_name == 'translations':
         return [np.array(trans) for trans in data] 
-    elif col_name in ['DaliAligner_rotations', 'TMaligner_rotations']:
+    elif col_name in ['DaliAligner_rotations', 'TMAligner_rotations']:
         return np.array(data)
-    elif col_name in ['DaliAligner_translations', 'TMaligner_translations']:
+    elif col_name in ['DaliAligner_translations', 'TMAligner_translations']:
         return np.array(data)
     else:
         return data

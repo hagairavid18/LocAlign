@@ -6,7 +6,7 @@ import numpy as np
 from scipy.cluster import hierarchy
 from scipy.cluster.hierarchy import fcluster, ClusterWarning
 
-from aligners import BaseStructurealigner
+from aligners import BaseStructureAligner
 from utils.transformation import create_transformation_mse_matrix
 from utils.plots import plot_mse_matrix, plot_hierarchical_clustering, plot_clustered_rmse_fitness
 
@@ -17,11 +17,11 @@ logging.getLogger('matplotlib').setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
-class RANSACaligner(BaseStructurealigner):
+class RANSACAligner(BaseStructureAligner):
     def __init__(self, n_ransac: int = 300, iter_per_ransac: int = 5, criterion_threshold: float = 0.5, save_plots: bool = False, cluster_thresh: int = 200) -> None:
   
         super().__init__()
-        self.name = "RANSACaligner"
+        self.name = "RANSACAligner"
         self._n_ransac = n_ransac
         self._iter_per_ransac = iter_per_ransac
         self._criterion_threshold = criterion_threshold

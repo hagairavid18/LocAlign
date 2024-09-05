@@ -1,13 +1,13 @@
 import logging
 from Bio.PDB import  Superimposer
 from Bio.PDB.Atom import Atom
-from aligners import BaseStructurealigner
+from aligners import BaseStructureAligner
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-class SVDaligner(BaseStructurealigner):
+class SVDAligner(BaseStructureAligner):
     def __init__(self) -> None:
         super().__init__()
         self.name = "SVDaligner"

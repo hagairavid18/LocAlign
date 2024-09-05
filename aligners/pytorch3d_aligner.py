@@ -10,7 +10,7 @@ from aligners import BaseStructurealigner
 logger = logging.getLogger(__name__)
 
 
-class Pytorch3daligner(BaseStructurealigner):
+class Pytorch3dAligner(BaseStructurealigner):
     def __init__(self) -> None:
         super().__init__()
         self.name = "Pytorch3daligner"
