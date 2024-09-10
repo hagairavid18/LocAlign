@@ -13,7 +13,9 @@ from aligners import *
 from utils.process_pair import transformations_rmsd
 
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-logging.basicConfig(filename=os.path.join("logs", "baseline_" + start_time + ".log"), level=logging.INFO, format='%(message)s')
+log_dir = os.path.join("logs", "baseline")
+os.makedirs(log_dir, exist_ok=True)
+logging.basicConfig(filename=os.path.join(log_dir, start_time + ".log"), level=logging.INFO, format='%(message)s')
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +38,21 @@ def run(pairs_df: pd.DataFrame, aligners: list[str], debug: bool = False) -> Non
                     pairs_df.at[row_idx, 'rmsd'] = -1
                     continue
                 results_async, row_rmsd = [], []
-                pred_T[:3, :3] = row[f'{aligner}_rotations']
-                pred_T[:3, 3] = row[f'{aligner}_translations']
+                try:
+                    pred_T[:3, :3] = row[f'{aligner}_rotations']
+                    pred_T[:3, 3] = row[f'{aligner}_translations']
+                except:
+                    pred_T[:3, :3] = row[f'{aligner}_rotations'][0]
+                    pred_T[:3, 3] = row[f'{aligner}_translations'][0]
 
+                # logging.info(f"{aligner}: \n{pred_T}")
                 for ligand_res_idx, residue_rotations in enumerate(row['rotations']):
                     for j, rotation in enumerate(residue_rotations):
                         # logging.info(f"ligand_res_idx: {ligand_res_idx}")
                         gt_T[:3, :3] = rotation
                         gt_T[:, 3] = row['translations'][ligand_res_idx][j]
+                        # logging.info(f"GT: \n{gt_T}")
+                        # logging.info(f"{aligner}: \n{pred_T}")
                         
                         if not debug:
                             results_async.append(pool.apply_async(transformations_rmsd, (row['mov_protein'], row['mov_chain'], gt_T.copy(), pred_T.copy() , ligand, ligand_res_idx // row['n_residues_ref_ligand'])))
@@ -66,7 +75,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='RMSD parser')
 
     parser.add_argument('-c', '--config')
-    parser.add_argument('-d', '--debug', action='store_true', help='In debug mode, multiprocess is disabled')
+    parser.add_argument('-d', '--debug', action='store_true', help='In debug mode, multiprocessing is disabled')
 
 
     args = parser.parse_args()

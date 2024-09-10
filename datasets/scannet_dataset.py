@@ -40,6 +40,8 @@ class ScannetDataset(BasePairDataset):
         ret['src_embedding'] = F.pad(src_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length) )
         ret['src_coordinates'] = F.pad(src_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length))
         ret['src_mask'] = F.pad(torch.ones(src_length), (0, self.MAX_SEQUENCE_LENGTH - src_length), value=0).bool()
+        ret['gt_R'] = torch.Tensor(row.to_dict()['rotations'])[0,0]
+        ret['gt_t'] = torch.Tensor(row.to_dict()['translations'])[0,0]
         ret['max_length'] = max(tar_length, src_length)
         ret['metadata'] = row.to_dict()
         
