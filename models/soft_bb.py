@@ -128,7 +128,7 @@ if __name__ == "__main__":
     # data_path = '/home/iscb/wolfson/hagairavid/ligand_alligner/results/baseline_results/2024-07-17_16-01-08_3000.csv'
     data_path = 'results/hard_bbs_results/2024-08-14_22-39-17_2000.csv'
     # data_path = 'results/hard_bbs_results/2024-08-14_21-50-16_500.csv'
-    base_data_path = os.path.join('/home/iscb/wolfson/hagairavid/ligand_alligner/ligands')
+    base_data_path = os.path.join('/home/iscb/wolfson/hagairavid/ligands')
     
     valid_dataset = ScannetDataset(data_path, base_data_path, 2000)
     val_loader  = DataLoader(valid_dataset, batch_size=1, collate_fn=custom_collate_fn, num_workers=0)

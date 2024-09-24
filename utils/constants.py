@@ -3,7 +3,7 @@ import numpy as np
 
 
 
-LIGAND_DIR = 'ligands'
+LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands'
 RESULTS_COLUMNS = ['Ligand_ID', 'ref_protein', 'mov_protein', 'ref_chain', 'mov_chain',
                     'n_transformations','rotations', 'translations', 'rmse', 'coverage', 'cath_degree',
                      'ref_ligand_n_atoms', 'mov_ligand_n_atoms', "failure_message", 'p_rotations', 'p_translations', 'p_rmsd', "p_coverage", "p_message"]

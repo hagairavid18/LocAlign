@@ -5,7 +5,8 @@ import torch
 from torch.utils.data import DataLoader
 import lightning as L
 import pytorch_lightning as pl
-import GPUtil
+import comet_ml
+from pytorch_lightning.loggers import CometLogger
 
 from utils.kabsch import weighted_kabsch_torch
 from models.utils.collate import custom_collate_fn, move_batch_to_device
@@ -13,6 +14,7 @@ from utils.deepbbs_utils import *
 from utils.transformation import rotation_matrix_to_euler_angles
 from models.layers import FeatureCoordinateBlock
 from losses import RTLoss
+from metrics import PocketRMSD
 
 from utils.plots import plot_transformed_point_clouds
 
@@ -26,10 +28,11 @@ class SoftBB(L.LightningModule):
         self._inout_tar_block = FeatureCoordinateBlock(128 ,128, 128)
         self._inout_src_block = FeatureCoordinateBlock(128 ,128, 128)
         self._loss = RTLoss()
+        self._metrics = PocketRMSD()
         self.validation_step_outputs = []
         self.eps = 0.00001
         self._min_diff = 0.05
-        self._max_iter = 1
+        self._max_iter = 10
     
     def get_d0(self, max_length) -> torch.Tensor:
         return 1.24*(torch.tensor(max_length, device=self.device) - 15)**(1/3) -1.8
@@ -70,18 +73,22 @@ class SoftBB(L.LightningModule):
         transformations_to_plot = {"GT" : (batch['gt_R'], batch['gt_t'][:,:3]),
                                     "TMalign": (torch.Tensor(batch['metadata'][0]['TMaligner_rotations']), torch.Tensor(batch['metadata'][0]['TMaligner_translations'])),
                                     "iterative_SoftBBS" :(outputs['pred_R'].clone().detach(), outputs['pred_t'].clone().detach())}
-        if batch_idx % 10 == 0:
+        if batch_idx % 50 == 0:
             logger.experiment.add_image("Transformed Point Clouds", plot_transformed_point_clouds(batch, transformations_to_plot,  compose = False), self.global_step)
-            gpus = GPUtil.getGPUs()
-            for gpu in gpus:
-                self.logger.experiment.add_scalar(f"GPU_{gpu.id}/Memory_Usage_MB", gpu.memoryUsed / 1024, self.global_step)
-                self.logger.experiment.add_scalar(f"GPU_{gpu.id}/GPU_Utilization", gpu.load * 100, self.global_step)
+    
+    def on_validation_epoch_end(self):
+        metrics = self._metrics.compute()
+        self.log('pocket_rmsd', metrics['pocket_rmsd'], on_epoch=True)
+        self.log('ligand_rmsd', metrics['ligand_rmsd'], on_epoch=True)
+        self.log('pocket_rmsd_iter0', metrics['pocket_rmsd_iter0'], on_epoch=True)
+        self.log('ligand_rmsd_iter0', metrics['ligand_rmsd_iter0'], on_epoch=True)
+        self._metrics.reset()
     
     def on_validation_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_embedding'].shape[0]
         self.log('valid_loss', outputs['loss_dict']['loss'], batch_size=batch_size, prog_bar=True, on_epoch=True)
-        self.log('valid_rotation_loss', outputs['loss_dict']['rot_loss'], batch_size=batch_size, prog_bar=True, on_epoch=True)
-        self.log('valid_translation_loss', outputs['loss_dict']['tran_loss'], batch_size=batch_size, prog_bar=True, on_epoch=True)
+        self.log('valid_rotation_loss', outputs['loss_dict']['rot_loss'], batch_size=batch_size, on_epoch=True)
+        self.log('valid_translation_loss', outputs['loss_dict']['tran_loss'], batch_size=batch_size, on_epoch=True)
         transformations_to_plot = {"GT" : (batch['gt_R'], batch['gt_t'][:,:3]),
                                     "TMalign": (torch.Tensor(batch['metadata'][0]['TMaligner_rotations']), torch.Tensor(batch['metadata'][0]['TMaligner_translations'])),
                                     "iterative_SoftBBS" :(outputs['pred_R'].clone().detach(), outputs['pred_t'].clone().detach())}
@@ -104,16 +111,15 @@ class SoftBB(L.LightningModule):
         all_R, all_t = [], []
         not_converged = True
         iter_num = 0
-        while(iter_num < self._max_iter):
+        while(not_converged):
             R_gamma, t_gamma, rmsd_gamma, rmsd_per_corr_gamma = weighted_kabsch_torch(src_coordinates,  batch['tar_coordinates'], gamma.float(),  batch['src_mask'],  batch['tar_mask'])
             all_R.append(R_gamma)
             all_t.append(t_gamma)
-            # rotation = Rotation.from_matrix(R_gamma)
-            # euler_angles = rotation.as_euler('xyz', degrees=False)
-            # diff = np.mean(np.abs(euler_angles))
+            euler_angles = rotation_matrix_to_euler_angles(R_gamma)
+            diff = torch.mean(euler_angles.abs())
             # print(diff)
-            # if diff < self._min_diff or iter_num >= self._max_iter:
-                # not_converged = False
+            if diff < self._min_diff or iter_num >= self._max_iter:
+                not_converged = False
             src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) * batch['src_mask'].unsqueeze(-1).expand_as(batch['src_coordinates'])
             
             src_tgt_euc_dist = cdist_torch(batch['tar_coordinates'], src_coordinates, 3)
@@ -123,8 +129,8 @@ class SoftBB(L.LightningModule):
         R_total, t_total = self._compose_transformations(batch_size, all_R, all_t)
         
         loss: dict[str, torch.Tensor] = self._loss(R_total, t_total, batch['gt_R'], batch['gt_t'])
-        
-        return {'loss': loss['loss'], 'loss_dict': loss, 'pred_R': R_total, 'pred_t': t_total}
+        outputs = {'loss': loss['loss'], 'loss_dict': loss, 'pred_R': R_total, 'pred_t': t_total}        
+        return outputs
      
     def validation_step(self, batch, batch_idx):
         batch = move_batch_to_device(batch, self.device)
@@ -158,7 +164,9 @@ class SoftBB(L.LightningModule):
            
         R_total, t_total = self._compose_transformations(batch_size, all_R, all_t)
         loss: dict[str, torch.Tensor] = self._loss(R_total, t_total, batch['gt_R'], batch['gt_t'])
-        return {'loss': loss['loss'], 'loss_dict': loss, 'pred_R': R_total, 'pred_t': t_total}
+        outputs = {'loss': loss['loss'], 'loss_dict': loss, 'pred_R': R_total, 'pred_t': t_total, 'pred_first_R': all_R[0], 'pred_first_t': all_t[0]}
+        self._metrics.update(batch, outputs)
+        return outputs
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
@@ -179,17 +187,24 @@ if __name__ == "__main__":
 
     logger = logging.getLogger(__name__)
     train = True
-    base_data_path = os.path.join('/home/iscb/wolfson/hagairavid/ligand_alligner/ligands')
+    base_data_path = os.path.join('/home/iscb/wolfson/hagairavid/ligands')
     data_path = 'results/baseline_results/2024-07-18_10-26-26_10000.csv'
     
     if train:
-        train_dataset = ScannetDataset(data_path, base_data_path, 1500, min_cath = 3)
-        train_loader  = DataLoader(train_dataset, batch_size=4, collate_fn=custom_collate_fn, num_workers=20)
-        valid_dataset = ScannetDataset(data_path, base_data_path, 100, min_cath = 3)
-        val_loader  = DataLoader(valid_dataset, batch_size=4, collate_fn=custom_collate_fn, num_workers=20)
+        train_dataset = ScannetDataset(data_path, base_data_path, 100, min_cath = 3)
+        train_loader  = DataLoader(train_dataset, batch_size=1, collate_fn=custom_collate_fn, num_workers=20)
+        valid_dataset = ScannetDataset(data_path, base_data_path, 50, min_cath = 3)
+        val_loader  = DataLoader(valid_dataset, batch_size=1, collate_fn=custom_collate_fn, num_workers=20)
         model = SoftBB()
-        logger = pl.loggers.TensorBoardLogger('logs/tb_logs/')
 
-        trainer = L.Trainer(logger=logger, max_epochs=10, log_every_n_steps=10, accelerator= 'gpu' if torch.cuda.is_available() else 'cpu', profiler="simple")
-        trainer.fit(model, train_loader, val_dataloaders=val_loader)
+        comet_logger = CometLogger(
+            api_key="9ydBzigeK75Z6RhAiX63xGdsg",
+            workspace="hagairavid18", # Optional
+            project_name="pocket_aligner" # Optional
+            # rest_api_key=os.environ["COMET_REST_KEY"], # Optional
+            # experiment_name="default" # Optional
+        )
+
+        trainer = L.Trainer(logger=comet_logger, max_epochs=20, log_every_n_steps=10, accelerator= 'gpu' if torch.cuda.is_available() else 'cpu', profiler="simple")
+        trainer.fit(model, train_loader, val_dataloaders=train_loader)
         

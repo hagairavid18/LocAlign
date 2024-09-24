@@ -189,11 +189,11 @@ class ProteinPair:
         
     @staticmethod
     def compute_rmsd(coordiantes: np.ndarray, gt_trans: np.ndarray, aligner_trans: np.ndarray) -> float:
-        gt_R=gt_trans[:3,:3]
-        gt_t=gt_trans[:3,3]
+        gt_R = gt_trans[:3,:3]
+        gt_t = gt_trans[:3,3]
         transformed_points_1 = np.dot(coordiantes, gt_R) + gt_t
-        aligner_R=aligner_trans[:3,:3]
-        aligner_t=aligner_trans[:3,3]
+        aligner_R = aligner_trans[:3,:3]
+        aligner_t = aligner_trans[:3,3]
         transformed_points_2 = np.dot(coordiantes, aligner_R) + aligner_t
         
         squared_diff = np.sum((transformed_points_1 - transformed_points_2) ** 2, axis=1)
