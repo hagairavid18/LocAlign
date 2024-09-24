@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 class ScannetDataset(BasePairDataset):
     MAX_SEQUENCE_LENGTH = 1000
-    def __init__(self, df_path: str, base_data_path: str, n_samples: int):
-        super().__init__(df_path, base_data_path, n_samples)
+    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0) :
+        super().__init__(df_path, base_data_path, n_samples, min_cath)
         self._mmcif_parser = PDBParser()
 
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
@@ -40,8 +40,8 @@ class ScannetDataset(BasePairDataset):
         ret['src_embedding'] = F.pad(src_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length) )
         ret['src_coordinates'] = F.pad(src_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length))
         ret['src_mask'] = F.pad(torch.ones(src_length), (0, self.MAX_SEQUENCE_LENGTH - src_length), value=0).bool()
-        ret['gt_R'] = torch.Tensor(row.to_dict()['rotations'])[0,0]
-        ret['gt_t'] = torch.Tensor(row.to_dict()['translations'])[0,0]
+        ret['gt_R'] = torch.Tensor(row.to_dict()['rotations'][0][0])
+        ret['gt_t'] = torch.Tensor(row.to_dict()['translations'][0][0])
         ret['max_length'] = max(tar_length, src_length)
         ret['metadata'] = row.to_dict()
         

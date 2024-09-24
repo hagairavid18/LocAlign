@@ -2,71 +2,14 @@
 from datetime import datetime
 import os
 import torch
-from torch import nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import lightning as L
-import pytorch_lightning as pl
+from scipy.spatial.transform import Rotation
 
 from utils.kabsch import weighted_kabsch_torch
 from models.utils.collate import custom_collate_fn
 from utils.deepbbs_utils import *
-from scipy.spatial.transform import Rotation
-torch.autograd.set_detect_anomaly(True)
-import matplotlib.pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter()
-
-
-def plot_transformed_point_clouds(src_coordinates, tar_coordinates, Rs, ts, batch_idx=0, postfix = "", compose: bool = True):
-    # Select the batch
-    src = src_coordinates[batch_idx]
-    tar = tar_coordinates[batch_idx]
-    
-    # Define perspectives
-    perspectives = [(30, 45), (60, 90), (90, 0)]
-    
-    # Initialize the transformed coordinates with the original
-    src_transformed = src.clone()
-    tar_transformed = tar.clone()
-    
-    fig = plt.figure(figsize=(15, 15))
-    
-    for idx, (R_gamma, t_gamma) in enumerate(zip(Rs, ts)):
-        # Ensure R_gamma and t_gamma are the correct shapes
-         # Apply the transformation
-        if compose:
-            # src_transformed = (torch.matmul(src_transformed, R_gamma.transpose(1, 2)) + t_gamma.unsqueeze(0))[0]
-            src_transformed = (torch.matmul(src_transformed, R_gamma) + t_gamma.unsqueeze(0))[0]
-        else:
-            # src_transformed = (torch.matmul(src.clone(), R_gamma.transpose(1, 2)) + t_gamma.unsqueeze(0))[0]
-            src_transformed = (torch.matmul(src.clone(), R_gamma) + t_gamma.unsqueeze(0))[0]
-        
-        for i, (elev, azim) in enumerate(perspectives):
-            ax = fig.add_subplot(len(Rs), len(perspectives), idx * len(perspectives) + i + 1, projection='3d')
-
-            # Plot source coordinates
-            ax.scatter(src_transformed[:, 0], src_transformed[:, 1], src_transformed[:, 2], c='r', marker='o', label='Source', s=1)
-
-            # Plot target coordinates
-            ax.scatter(tar_transformed[:, 0], tar_transformed[:, 1], tar_transformed[:, 2], c='b', marker='^', label='Target', s=1)
-
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'Transform {idx+1} - View {i+1}')
-            
-            # Set view perspective
-            ax.view_init(elev=elev, azim=azim)
-    
-       
-        # tar_transformed = (torch.matmul(tar_transformed, R_gamma) + t_gamma.unsqueeze(0))[0]
-        
-    plt.suptitle(f'Point Cloud Visualizations for Batch {batch_idx}')
-    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to make room for the suptitle
-    plt.savefig(f'plots/{postfix}.png', dpi=500)
-    plt.show()
-
+from utils.plots import plot_transformed_point_clouds
 
 
 class SoftBB(L.LightningModule):
@@ -132,38 +75,20 @@ class SoftBB(L.LightningModule):
             src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) * batch['src_mask'].unsqueeze(-1).expand_as(batch['src_coordinates'])
             
             src_tgt_euc_dist = cdist_torch(batch['tar_coordinates'], src_coordinates, 3)
-            gamma = (gamma_0 / (( 1 + (src_tgt_euc_dist / d_0)**2)**2))* combined_mask
-            iter_num +=1
-           
-        # plot_transformed_point_clouds(batch['src_coordinates'], batch['tar_coordinates'], all_R, all_t, postfix=f"pred_{batch['metadata'][0]['index']}")
-        
+            gamma = (gamma_0 / (( 1 + (src_tgt_euc_dist / d_0[:, None, None])**2)**2))* combined_mask
+            iter_num +=1        
            
         R_total = torch.eye(3).unsqueeze(0).repeat(batch_size, 1, 1)  # Initial rotation matrix (B x 3 x 3)
         t_total = torch.zeros(batch_size, 3)  # Initial translation vector (B x 3)
 
-        # Compose the transformations by applying from the right (X R + t)
-        for i, (R, t) in enumerate(zip(all_R, all_t)):
-            # Multiply the composed rotation from the right
+        for R, t in zip(all_R, all_t):
             R_total = R_total @ R
-            
-            # Accumulate translation, applying rotation to previous translations
-            t_total = t_total @ R + t
+            t_total = torch.bmm(t_total.unsqueeze(1), R).squeeze(1) + t
                 
-        t_total = t_total.squeeze(1)
-        # R_to_plot = [torch.Tensor(batch['metadata'][0]['rotations'][0]), torch.Tensor(batch['metadata'][0]['TMaligner_rotations']), all_R[0], R_total]
-        # t_to_plot = [torch.Tensor(batch['metadata'][0]['translations'][0][:,:3]), torch.Tensor(batch['metadata'][0]['TMaligner_translations']), all_t[0], t_total]
-        # plot_transformed_point_clouds(batch['src_coordinates'], batch['tar_coordinates'], R_to_plot, t_to_plot, postfix=batch['metadata'][0]['index'], iteration=iter_num, compose = False)
-
-        # print(torch.Tensor(batch['metadata'][0]['rotations'][0][0]))
-        # print(torch.Tensor(batch['metadata'][0]['TMaligner_rotations']))
-        # print(all_R[0])
-        # print(R_total)
-
-        # print(torch.Tensor(batch['metadata'][0]['translations'][0][0]))
-        # print(torch.Tensor(batch['metadata'][0]['TMaligner_translations']))
-        # print(all_t[0])
-        # print(t_total)
-        # print(batch['metadata'][0]['index'])
+        transformations_to_plot = {"GT" : (batch['gt_R'], batch['gt_t'][:,:3]),
+                                    "TMalign": (torch.Tensor(batch['metadata'][0]['TMaligner_rotations']), torch.Tensor(batch['metadata'][0]['TMaligner_translations'])),
+                                    "iterative_SoftBBS" :(R_total, t_total)}
+        plot_transformed_point_clouds(batch, transformations_to_plot,  compose = False)
 
         self._validation_outputs[batch['metadata'][0]['index']] = {
             'svd_weighted_R': all_R[0],
@@ -206,7 +131,7 @@ if __name__ == "__main__":
     base_data_path = os.path.join('/home/iscb/wolfson/hagairavid/ligand_alligner/ligands')
     
     valid_dataset = ScannetDataset(data_path, base_data_path, 2000)
-    val_loader  = DataLoader(valid_dataset, batch_size=4, collate_fn=custom_collate_fn, num_workers=30)
+    val_loader  = DataLoader(valid_dataset, batch_size=1, collate_fn=custom_collate_fn, num_workers=0)
     model = SoftBB()
 
     trainer = L.Trainer(max_epochs=5)
