@@ -2,18 +2,16 @@
 from datetime import datetime
 import os
 import torch
-from torch import nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import lightning as L
 import pytorch_lightning as pl
 import GPUtil
 
-
 from utils.kabsch import weighted_kabsch_torch
 from models.utils.collate import custom_collate_fn, move_batch_to_device
 from utils.deepbbs_utils import *
 from utils.transformation import rotation_matrix_to_euler_angles
+from models.layers import FeatureCoordinateBlock
 from losses import RTLoss
 
 from utils.plots import plot_transformed_point_clouds
@@ -21,54 +19,6 @@ from utils.plots import plot_transformed_point_clouds
 torch.set_float32_matmul_precision('medium')
 
 
-class LinearBlock(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(LinearBlock, self).__init__()
-        self.linear = nn.Linear(input_dim, output_dim)
-        self.norm = nn.BatchNorm1d(output_dim)  # Using BatchNorm1d for normalization
-        self.activation = nn.ReLU()  # Using ReLU for activation
-
-    def forward(self, x):
-        # x is of shape B x N x d
-        B, N, d = x.shape
-        x = self.linear(x.view(-1, d))  # Apply linear layer
-        x = self.norm(x)  # Apply normalization
-        x = self.activation(x)  # Apply activation
-        return x.view(B, N, -1)  # Reshape back to B x N x k
-    
-
-class FeatureCoordinateBlock(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(FeatureCoordinateBlock, self).__init__()
-        
-        # First linear layer to combine input features and coordinates
-        self.fc1 = nn.Linear(input_dim + 3, hidden_dim)  # Combining D (input feature) and 3 (coordinates)
-        self.batch_norm1 = nn.BatchNorm1d(hidden_dim)
-        self.relu = nn.ReLU()
-
-        # Second linear layer to further process the combined features
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
-        self.batch_norm2 = nn.BatchNorm1d(output_dim)
-
-    def forward(self, features, coordinates):
-        # Concatenate features and coordinates along the last dimension
-        combined_input = torch.cat([features, coordinates], dim=-1)  # Shape: (B, N, D+3)
-        
-        # Apply the first linear transformation
-        B, N, _ = combined_input.shape
-        combined_output = self.fc1(combined_input.view(B * N, -1))  # Shape: (B*N, hidden_dim)
-        combined_output = self.batch_norm1(combined_output)  # Batch normalization
-        combined_output = self.relu(combined_output)  # ReLU activation
-        
-        # Apply the second linear transformation
-        combined_output = self.fc2(combined_output)  # Shape: (B*N, output_dim)
-        combined_output = self.batch_norm2(combined_output)  # Batch normalization
-        combined_output = self.relu(combined_output)  # ReLU activation
-
-        # Reshape back to original shape
-        combined_output = combined_output.view(B, N, -1)
-        
-        return combined_output
 class SoftBB(L.LightningModule):
     def __init__(self):
         super().__init__()
@@ -84,11 +34,11 @@ class SoftBB(L.LightningModule):
     def get_d0(self, max_length) -> torch.Tensor:
         return 1.24*(torch.tensor(max_length, device=self.device) - 15)**(1/3) -1.8
     
-    def _compose_transformations(self, batch_size, rotations, translations) -> tuple[torch.Tensor, torch.Tensor]:
-        R_total = torch.eye(3, device=self.device).unsqueeze(0).repeat(batch_size, 1, 1)  # Initial rotation matrix (B x 3 x 3)
-        t_total = torch.zeros(batch_size, 3, device=self.device)  # Initial translation vector (B x 3)
+    def _compose_transformations(self, batch_size, rotations: list[torch.Tensor], translations: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
+        R_total = torch.eye(3, device=self.device).unsqueeze(0).repeat(batch_size, 1, 1) 
+        t_total = torch.zeros(batch_size, 3, device=self.device)
 
-        for i, (R, t) in enumerate(zip(rotations, translations)):
+        for R, t in zip(rotations, translations):
             R_total = R_total @ R
             t_total = torch.bmm(t_total.unsqueeze(1), R).squeeze(1) + t
 
@@ -101,6 +51,17 @@ class SoftBB(L.LightningModule):
         combined_mask = mask_dim1_expanded * mask_dim2_expanded
         return combined_mask
 
+    def _mask_and_normalize_matrix(self, distance_matrix: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor, src_embedding: torch.Tensor, tar_embedding) -> list[tuple]:
+        batch_size = distance_matrix.shape[0]
+        t = torch.tensor([guess_best_alpha_torch(src_embedding[i,:][src_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)], device=self.device)
+        R = torch.stack([softargmin_rows_torch(distance_matrix[i], t[i]) for i in range(batch_size)], dim=0)
+        t = torch.tensor([guess_best_alpha_torch(tar_embedding[i,:][tar_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)] , device=self.device)
+        C = torch.stack([softargmin_rows_torch(torch.transpose(distance_matrix, dim0=1, dim1=2)[i], t[i]) for i in range(batch_size)], dim=0)
+        C = torch.transpose(C, dim0=1, dim1=2)
+        B = torch.mul(R, C)
+      
+        return B
+    
     def on_train_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_embedding'].shape[0]
         self.log('train_loss', outputs['loss_dict']['loss'], batch_size=batch_size, prog_bar=True, on_step=True, on_epoch=True)
@@ -165,17 +126,6 @@ class SoftBB(L.LightningModule):
         
         return {'loss': loss['loss'], 'loss_dict': loss, 'pred_R': R_total, 'pred_t': t_total}
      
-    def _mask_and_normalize_matrix(self, distance_matrix: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor, src_embedding: torch.Tensor, tar_embedding) -> list[tuple]:
-        batch_size = distance_matrix.shape[0]
-        t = torch.tensor([guess_best_alpha_torch(src_embedding[i,:][src_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)], device=self.device)
-        R = torch.stack([softargmin_rows_torch(distance_matrix[i], t[i]) for i in range(batch_size)], dim=0)
-        t = torch.tensor([guess_best_alpha_torch(tar_embedding[i,:][tar_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)] , device=self.device)
-        C = torch.stack([softargmin_rows_torch(torch.transpose(distance_matrix, dim0=1, dim1=2)[i], t[i]) for i in range(batch_size)], dim=0)
-        C = torch.transpose(C, dim0=1, dim1=2)
-        B = torch.mul(R, C)
-      
-        return B
-    
     def validation_step(self, batch, batch_idx):
         batch = move_batch_to_device(batch, self.device)
         batch_size = batch['tar_embedding'].shape[0]
@@ -221,7 +171,6 @@ class SoftBB(L.LightningModule):
 
 if __name__ == "__main__":
     from datasets import ScannetDataset
-    from utils.misc import save_results_to_csv
     import logging
     start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_dir = os.path.join("logs", "learnable_softbbs")
@@ -239,7 +188,7 @@ if __name__ == "__main__":
         valid_dataset = ScannetDataset(data_path, base_data_path, 100, min_cath = 3)
         val_loader  = DataLoader(valid_dataset, batch_size=4, collate_fn=custom_collate_fn, num_workers=20)
         model = SoftBB()
-        logger = pl.loggers.TensorBoardLogger('tb_logs/')
+        logger = pl.loggers.TensorBoardLogger('logs/tb_logs/')
 
         trainer = L.Trainer(logger=logger, max_epochs=10, log_every_n_steps=10, accelerator= 'gpu' if torch.cuda.is_available() else 'cpu', profiler="simple")
         trainer.fit(model, train_loader, val_dataloaders=val_loader)
