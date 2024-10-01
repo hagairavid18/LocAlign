@@ -2,6 +2,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from objects.protein_pair import ProteinPair
+
 
 def rotation_loss_frobenius(R1, R2):
     # R1 and R2 are the rotation matrices with shape (B, 3, 3)
@@ -13,7 +15,16 @@ class RTLoss(nn.Module):
         super(RTLoss, self).__init__()
         self._translation_weight = translation_weight
     
-    def forward(self, rotation_ab_pred, translation_ab_pred, rotation_ab, translation_ab):
-        rotation_mse = rotation_loss_frobenius(rotation_ab_pred, rotation_ab)
-        translation_mse = F.mse_loss(translation_ab_pred, translation_ab[:, :3])
-        return {'loss': rotation_mse + self._translation_weight * translation_mse, 'rot_loss': rotation_mse, 'tran_loss': translation_mse}
+    def forward(self, batch, rotation_ab_pred, translation_ab_pred):
+        rotation_mse = rotation_loss_frobenius(rotation_ab_pred, batch['gt_R'])
+        translation_mse = F.mse_loss(translation_ab_pred, batch['gt_t'][:, :3])
+        return {'transformation': rotation_mse + self._translation_weight * translation_mse, 'rotation': rotation_mse, 'translation': translation_mse}
+
+class PocketLoss(nn.Module):
+    def __init__(self):
+        super(PocketLoss, self).__init__()
+    
+    def forward(self, batch, rotation_ab_pred, translation_ab_pred):
+        pocket_atoms = batch['src_pocket']
+        pocket_rmsd = ProteinPair.compute_rmsd_torch(pocket_atoms, batch['gt_R'], batch['gt_t'], rotation_ab_pred, translation_ab_pred, batch['src_pocket_mask'])
+        return {'pocket_rmsd': pocket_rmsd.mean()}

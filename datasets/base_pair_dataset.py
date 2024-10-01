@@ -20,8 +20,9 @@ class BasePairDataset(Dataset):
         pairs = pd.read_csv(self._df_path)
         if 'index' in pairs.columns:
             pairs = pairs.drop('index', axis=1)
-        pairs = pairs[pairs['cath_degree'] >= self._min_cath]
-        pairs = pairs.reset_index().sample(n=self._n_samples, random_state=42)
+        pairs = pairs[pairs['cath_degree'] >= self._min_cath].reset_index()
+        if self._n_samples:
+            pairs = pairs.reset_index().sample(n=self._n_samples, random_state=42, replace=True)
         for col in pairs.columns:
             if pairs[col].apply(lambda x: isinstance(x, str) and x.startswith('[') and x.endswith(']')).any():
                 pairs[col] = pairs[col].fillna('[]')

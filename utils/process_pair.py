@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import logging
 
@@ -40,7 +41,10 @@ def transformations_rmsd(mov_name: str, mov_chain: str, gt_trans: np.ndarray, al
     try:
         pocket_atoms = mov_protein.get_pocket_atoms(ligand_res_idx = ligand_res_idx)
         if save_pocket:
-            Protein.save_coordinates_to_pdb(pocket_atoms, f'{LIGAND_DIR}/{ligand}/{mov_name}_pocket.pdb')
+            path = f'{LIGAND_DIR}/{ligand}/{mov_name}_pocket.pdb'
+            if not os.path.exists(path):
+                Protein.save_coordinates_to_pdb(pocket_atoms, path)
+                logging.info('saved pocket model')
         pocket_rmsd = ProteinPair.compute_rmsd(pocket_atoms, gt_trans, aligner_trans)
 
         ligand_residue = mov_protein.get_ligand_residues()[ligand_res_idx] # TODO: handle ligand with more residues

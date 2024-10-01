@@ -1,14 +1,18 @@
 import logging
 import os
+import numpy as np
 import torch
 import torch.nn.functional as F
 from datasets import BasePairDataset
 import pickle
-from Bio.PDB.Structure import Structure
-from Bio.PDB.Chain import Chain
+
 from Bio.PDB import PDBParser
 from Bio.PDB.Atom import PDBConstructionWarning
+from Bio.PDB.Chain import Chain
+from Bio.PDB.Structure import Structure
 import warnings
+
+from utils.constants import LIGAND_DIR
 warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 logger = logging.getLogger(__name__)
@@ -16,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class ScannetDataset(BasePairDataset):
     MAX_SEQUENCE_LENGTH = 1000
-    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0) :
+    def __init__(self, df_path: str, base_data_path: str, n_samples: int | None = None, min_cath: int = 0) -> None:
         super().__init__(df_path, base_data_path, n_samples, min_cath)
         self._mmcif_parser = PDBParser()
 
@@ -28,6 +32,11 @@ class ScannetDataset(BasePairDataset):
         try:
             tar_embedding, tar_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
             src_embedding, src_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+        except Exception as e:
+            idx = torch.randint(0, len(self), (1,)).item()
+            return self.__getitem__(idx)
+        try:
+            src_pocket = self._read_pocket_coordinates(ligand_id=row['Ligand_ID'], p_name=row['mov_protein'])
         except Exception as e:
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
@@ -44,6 +53,8 @@ class ScannetDataset(BasePairDataset):
         ret['gt_t'] = torch.Tensor(row.to_dict()['translations'][0][0])
         ret['max_length'] = max(tar_length, src_length)
         ret['metadata'] = row.to_dict()
+        ret['src_pocket'] = F.pad(src_pocket, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_pocket.shape[0]))
+        ret['src_pocket_mask'] = F.pad(torch.ones(src_pocket.shape[0]), (0, self.MAX_SEQUENCE_LENGTH - src_pocket.shape[0]), value=0).bool()
         
         return ret
     
@@ -81,6 +92,19 @@ class ScannetDataset(BasePairDataset):
             # raise ValueError
         return embeddings, coordinates
     
+    def _read_pocket_coordinates(self, ligand_id: str, p_name: str) -> torch.Tensor:
+        structure: Structure = self._mmcif_parser.get_structure(p_name, f'{LIGAND_DIR}/{ligand_id}/{p_name}_pocket.pdb')
+        coordinates = []
+        for model in structure:
+            for chain in model:
+                for residue in chain:
+                    for atom in residue:
+                        coordinates.append(atom.coord)  
+        
+        coordinates_array = np.array(coordinates)
+        
+        coordinates_tensor = torch.from_numpy(coordinates_array).float()
+        return coordinates_tensor
   
    
 if __name__ == "__main__":
@@ -89,7 +113,7 @@ if __name__ == "__main__":
 
     data_path = '/home/iscb/wolfson/hagairavid/ligand_aligner/baseline_results/2024-07-11_10-55-38_57.csv'
     data_path = '/home/iscb/wolfson/hagairavid/ligand_aligner/baseline_results/2024-07-17_16-01-08_3000.csv'
-    base_data_path = os.path.join('/home/iscb/wolfson/hagairavid/ligand_aligner/ligands')
+    base_data_path = LIGAND_DIR
 
 
     # Create dataset and DataLoader

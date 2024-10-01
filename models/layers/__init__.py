@@ -1,1 +1,1 @@
-from .linear import LinearBlock, FeatureCoordinateBlock
+from .linear import LinearBlock, FeatureCoordinateBlock, FeatureBlock
