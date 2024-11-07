@@ -1,0 +1,51 @@
+trainer:
+  exp_name: "cath3-gradclip10-newdf"
+  validate_only: false
+  gradient_clipping: 10.0
+model:
+  name: LearnableSoftBB
+  args:
+    max_iter: 5
+    layers:
+      name:
+        FeatureBlock
+      args:
+        n_blocks: 3
+        input_dim: 128
+        hidden_dim: 128
+        output_dim: 128
+    loss:
+      pocket:
+        name: PocketLoss
+        args: {}
+      transformation:
+        name: RTLoss
+        args: {}
+    optimizer:
+      name: Adam
+      args:
+        learning_rate: 0.001
+dataset:
+  train:
+    name: ScannetDataset
+    args:
+      df_path: datasets/csv_files/07112024/train.csv
+      # n_samples: 20000
+      seed: 81
+      min_cath: 3
+  validation:
+    name: ScannetDataset
+    args:
+      df_path: datasets/csv_files/07112024/val.csv
+      seed: 81
+      min_cath: 1
+  test:
+    name: ScannetDataset
+    args:
+      df_path: datasets/csv_files/07112024/test.csv
+      seed: 81
+      min_cath: 1
+dataloader:
+  train_batch_size: 8
+  valid_batch_size: 1
+  test_batch_size: 1

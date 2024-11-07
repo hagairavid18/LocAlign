@@ -1,6 +1,12 @@
-import torch
 from torch import nn
 
+
+class IdentityLayer(nn.Module):
+    def __init__(self):
+        super(IdentityLayer, self).__init__()
+
+    def forward(self, x):
+        return x  # Simply return the input as output
 
 class LinearBlock(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -17,34 +23,8 @@ class LinearBlock(nn.Module):
         return x.view(B, N, -1) 
     
 
-class FeatureCoordinateBlock(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(FeatureCoordinateBlock, self).__init__()
-        
-        self.fc1 = nn.Linear(input_dim + 3, hidden_dim)
-        self.batch_norm1 = nn.BatchNorm1d(hidden_dim)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
-        self.batch_norm2 = nn.BatchNorm1d(output_dim)
-
-    def forward(self, features, coordinates):
-        combined_input = torch.cat([features, coordinates], dim=-1) 
-        B, N, _ = combined_input.shape
-        combined_output = self.fc1(combined_input.view(B * N, -1))
-        combined_output = self.batch_norm1(combined_output)
-        combined_output = self.relu(combined_output)
-        
-        combined_output = self.fc2(combined_output)
-        combined_output = self.batch_norm2(combined_output)
-        combined_output = self.relu(combined_output)
-
-        combined_output = combined_output.view(B, N, -1)
-        
-        return combined_output
-
-
 class FeatureBlock(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, num_layers=3):
+    def __init__(self, input_dim, hidden_dim, output_dim, n_blocks=3):
         """
         Initialize the FeatureBlock with configurable number of layers.
 
@@ -56,7 +36,7 @@ class FeatureBlock(nn.Module):
         """
         super(FeatureBlock, self).__init__()
         
-        self.num_layers = num_layers
+        self.num_layers = n_blocks
 
         # Create a list to hold layers
         self.layers = nn.ModuleList()
@@ -67,7 +47,7 @@ class FeatureBlock(nn.Module):
         self.layers.append(nn.ReLU())
 
         # Hidden layers
-        for _ in range(num_layers - 2):
+        for _ in range(n_blocks - 2):
             self.layers.append(nn.Linear(hidden_dim, hidden_dim))
             self.layers.append(nn.BatchNorm1d(hidden_dim))
             self.layers.append(nn.ReLU())
@@ -79,6 +59,7 @@ class FeatureBlock(nn.Module):
 
         # Apply He Initialization
         self._initialize_weights()
+        # self._initialize_weights_normal()
 
     def forward(self, features):
         """
@@ -107,4 +88,12 @@ class FeatureBlock(nn.Module):
         for layer in self.layers:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_normal_(layer.weight)
+    
+    def _initialize_weights_normal(self):
+        """
+        Initialize weights of the linear layers with He initialization.
+        """
+        for layer in self.layers:
+            if isinstance(layer, nn.Linear):
+                nn.init.normal_(layer.weight, mean=1.0, std=0.01)
 

@@ -6,12 +6,25 @@ from torch.utils.data import Dataset
 
 from utils.loading import deserialize_nested_lists
 
+import random
+import numpy as np
+
+# Set random seed for reproducibility
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 class BasePairDataset(Dataset):
-    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0):
+    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0, seed: int | None = None):
         self._df_path = df_path
         self._base_data_path = base_data_path
         self._n_samples = n_samples
         self._min_cath = min_cath
+        if seed:
+            set_seed(seed)
 
         self._df: pd.DataFrame = self._read_data_path()
 

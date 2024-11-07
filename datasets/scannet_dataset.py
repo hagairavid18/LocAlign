@@ -1,6 +1,5 @@
 import logging
 import os
-import numpy as np
 import torch
 import torch.nn.functional as F
 from datasets import BasePairDataset
@@ -12,6 +11,7 @@ from Bio.PDB.Chain import Chain
 from Bio.PDB.Structure import Structure
 import warnings
 
+from objects.protein import Protein
 from utils.constants import LIGAND_DIR
 warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 
 class ScannetDataset(BasePairDataset):
     MAX_SEQUENCE_LENGTH = 1000
-    def __init__(self, df_path: str, base_data_path: str, n_samples: int | None = None, min_cath: int = 0) -> None:
-        super().__init__(df_path, base_data_path, n_samples, min_cath)
+
+    def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, n_samples: int | None = None, min_cath: int = 0, seed: int| None = None) -> None:
+        super().__init__(df_path, base_data_path, n_samples, min_cath, seed)
         self._mmcif_parser = PDBParser()
 
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
@@ -58,7 +59,7 @@ class ScannetDataset(BasePairDataset):
         
         return ret
     
-    def _read_embedding(self, ligand_id: str, chain: str):
+    def _read_embedding(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, torch.Tensor]:
         embedding_path_tar = os.path.join(self._base_data_path, ligand_id,  chain + '_scannet.pkl')
         if not os.path.exists(embedding_path_tar):
             logger.info(f"Can't find embedding path for ligand: {ligand_id} protein: {chain}")
@@ -94,22 +95,14 @@ class ScannetDataset(BasePairDataset):
     
     def _read_pocket_coordinates(self, ligand_id: str, p_name: str) -> torch.Tensor:
         structure: Structure = self._mmcif_parser.get_structure(p_name, f'{LIGAND_DIR}/{ligand_id}/{p_name}_pocket.pdb')
-        coordinates = []
-        for model in structure:
-            for chain in model:
-                for residue in chain:
-                    for atom in residue:
-                        coordinates.append(atom.coord)  
-        
-        coordinates_array = np.array(coordinates)
-        
-        coordinates_tensor = torch.from_numpy(coordinates_array).float()
-        return coordinates_tensor
+        pocket_coord, _ = Protein.get_residue_data(structure[0]['A'])
+        pocket_coord = torch.tensor(pocket_coord)
+        return pocket_coord
   
    
 if __name__ == "__main__":
      # Example data
-    from torch.utils.data import Dataset, DataLoader
+    from torch.utils.data import DataLoader
 
     data_path = '/home/iscb/wolfson/hagairavid/ligand_aligner/baseline_results/2024-07-11_10-55-38_57.csv'
     data_path = '/home/iscb/wolfson/hagairavid/ligand_aligner/baseline_results/2024-07-17_16-01-08_3000.csv'

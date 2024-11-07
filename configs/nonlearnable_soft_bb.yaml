@@ -1,0 +1,38 @@
+trainer:
+  validate_only: true
+
+model:
+  name: LearnableSoftBB
+  args:
+    max_iter: 5
+    layers:
+      name:
+        IdentityLayer
+    loss:
+      pocket:
+        name: PocketLoss
+        args: {}
+      transformation:
+        name: RTLoss
+        args: {}
+    optimizer:
+      name: Adam
+      args:
+        learning_rate: 0.001
+dataset:
+  train:
+    name: ScannetDataset
+    args:
+      df_path: results/baseline_results/2024-07-18_10-26-26_10000_train.csv
+      n_samples: 20000
+      seed: 81
+      min_cath: 3
+  validation:
+    name: ScannetDataset
+    args:
+      df_path: results/baseline_results/2024-07-18_10-26-26_10000_validation.csv
+      seed: 81
+      min_cath: 1
+dataloader:
+  train_batch_size: 8
+  valid_batch_size: 1

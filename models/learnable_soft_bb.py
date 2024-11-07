@@ -3,20 +3,15 @@ from datetime import datetime
 import os
 from typing import Any
 import torch
-from torch.utils.data import DataLoader
 import lightning as L
-from pytorch_lightning.loggers import CometLogger
 import torch.optim as optim
 
-from models.soft_bb import SoftBB
-from utils.constants import LIGAND_DIR
-from utils.kabsch import weighted_kabsch_torch
 from models.utils.collate import custom_collate_fn, move_batch_to_device
+from utils.kabsch import weighted_kabsch_torch
 from utils.deepbbs_utils import *
 from utils.transformation import rotation_matrix_to_euler_angles
-from models.layers import FeatureBlock
 from metrics import PocketRMSD
-from utils.misc import build_object
+from utils.misc import build_object, flatten_dict
 
 from utils.plots import plot_transformed_point_clouds
 
@@ -24,20 +19,20 @@ torch.set_float32_matmul_precision('medium')
 
 
 class LearnableSoftBB(L.LightningModule):
-    def __init__(self, loss_config: dict[str, Any], lr: float = 1e-3, max_iter: int = 5, n_linear_blocks: int = 3):
+    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], layers, max_iter: int = 5):
         super().__init__()
         self._validation_outputs = {}
-        self._inout_tar_block = FeatureBlock(128 ,128, 128, n_linear_blocks)
-        self._inout_src_block = FeatureBlock(128 ,128, 128, n_linear_blocks)
-        self._pocket_loss = build_object(loss_config['pocket'], 'losses')
-        self._transformation_loss = build_object(loss_config['transformation'], 'losses')
+        self._inout_tar_block = build_object(layers, 'layers')
+        self._inout_src_block = build_object(layers, 'layers')
+        self._pocket_loss = build_object(loss['pocket'], 'losses')
+        self._transformation_loss = build_object(loss['transformation'], 'losses')
         self._alpha_loss = 0.5
         self._metrics = PocketRMSD()
         self.validation_step_outputs = []
         self.eps = 0.00001
         self._min_diff = 0.05
         self._max_iter = max_iter
-        self._lr = lr
+        self._lr = optimizer['args']['learning_rate']
     
     def get_d0(self, max_length) -> torch.Tensor:
         return 1.24*(torch.tensor(max_length, device=self.device) - 15)**(1/3) -1.8
@@ -82,10 +77,24 @@ class LearnableSoftBB(L.LightningModule):
     
     def on_validation_epoch_end(self):
         metrics = self._metrics.compute()
-        self.log('valid_pocket_rmsd', metrics['pocket_rmsd'], on_epoch=True)
-        self.log('valid_ligand_rmsd', metrics['ligand_rmsd'], on_epoch=True)
-        self.log('valid_pocket_rmsd_iter0', metrics['pocket_rmsd_iter0'], on_epoch=True)
-        self.log('valid_ligand_rmsd_iter0', metrics['ligand_rmsd_iter0'], on_epoch=True)
+        
+        metric_types = {
+            'pocket_rmsd': 'valid_pocket_rmsd',
+            'ligand_rmsd': 'valid_ligand_rmsd',
+            'pocket_rmsd_iter0': 'valid_pocket_rmsd_iter0',
+            'ligand_rmsd_iter0': 'valid_ligand_rmsd_iter0'
+        }
+        
+        # Log total metrics
+        for metric_key, log_name in metric_types.items():
+            total_value = sum(metrics[metric_key].values()) / len(metrics[metric_key])
+            self.log(log_name, total_value, on_epoch=True)
+        
+        # Log each metric type per `cath_degree`
+        for metric_key, log_name in metric_types.items():
+            for cath_degree, value in metrics[metric_key].items():
+                self.log(f'{log_name}_degree_{cath_degree}', value, on_epoch=True)
+        
         self._metrics.reset()
     
     def on_validation_batch_end(self, outputs, batch, batch_idx):
@@ -196,8 +205,12 @@ class LearnableSoftBB(L.LightningModule):
     
 
 if __name__ == "__main__":
-    from datasets import ScannetDataset
     import logging
+    import yaml
+    from torch.utils.data import DataLoader
+    from pytorch_lightning.loggers import CometLogger
+    from lightning.pytorch.callbacks import ModelCheckpoint
+
     start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_dir = os.path.join("logs", "learnable_softbbs")
     os.makedirs(log_dir, exist_ok=True)
@@ -205,45 +218,43 @@ if __name__ == "__main__":
 
     logger = logging.getLogger(__name__)
     
-    config = {
-        'learning_rate': 7.5e-4,
-        'train_batch_size': 8,
-        'valid_batch_size': 1,
-        'optimizer': 'Adam',
-        'min_cath': 3,
-        'max_iter': 5,
-        'n_blocks': 2,
-        'loss': {'pocket' : {'name': 'PocketLoss', 'args': {}}, 'transformation': {'name': 'RTLoss', 'args': {}}}
-    }
-    train_dataset = ScannetDataset('results/baseline_results/2024-07-18_10-26-26_10000_train.csv', LIGAND_DIR, n_samples=20000, min_cath = config['min_cath'])
-    train_loader  = DataLoader(train_dataset, batch_size=config['train_batch_size'], collate_fn=custom_collate_fn, num_workers=20)
-    valid_dataset = ScannetDataset('results/baseline_results/2024-07-18_10-26-26_10000_validation.csv', LIGAND_DIR, min_cath = config['min_cath'])
-    val_loader  = DataLoader(valid_dataset, batch_size=config['valid_batch_size'], collate_fn=custom_collate_fn, num_workers=20)
-        # model = SoftBB()
 
-        # comet_logger = CometLogger(
-        #     api_key="9ydBzigeK75Z6RhAiX63xGdsg",
-        #     workspace="hagairavid18", # Optional
-        #     project_name="pocket_aligner", # Optional
-        #     experiment_name="non-learnable-softbbs-test" # Optional
-        #     # rest_api_key=os.environ["COMET_REST_KEY"], # Optional
-        # )
+    with open('configs/learnable_soft_bb.yaml') as f:
+        config = yaml.safe_load(f)
 
+    train_dataset = build_object(config['dataset']['train'], 'datasets')
+    valid_dataset = build_object(config['dataset']['validation'], 'datasets')
+    train_loader  = DataLoader(train_dataset, batch_size=config['dataloader']['train_batch_size'], collate_fn=custom_collate_fn, num_workers=20)
+    val_loader  = DataLoader(valid_dataset, batch_size=config['dataloader']['valid_batch_size'], collate_fn=custom_collate_fn, num_workers=20)
 
-        # trainer = L.Trainer(logger=comet_logger, max_epochs=20, log_every_n_steps=25, accelerator= 'gpu' if torch.cuda.is_available() else 'cpu', profiler="simple")
-        # trainer.validate(model,  dataloaders=val_loader)
-    model = LearnableSoftBB(loss_config=config['loss'], lr=config['learning_rate'], max_iter=config['max_iter'], n_linear_blocks=config['n_blocks'])
+    model = build_object(config['model'], 'models')
 
     comet_logger = CometLogger(
         api_key="9ydBzigeK75Z6RhAiX63xGdsg",
-        workspace="hagairavid18", # Optional
-        project_name="pocket_aligner", # Optional
-        experiment_name="softbbs-combined-loss" # Optional
-        # rest_api_key=os.environ["COMET_REST_KEY"], # Optional
+        workspace="hagairavid18",
+        project_name="pocket_aligner",
+        experiment_name=config['trainer']['exp_name']
     )
 
-    trainer = L.Trainer(logger=comet_logger, max_epochs=50, log_every_n_steps=100, accelerator= 'gpu' if torch.cuda.is_available() else 'cpu', profiler="simple", check_val_every_n_epoch=1)
-    trainer.logger.log_hyperparams(config)
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=f"checkpoints/{config['trainer']['exp_name']}",
+        save_top_k=-1,
+        every_n_epochs=1, 
+    )
 
-    trainer.fit(model, train_loader, val_dataloaders=val_loader)
+    trainer = L.Trainer(logger=comet_logger, 
+                        max_epochs=100, 
+                        check_val_every_n_epoch=10, 
+                        callbacks=[checkpoint_callback], 
+                        gradient_clip_val= config['trainer']['gradient_clipping'], 
+                        log_every_n_steps=100, 
+                        accelerator= 'gpu' if torch.cuda.is_available() else 'cpu', profiler="simple")
+        
+    trainer.logger.log_hyperparams(flatten_dict(config))
+
+    if config['trainer']['validate_only']:
+        trainer.validate(model, val_loader)
+    else:
+        trainer.fit(model, train_loader, val_dataloaders=val_loader)
+
         

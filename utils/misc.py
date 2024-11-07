@@ -35,3 +35,14 @@ def save_results_to_csv(results: list[tuple] | pd.DataFrame, start_time: str, ba
             df[col] = df[col].apply(lambda x: json.dumps(serialize_nested_lists(x)))
             
     df.to_csv(f'{save_dir}/{start_time}_{len(results)}.csv', index=False)
+
+
+def flatten_dict(d, parent_key='', sep='_'):
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
