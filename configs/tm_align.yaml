@@ -1,0 +1,21 @@
+trainer:
+  exp_name: "TMalign-eval"
+  validate_only: true
+model:
+  name: TMaligner
+dataset:
+  validation:
+    name: ScannetDataset
+    args:
+      df_path: datasets/csv_files/no_grouping/val.csv
+      seed: 81
+      min_cath: 1
+  test:
+    name: ScannetDataset
+    args:
+      df_path: datasets/csv_files/no_grouping/test.csv
+      seed: 81
+      min_cath: 1
+dataloader:
+  valid_batch_size: 1
+  test_batch_size: 1

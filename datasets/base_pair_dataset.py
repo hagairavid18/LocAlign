@@ -18,10 +18,11 @@ def set_seed(seed: int):
 
 
 class BasePairDataset(Dataset):
-    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0, seed: int | None = None):
+    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0, only_one_transformation:bool = True, seed: int | None = None):
         self._df_path = df_path
         self._base_data_path = base_data_path
         self._n_samples = n_samples
+        self._only_one_transformation = only_one_transformation
         self._min_cath = min_cath
         if seed:
             set_seed(seed)
@@ -33,7 +34,10 @@ class BasePairDataset(Dataset):
         pairs = pd.read_csv(self._df_path)
         if 'index' in pairs.columns:
             pairs = pairs.drop('index', axis=1)
+        if self._only_one_transformation:
+            pairs = pairs[pairs['n_transformations'] == 1]
         pairs = pairs[pairs['cath_degree'] >= self._min_cath].reset_index()
+
         if self._n_samples:
             pairs = pairs.reset_index().sample(n=self._n_samples, random_state=42, replace=True)
         for col in pairs.columns:

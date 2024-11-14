@@ -13,19 +13,22 @@ from utils.transformation import rotation_matrix_to_euler_angles
 from metrics import PocketRMSD
 from utils.misc import build_object, flatten_dict
 
-from utils.plots import plot_transformed_point_clouds
+from utils.plots import plot_transformed_point_clouds, generate_and_log_scatter_plot
 
 torch.set_float32_matmul_precision('medium')
 
 
 class LearnableSoftBB(L.LightningModule):
-    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], layers, max_iter: int = 5):
+    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], layers, skip_connection: bool = True, max_iter: int = 5):
         super().__init__()
         self._validation_outputs = {}
         self._inout_tar_block = build_object(layers, 'layers')
         self._inout_src_block = build_object(layers, 'layers')
+        self._skip_connection = skip_connection
         self._pocket_loss = build_object(loss['pocket'], 'losses')
-        self._transformation_loss = build_object(loss['transformation'], 'losses')
+        self._transformation_loss = None
+        if 'transformation' in loss:
+            self._transformation_loss = build_object(loss['transformation'], 'losses')
         self._alpha_loss = 0.5
         self._metrics = PocketRMSD()
         self.validation_step_outputs = []
@@ -69,6 +72,8 @@ class LearnableSoftBB(L.LightningModule):
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'train_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_step=True, on_epoch=True)
         self.log(f'train_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_step=True, on_epoch=True)
+        current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
+        self.log('learning_rate', current_lr, on_step=True, on_epoch=True, logger=True)
         # transformations_to_plot = {"GT" : (batch['gt_R'], batch['gt_t'][:,:3]),
         #                             "TMalign": (torch.Tensor(batch['metadata'][0]['TMaligner_rotations']), torch.Tensor(batch['metadata'][0]['TMaligner_translations'])),
         #                             "iterative_SoftBBS" :(outputs['pred_R'].clone().detach(), outputs['pred_t'].clone().detach())}
@@ -95,6 +100,13 @@ class LearnableSoftBB(L.LightningModule):
             for cath_degree, value in metrics[metric_key].items():
                 self.log(f'{log_name}_degree_{cath_degree}', value, on_epoch=True)
         
+        # Log counts
+        self.log("total_count", metrics['total_count'], on_epoch=True)
+        for cath_degree, count in metrics['counts_per_degree'].items():
+            self.log(f'count_degree_{cath_degree}', count, on_epoch=True)
+
+        self.logger.experiment.log_image(image_data=generate_and_log_scatter_plot(metrics), name="Pocket RMSD")
+            
         self._metrics.reset()
     
     def on_validation_batch_end(self, outputs, batch, batch_idx):
@@ -102,16 +114,14 @@ class LearnableSoftBB(L.LightningModule):
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
-        # transformations_to_plot = {"GT" : (batch['gt_R'], batch['gt_t'][:,:3]),
-        #                             "TMalign": (torch.Tensor(batch['metadata'][0]['TMaligner_rotations']), torch.Tensor(batch['metadata'][0]['TMaligner_translations'])),
-        #                             "iterative_SoftBBS" :(outputs['pred_R'].clone().detach(), outputs['pred_t'].clone().detach())}
-        # if batch_idx % 50 == 0:
-        #     logger.experiment.add_image("Transformed Point Clouds", plot_transformed_point_clouds(batch, transformations_to_plot,  compose = False), self.global_step)
     
     def training_step(self, batch: dict[torch.Tensor], batch_idx: int):
         batch = move_batch_to_device(batch, self.device)
         batch_size = batch['tar_embedding'].shape[0]
         tar_embedding, src_embedding  = self._inout_tar_block(batch['tar_embedding']), self._inout_src_block(batch['src_embedding'])
+        if self._skip_connection:
+            tar_embedding = tar_embedding + batch['tar_embedding']
+            src_embedding = src_embedding + batch['src_embedding']
         combined_mask = self.create_2d_mask(batch)
 
         l2_embedding = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1))
@@ -141,17 +151,22 @@ class LearnableSoftBB(L.LightningModule):
         return outputs
     
     def _compute_loss(self, batch, R_total, t_total):
-        pocket_loss: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
-        transformation_loss: dict[str, torch.Tensor] = self._transformation_loss(batch, R_total, t_total)
-        combined_loss = self._alpha_loss * pocket_loss['pocket_rmsd'] + (1-self._alpha_loss) * transformation_loss['transformation']
-        loss_dict = pocket_loss | transformation_loss
-        loss_dict['loss'] = combined_loss
-        return combined_loss, loss_dict
+        loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
+        loss = loss_dict['pocket_rmsd']
+        if self._transformation_loss:
+            loss_dict.update(self._transformation_loss(batch, R_total, t_total))
+            loss = self._alpha_loss * loss_dict['pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
+            # loss_dict = loss_dict | transformation_loss
+        loss_dict['loss'] = loss
+        return loss, loss_dict
 
     def validation_step(self, batch, batch_idx):
         batch = move_batch_to_device(batch, self.device)
         batch_size = batch['tar_embedding'].shape[0]
         tar_embedding, src_embedding  = self._inout_tar_block(batch['tar_embedding']), self._inout_src_block(batch['src_embedding'])
+        if self._skip_connection:
+            tar_embedding = tar_embedding + batch['tar_embedding']
+            src_embedding = src_embedding + batch['src_embedding']
         combined_mask = self.create_2d_mask(batch)
 
         l2_embedding = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1))
@@ -187,7 +202,7 @@ class LearnableSoftBB(L.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self._lr)
         
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
         
         return {
             'optimizer': optimizer,
@@ -243,8 +258,8 @@ if __name__ == "__main__":
     )
 
     trainer = L.Trainer(logger=comet_logger, 
-                        max_epochs=100, 
-                        check_val_every_n_epoch=10, 
+                        max_epochs=20, 
+                        check_val_every_n_epoch=2, 
                         callbacks=[checkpoint_callback], 
                         gradient_clip_val= config['trainer']['gradient_clipping'], 
                         log_every_n_steps=100, 

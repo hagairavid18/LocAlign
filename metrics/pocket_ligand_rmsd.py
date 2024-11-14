@@ -23,6 +23,7 @@ class PocketRMSD(Module):
         self.ligand_rmsd_first_iter_per_degree = {deg: 0 for deg in range(1, 9)}
         self.count_per_degree = {deg: 0 for deg in range(1, 9)}
         self.total_count = 0
+        self.sample_metrics = {'cath_degree_per_sample': [], 'pocket_rmsd_per_sample': []}
 
     def update(self, batch, outputs):
         batch_size = batch['tar_embedding'].shape[0]
@@ -46,6 +47,8 @@ class PocketRMSD(Module):
             self.pocket_rmsd_per_degree[cath_degree] += pocket_rmsd
             self.ligand_rmsd_per_degree[cath_degree] += ligand_rmsd
             self.count_per_degree[cath_degree] += 1
+            self.sample_metrics['cath_degree_per_sample'].append(cath_degree)
+            self.sample_metrics['pocket_rmsd_per_sample'].append(pocket_rmsd)
             if 'pred_first_R' in outputs:
                 pred_T[:3, :3] = outputs['pred_first_R'][batch_id]
                 pred_T[:3, 3] = outputs['pred_first_t'][batch_id]
@@ -54,7 +57,7 @@ class PocketRMSD(Module):
                 self.pocket_rmsd_first_iter_per_degree[cath_degree] += pocket_rmsd_first
                 self.ligand_rmsd_first_iter_per_degree[cath_degree] += ligand_rmsd_first
 
-            
+                
         self.total_count += batch_size
 
     def compute(self):
@@ -73,6 +76,10 @@ class PocketRMSD(Module):
             'pocket_rmsd_iter0': {deg: (self.pocket_rmsd_first_iter_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(1, 9)},
             'ligand_rmsd_iter0': {deg: (self.ligand_rmsd_first_iter_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(1, 9)}
         }
+        counts = {
+            'counts_per_degree': self.count_per_degree,
+            'total_count': self.total_count
+        }
 
         # Return both total and per-degree metrics
-        return {**total_metrics, **per_degree_metrics}
+        return {**total_metrics, **per_degree_metrics, **counts, **self.sample_metrics}

@@ -1,4 +1,5 @@
 import io
+import tempfile
 import matplotlib.pyplot as plt
 import os
 import numpy as np
@@ -141,3 +142,38 @@ def plot_gamma(combined_mask, gamma, postfix=""):
     plt.savefig(path, dpi=500)
     plt.show()
 
+def generate_and_log_scatter_plot(metrics):
+    """
+    Generate a scatter plot of CATH degree vs Pocket RMSD and return as a PIL Image.
+
+    Args:
+        metrics (dict): The dictionary containing the metrics (e.g., 'cath_degree_per_sample' and 'pocket_rmsd_per_sample').
+        
+    Returns:
+        Image: A PIL Image object of the scatter plot.
+    """
+    cath_degrees = metrics['cath_degree_per_sample']
+    pocket_rmsds = metrics['pocket_rmsd_per_sample']
+
+    # Calculate mean and std for each CATH degree
+    unique_degrees = sorted(set(cath_degrees))
+    means, stds = [], []
+    for degree in unique_degrees:
+        rmsd_values = [rmsd for d, rmsd in zip(cath_degrees, pocket_rmsds) if d == degree]
+        means.append(np.mean(rmsd_values))
+        stds.append(np.std(rmsd_values))
+
+    plt.figure(figsize=(10, 6))
+    plt.scatter(cath_degrees, pocket_rmsds, c=cath_degrees, cmap='viridis', alpha=0.5, label="Data Points")
+    plt.errorbar(unique_degrees, means, yerr=stds, fmt='o', color='red', label="Mean ± STD", capsize=5)
+
+    # Add titles and labels
+    plt.title('Pocket RMSD')
+    plt.xlabel('CATH Degree')
+    plt.ylabel('Pocket RMSD')
+    plt.legend()
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+        plt.savefig(temp_file.name, format='png', bbox_inches='tight')
+        plt.close()
+    return temp_file.name

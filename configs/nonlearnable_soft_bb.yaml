@@ -1,10 +1,12 @@
 trainer:
+  exp_name: "non-learn2"
   validate_only: true
-
+  gradient_clipping: 10.0
 model:
   name: LearnableSoftBB
   args:
     max_iter: 5
+    skip_connection: False
     layers:
       name:
         IdentityLayer
@@ -23,16 +25,24 @@ dataset:
   train:
     name: ScannetDataset
     args:
-      df_path: results/baseline_results/2024-07-18_10-26-26_10000_train.csv
-      n_samples: 20000
+      df_path: datasets/csv_files/no_grouping/train.csv
+      # n_samples: 100
       seed: 81
       min_cath: 3
   validation:
     name: ScannetDataset
     args:
-      df_path: results/baseline_results/2024-07-18_10-26-26_10000_validation.csv
+      df_path: datasets/csv_files/no_grouping/val.csv
+      seed: 81
+      # n_samples: 100
+      min_cath: 1
+  test:
+    name: ScannetDataset
+    args:
+      df_path: datasets/csv_files/no_grouping/test.csv
       seed: 81
       min_cath: 1
 dataloader:
   train_batch_size: 8
   valid_batch_size: 1
+  test_batch_size: 1

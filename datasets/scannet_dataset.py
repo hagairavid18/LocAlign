@@ -24,12 +24,13 @@ class ScannetDataset(BasePairDataset):
     def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, n_samples: int | None = None, min_cath: int = 0, seed: int| None = None) -> None:
         super().__init__(df_path, base_data_path, n_samples, min_cath, seed)
         self._mmcif_parser = PDBParser()
+        original_num_pairs = len(self._df)        
+        self._df = self._df[self._df['has_scannet_embedding'] == True]        
+        num_lost_pairs = original_num_pairs - len(self._df)
+        print(f"Number of pairs lost due to missing embeddings: {num_lost_pairs}")
 
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
         row = self._df.iloc[idx]
-        if row['n_transformations'] != 1: # TODO
-            idx = torch.randint(0, len(self), (1,)).item()
-            return self.__getitem__(idx)
         try:
             tar_embedding, tar_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
             src_embedding, src_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
