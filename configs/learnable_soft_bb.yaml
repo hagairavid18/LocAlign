@@ -1,24 +1,30 @@
 trainer:
-  exp_name: "skip-cath1-nonlinearrmsd"
+  exp_name: "delete-test-all-changes-val-batch1"
+  max_epochs: 30
   validate_only: false
-  gradient_clipping: 10.0
+  check_val_every_n_epoch: 1
+  gradient_clipping: 30.0
+  profiler: false
+  # ckpt_path: "checkpoints/cath1-modelgpt-dropout005-withnormrelu/epoch=19-step=13040.ckpt"
+  ckpt_path: null
 model:
   name: LearnableSoftBB
   args:
     max_iter: 5
-    skip_connection: True
     layers:
       name:
-        FeatureBlock
+        FeatureBlockGPT
       args:
+        skip_connection: True
         n_blocks: 3
         input_dim: 128
         hidden_dim: 128
         output_dim: 128
+        dropout: 0.05
     loss:
       pocket:
         name: PocketLoss
-        args: {"return_non_linear": False}
+        args: {"return_non_linear": True}
       # transformation:
       #   name: RTLoss
       #   args: {}
@@ -33,7 +39,7 @@ dataset:
       df_path: datasets/csv_files/no_grouping/train.csv
       # n_samples: 100
       seed: 81
-      min_cath: 3
+      min_cath: 1
   validation:
     name: ScannetDataset
     args:
@@ -51,3 +57,4 @@ dataloader:
   train_batch_size: 8
   valid_batch_size: 1
   test_batch_size: 1
+  n_workers: 30

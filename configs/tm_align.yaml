@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "TMalign-eval"
+  exp_name: "TMalign-eval-local"
   validate_only: true
 model:
   name: TMaligner
@@ -8,6 +8,7 @@ dataset:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/no_grouping/val.csv
+      infer_baseline: True
       seed: 81
       min_cath: 1
   test:

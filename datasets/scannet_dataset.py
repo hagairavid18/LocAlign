@@ -21,16 +21,22 @@ logger = logging.getLogger(__name__)
 class ScannetDataset(BasePairDataset):
     MAX_SEQUENCE_LENGTH = 1000
 
-    def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, n_samples: int | None = None, min_cath: int = 0, seed: int| None = None) -> None:
+    def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, infer_baseline: bool = False, n_samples: int | None = None, min_cath: int = 0, seed: int| None = None) -> None:
         super().__init__(df_path, base_data_path, n_samples, min_cath, seed)
         self._mmcif_parser = PDBParser()
         original_num_pairs = len(self._df)        
-        self._df = self._df[self._df['has_scannet_embedding'] == True]        
+        self._infer_baseline = infer_baseline      
+        self._df = self._df[self._df['has_scannet_embedding'] == True]  
         num_lost_pairs = original_num_pairs - len(self._df)
         print(f"Number of pairs lost due to missing embeddings: {num_lost_pairs}")
 
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
         row = self._df.iloc[idx]
+        if self._infer_baseline:
+            ret = {'metadata': row.to_dict()}
+            ret['gt_R'] = torch.Tensor(row.to_dict()['rotations'][0][0])
+            ret['gt_t'] = torch.Tensor(row.to_dict()['translations'][0][0])
+            return ret
         try:
             tar_embedding, tar_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
             src_embedding, src_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])

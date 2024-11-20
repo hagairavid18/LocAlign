@@ -22,9 +22,8 @@ class LearnableSoftBB(L.LightningModule):
     def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], layers, skip_connection: bool = True, max_iter: int = 5):
         super().__init__()
         self._validation_outputs = {}
-        self._inout_tar_block = build_object(layers, 'layers')
-        self._inout_src_block = build_object(layers, 'layers')
-        self._skip_connection = skip_connection
+        self._input_tar_block = build_object(layers, 'layers')
+        self._input_src_block = build_object(layers, 'layers')
         self._pocket_loss = build_object(loss['pocket'], 'losses')
         self._transformation_loss = None
         if 'transformation' in loss:
@@ -118,10 +117,7 @@ class LearnableSoftBB(L.LightningModule):
     def training_step(self, batch: dict[torch.Tensor], batch_idx: int):
         batch = move_batch_to_device(batch, self.device)
         batch_size = batch['tar_embedding'].shape[0]
-        tar_embedding, src_embedding  = self._inout_tar_block(batch['tar_embedding']), self._inout_src_block(batch['src_embedding'])
-        if self._skip_connection:
-            tar_embedding = tar_embedding + batch['tar_embedding']
-            src_embedding = src_embedding + batch['src_embedding']
+        tar_embedding, src_embedding  = self._input_tar_block(batch['tar_embedding']), self._input_src_block(batch['src_embedding'])
         combined_mask = self.create_2d_mask(batch)
 
         l2_embedding = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1))
@@ -163,10 +159,7 @@ class LearnableSoftBB(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         batch = move_batch_to_device(batch, self.device)
         batch_size = batch['tar_embedding'].shape[0]
-        tar_embedding, src_embedding  = self._inout_tar_block(batch['tar_embedding']), self._inout_src_block(batch['src_embedding'])
-        if self._skip_connection:
-            tar_embedding = tar_embedding + batch['tar_embedding']
-            src_embedding = src_embedding + batch['src_embedding']
+        tar_embedding, src_embedding  = self._input_tar_block(batch['tar_embedding']), self._input_src_block(batch['src_embedding'])
         combined_mask = self.create_2d_mask(batch)
 
         l2_embedding = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1))
@@ -202,7 +195,7 @@ class LearnableSoftBB(L.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self._lr)
         
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)
         
         return {
             'optimizer': optimizer,
@@ -225,6 +218,8 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
     from pytorch_lightning.loggers import CometLogger
     from lightning.pytorch.callbacks import ModelCheckpoint
+    # from pytorch_lightning.profilers import AdvancedProfiler, SimpleProfiler
+
 
     start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_dir = os.path.join("logs", "learnable_softbbs")
@@ -239,8 +234,8 @@ if __name__ == "__main__":
 
     train_dataset = build_object(config['dataset']['train'], 'datasets')
     valid_dataset = build_object(config['dataset']['validation'], 'datasets')
-    train_loader  = DataLoader(train_dataset, batch_size=config['dataloader']['train_batch_size'], collate_fn=custom_collate_fn, num_workers=20)
-    val_loader  = DataLoader(valid_dataset, batch_size=config['dataloader']['valid_batch_size'], collate_fn=custom_collate_fn, num_workers=20)
+    train_loader  = DataLoader(train_dataset, batch_size=config['dataloader']['train_batch_size'], collate_fn=custom_collate_fn, num_workers=config['dataloader']['n_workers'])
+    val_loader  = DataLoader(valid_dataset, batch_size=config['dataloader']['valid_batch_size'], collate_fn=custom_collate_fn, num_workers=config['dataloader']['n_workers'])
 
     model = build_object(config['model'], 'models')
 
@@ -257,19 +252,21 @@ if __name__ == "__main__":
         every_n_epochs=1, 
     )
 
-    trainer = L.Trainer(logger=comet_logger, 
-                        max_epochs=20, 
-                        check_val_every_n_epoch=2, 
+    trainer = L.Trainer(logger=comet_logger,
+                        # profiler = AdvancedProfiler(filename="profile_results_cloud_noprotein.txt", dirpath='.') if config['trainer']['profiler'] == True else None,
+                        max_epochs=config['trainer']['max_epochs'], 
+                        check_val_every_n_epoch=config['trainer']['check_val_every_n_epoch'],
+                        # precision=16,
                         callbacks=[checkpoint_callback], 
                         gradient_clip_val= config['trainer']['gradient_clipping'], 
                         log_every_n_steps=100, 
-                        accelerator= 'gpu' if torch.cuda.is_available() else 'cpu', profiler="simple")
+                        accelerator= 'gpu' if torch.cuda.is_available() else 'cpu')
         
     trainer.logger.log_hyperparams(flatten_dict(config))
 
     if config['trainer']['validate_only']:
         trainer.validate(model, val_loader)
     else:
-        trainer.fit(model, train_loader, val_dataloaders=val_loader)
+        trainer.fit(model, train_loader, val_dataloaders=val_loader, ckpt_path=config['trainer']['ckpt_path'])
 
         

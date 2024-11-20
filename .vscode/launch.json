@@ -36,6 +36,65 @@
                 "rmsd_config.json",
                 "--debug",
             ]
+        },
+        {
+            "name": "softBBS",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "models/learnable_soft_bb.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+             
+            ]
+        },
+        {
+            "name": "infer tmalign",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "models/tmaligner.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+             
+            ]
+        },
+        {
+            "name": "Inference Script",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "inference.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--config", 
+                "config.yaml",
+                "--checkpoint", 
+                "path/to/your/model.ckpt",
+                "--output_dir", 
+                "results",
+                "--experiment_name",
+                "inference_run"
+            ]
+        },
+        {
+            "name": "Split CSV by Ligand",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "datasets/utils/split_dataset.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--input_csv", 
+                "results/alignment_results/2024-07-17_19-21-30_10000.csv",
+                "--output_dir", 
+                "datasets/csv_files/no_grouping",       // Directory to save the train, val, and test CSVs
+                "--test_size", 
+                "0.0",               // Optional: Adjust the test set size (default 0.2)
+                "--val_size", 
+                "0.15",
+                // "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
+            ]
         }
     ]
 }

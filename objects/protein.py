@@ -1,5 +1,6 @@
 import os
 import logging
+import pickle
 import warnings
 from scipy.spatial.distance import cdist
 
@@ -32,18 +33,33 @@ class Protein:
         self._ligand_name = ligand_name
         self._structure: Structure = self._init_structure()
         self._ligand_model, self._num_of_ligand_atoms = self._get_ligand_model(save_models)
-        self.__non_ligand_model, self._num_of_non_ligand_atoms = self._get_non_ligand_model()
+        self.__non_ligand_model, self._num_of_non_ligand_atoms = self._get_non_ligand_model(save_models)
     
     def _init_structure(self) -> Structure:
+        cache_dir = f"{LIGAND_DIR}/{self._ligand_name}/cache"
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_file = os.path.join(cache_dir, f"{self._pdb_name}.pkl")
 
+        # Check if cached structure exists
+        if os.path.exists(cache_file):
+            with open(cache_file, 'rb') as f:
+                return pickle.load(f)
+
+        # Parse the structure if not cached
         pdb_list = PDBList(verbose=False)
-        pdb_file_path = pdb_list.retrieve_pdb_file(self._pdb_name, pdir=f'{LIGAND_DIR}/{self._ligand_name}', file_format='mmCif')
+        pdb_file_path = pdb_list.retrieve_pdb_file(self._pdb_name, pdir=f"{LIGAND_DIR}/{self._ligand_name}", file_format='mmCif')
         mmcif_parser = MMCIFParser()
+
         try:
             structure: Structure = mmcif_parser.get_structure(self._pdb_name, pdb_file_path)
         except FileNotFoundError:
-            logger.info(f"Could not find the structre of {self._pdb_name}. Please remove this query")
+            logger.info(f"Could not find the structure of {self._pdb_name}. Please remove this query.")
             structure = Structure(self._pdb_name)
+
+        # Save the parsed structure to the cache
+        with open(cache_file, 'wb') as f:
+            pickle.dump(structure, f)
+
         return structure
   
     def _get_ligand_model(self, save: bool = True) -> int:
@@ -56,14 +72,33 @@ class Protein:
             io.save(os.path.join(save_dir, f"{self._pdb_name}_ligand.pdb"))
         return ligand_model, num_of_ligand_atoms
     
-    def _get_non_ligand_model(self, save: bool = True) -> int:
+    def _get_non_ligand_model(self, save: bool = True) -> tuple[Model, int]:
+        # Define cache directory and file
+        cache_dir = f"{LIGAND_DIR}/{self._ligand_name}/cache"
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_file = os.path.join(cache_dir, f"{self._pdb_name}_non_ligand_model.pkl")
+
+        # Check if cached model exists
+        if os.path.exists(cache_file):
+            with open(cache_file, 'rb') as f:
+                return pickle.load(f)
+
+        # Compute the non-ligand model
         peptide_model = self.get_model(self._model_idx)
         non_ligand_model, num_of_ligand_atoms = Protein.create_non_ligand_model(peptide_model, self._ligand_name, self._chain_id)
+
+        # Save to cache
+        with open(cache_file, 'wb') as f:
+            pickle.dump((non_ligand_model, sum(num_of_ligand_atoms)), f)
+
+        # Optionally save as .ent file
         if save:
-            save_dir = f'{LIGAND_DIR}/{self._ligand_name}'
+            save_dir = f"{LIGAND_DIR}/{self._ligand_name}"
+            os.makedirs(save_dir, exist_ok=True)
             io = PDBIO()
             io.set_structure(non_ligand_model)
             io.save(os.path.join(save_dir, f"{self._pdb_name}_non_ligand.ent"))
+
         return non_ligand_model, sum(num_of_ligand_atoms)
     
     def get_model(self, model_idx: int, only_chain: bool = False) -> Model | Chain:
@@ -82,6 +117,7 @@ class Protein:
         return list(list(self._ligand_model.get_chains())[0])
     
     def get_pocket_atoms(self, residues_thresh: float = 5.0, atoms_thresh: float =  8.0, ligand_res_idx: int = 0) -> np.ndarray:
+    
         ligand_residue = self.get_ligand_residues()[ligand_res_idx] # TODO: handle ligand with more residues
         ligand_coors = [atom.coord for atom in ligand_residue.get_atoms() if atom.element != "H"]
         pocket_residues = []
@@ -107,7 +143,15 @@ class Protein:
             if res_coors.any():
                 distances = cdist(pocket_atoms_coors, res_coors, metric='euclidean')
                 close_atoms = np.vstack((close_atoms, res_coors[np.unique(np.where(distances < atoms_thresh)[1])]))
-        return np.vstack((close_atoms, pocket_atoms_coors))
+
+        result = np.vstack((close_atoms, pocket_atoms_coors))
+        cache_dir = f"{LIGAND_DIR}/{self._ligand_name}/cache"
+        pocket_atoms_file = os.path.join(cache_dir, f"{self._pdb_name}_pocket_atoms.pkl")
+        # Save results to cache
+        with open(pocket_atoms_file, 'wb') as f:
+            pickle.dump(result, f)
+
+        return result
     
     @staticmethod
     def create_ligand_model(model: Model, ligand_name: str, chain_idx: int) -> tuple[Model, list[int]]:
