@@ -36,13 +36,6 @@ class PocketRMSD(Module):
             cath_degree = metadata['cath_degree']
             ligand_res_idx = 0
 
-            # Load or compute pocket atoms
-            pocket_atoms = self._load_or_compute_pocket_atoms(
-                mov_protein=metadata['mov_protein'],
-                mov_chain=metadata['mov_chain'],
-                ligand_id=metadata['Ligand_ID'],
-                ligand_res_idx=ligand_res_idx
-            )
 
             # Load or compute ligand residues
             ligand_residue = self._load_or_compute_ligand_residues(
@@ -63,7 +56,7 @@ class PocketRMSD(Module):
             pred_T[:3, 3] = outputs['pred_t'][batch_id]
 
             # Compute RMSDs
-            pocket_rmsd = ProteinPair.compute_rmsd(pocket_atoms, gt_T.cpu().numpy(), pred_T.cpu().numpy())
+            pocket_rmsd = ProteinPair.compute_rmsd_torch(batch['src_pocket'], batch['gt_R'], batch['gt_t'], outputs['pred_R'], outputs['pred_t'], batch['src_pocket_mask'])[batch_id]
             ligand_rmsd = ProteinPair.compute_rmsd(np.vstack(ligand_atoms_coors), gt_T.cpu().numpy(), pred_T.cpu().numpy())
 
             # Update metrics
@@ -71,13 +64,13 @@ class PocketRMSD(Module):
             self.ligand_rmsd_per_degree[cath_degree] += ligand_rmsd
             self.count_per_degree[cath_degree] += 1
             self.sample_metrics['cath_degree_per_sample'].append(cath_degree)
-            self.sample_metrics['pocket_rmsd_per_sample'].append(pocket_rmsd)
+            self.sample_metrics['pocket_rmsd_per_sample'].append(pocket_rmsd.cpu())
 
             # First iteration metrics
             if 'pred_first_R' in outputs:
                 pred_T[:3, :3] = outputs['pred_first_R'][batch_id]
                 pred_T[:3, 3] = outputs['pred_first_t'][batch_id]
-                pocket_rmsd_first = ProteinPair.compute_rmsd(pocket_atoms, gt_T.cpu().numpy(), pred_T.cpu().numpy())
+                pocket_rmsd_first = ProteinPair.compute_rmsd_torch(batch['src_pocket'], batch['gt_R'], batch['gt_t'], outputs['pred_first_R'], outputs['pred_first_t'], batch['src_pocket_mask'])[batch_id]
                 ligand_rmsd_first = ProteinPair.compute_rmsd(np.vstack(ligand_atoms_coors), gt_T.cpu().numpy(), pred_T.cpu().numpy())
                 self.pocket_rmsd_first_iter_per_degree[cath_degree] += pocket_rmsd_first
                 self.ligand_rmsd_first_iter_per_degree[cath_degree] += ligand_rmsd_first
@@ -113,9 +106,6 @@ class PocketRMSD(Module):
                 pickle.dump(ligand_residues, f)
         return ligand_residues[ligand_res_idx]
 
-
-                    
-            
 
     def compute(self):
         # Calculate overall averages by summing all per-degree values and dividing by total count

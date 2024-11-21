@@ -1,22 +1,26 @@
 trainer:
-  exp_name: "non-learn2"
+  exp_name: "delete-non-learnable-softbbs-test-rmsd"
   validate_only: true
-  gradient_clipping: 10.0
+  max_epochs: 1
+  check_val_every_n_epoch: 3
+  gradient_clipping: 30.0
+  profiler: false
+  # ckpt_path: "checkpoints/cath1-modelgpt-dropout005-withnormrelu/epoch=19-step=13040.ckpt"
+  ckpt_path: null
 model:
   name: LearnableSoftBB
   args:
     max_iter: 5
-    skip_connection: False
     layers:
       name:
         IdentityLayer
     loss:
       pocket:
         name: PocketLoss
-        args: {}
-      transformation:
-        name: RTLoss
-        args: {}
+        args: {"return_non_linear": True}
+      # transformation:
+      #   name: RTLoss
+      #   args: {}
     optimizer:
       name: Adam
       args:
@@ -28,7 +32,7 @@ dataset:
       df_path: datasets/csv_files/no_grouping/train.csv
       # n_samples: 100
       seed: 81
-      min_cath: 3
+      min_cath: 1
   validation:
     name: ScannetDataset
     args:
@@ -46,3 +50,4 @@ dataloader:
   train_batch_size: 8
   valid_batch_size: 1
   test_batch_size: 1
+  n_workers: 10

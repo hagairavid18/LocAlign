@@ -195,7 +195,7 @@ class LearnableSoftBB(L.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self._lr)
         
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
         
         return {
             'optimizer': optimizer,

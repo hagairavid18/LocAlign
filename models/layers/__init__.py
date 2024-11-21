@@ -1,1 +1,1 @@
-from .linear import LinearBlock, FeatureBlock, IdentityLayer, FeatureBlockGPT, FeatureBlockOrig
+from .linear import LinearBlock, IdentityLayer, FeatureBlockGPT
