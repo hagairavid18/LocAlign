@@ -11,7 +11,7 @@ from Bio.PDB.Chain import Chain
 from Bio.PDB.Structure import Structure
 import warnings
 
-from objects.protein import Protein
+# from objects.protein import Protein
 from utils.constants import LIGAND_DIR
 warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
@@ -37,24 +37,38 @@ class ScannetDataset(BasePairDataset):
             ret['gt_R'] = torch.Tensor(row.to_dict()['rotations'][0][0])
             ret['gt_t'] = torch.Tensor(row.to_dict()['translations'][0][0])
             return ret
+
         try:
-            tar_embedding, tar_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
-            src_embedding, src_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+            tar_embedding, tar_coordinates, tar_res_indices = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
+            src_embedding, src_coordinates, src_res_indices = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
         except Exception as e:
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
+
         try:
-            src_pocket = self._read_pocket_coordinates(ligand_id=row['Ligand_ID'], p_name=row['mov_protein'])
+            src_pocket, src_pocket_residue_indices = self._read_pocket_coordinates(
+                ligand_id=row['Ligand_ID'], 
+                p_name=row['mov_protein']
+            )
+            tar_pocket, tar_pocket_residue_indices = self._read_pocket_coordinates(
+                ligand_id=row['Ligand_ID'], 
+                p_name=row['ref_protein']
+            )
+
+            filtered_src_pocket_residue_indices = torch.nonzero(torch.isin(torch.tensor(src_res_indices), src_pocket_residue_indices )).squeeze()
+            filtered_tar_pocket_residue_indices = torch.nonzero(torch.isin(torch.tensor(tar_res_indices), tar_pocket_residue_indices )).squeeze()
+
+
         except Exception as e:
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
 
         tar_length, src_length = tar_embedding.shape[0], src_coordinates.shape[0]
         ret = {}
-        ret['tar_embedding'] = F.pad(tar_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length) )
-        ret['tar_coordinates'] = F.pad(tar_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length) )
+        ret['tar_embedding'] = F.pad(tar_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length))
+        ret['tar_coordinates'] = F.pad(tar_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length))
         ret['tar_mask'] = F.pad(torch.ones(tar_length), (0, self.MAX_SEQUENCE_LENGTH - tar_length), value=0).bool()
-        ret['src_embedding'] = F.pad(src_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length) )
+        ret['src_embedding'] = F.pad(src_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length))
         ret['src_coordinates'] = F.pad(src_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length))
         ret['src_mask'] = F.pad(torch.ones(src_length), (0, self.MAX_SEQUENCE_LENGTH - src_length), value=0).bool()
         ret['gt_R'] = torch.Tensor(row.to_dict()['rotations'][0][0])
@@ -62,8 +76,11 @@ class ScannetDataset(BasePairDataset):
         ret['max_length'] = max(tar_length, src_length)
         ret['metadata'] = row.to_dict()
         ret['src_pocket'] = F.pad(src_pocket, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_pocket.shape[0]))
-        ret['src_pocket_mask'] = F.pad(torch.ones(src_pocket.shape[0]), (0, self.MAX_SEQUENCE_LENGTH - src_pocket.shape[0]), value=0).bool()
-        
+        ret['src_pocket_mask'] = F.pad(torch.ones(filtered_src_pocket_residue_indices.shape[0]), (0, self.MAX_SEQUENCE_LENGTH - filtered_src_pocket_residue_indices.shape[0]), value=0).bool()
+        ret['tar_pocket_mask'] = F.pad(torch.ones(filtered_tar_pocket_residue_indices.shape[0]), (0, self.MAX_SEQUENCE_LENGTH - filtered_tar_pocket_residue_indices.shape[0]), value=0).bool()
+        ret['src_residue_indices'] = F.pad(filtered_src_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_src_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
+        ret['tar_residue_indices'] = F.pad(filtered_tar_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_tar_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
+
         return ret
     
     def _read_embedding(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, torch.Tensor]:
@@ -90,21 +107,58 @@ class ScannetDataset(BasePairDataset):
                     coordinates.append(torch.Tensor(atom.get_coord()))
 
         coordinates = torch.stack(coordinates)
-        if not embedding_ids == residues_ids:
+        residue_indices = [tup[2] for tup in embedding_ids]
+        if not [tup[2] for tup in embedding_ids] == [tup[2] for tup in residues_ids]:
             intersection = set(embedding_ids) & set(residues_ids)
+            residue_indices = [tup[2] for tup in intersection]
 
             embeddings = embeddings[[i for i, x in enumerate(embedding_ids) if x in intersection]]
             coordinates = coordinates[[i for i, x in enumerate(residues_ids) if x in intersection]]
             assert len(embeddings) == len(coordinates)
             # print("found diffs between embedding and resildues ids")
             # raise ValueError
-        return embeddings, coordinates
+        assert all(value > 0 for value in residue_indices), "all indices should be non negative"
+
+        return embeddings, coordinates, residue_indices
     
-    def _read_pocket_coordinates(self, ligand_id: str, p_name: str) -> torch.Tensor:
-        structure: Structure = self._mmcif_parser.get_structure(p_name, f'{LIGAND_DIR}/{ligand_id}/{p_name}_pocket.pdb')
-        pocket_coord, _ = Protein.get_residue_data(structure[0]['A'])
-        pocket_coord = torch.tensor(pocket_coord)
-        return pocket_coord
+
+    def _read_pocket_coordinates(self, ligand_id: str, p_name: str) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Reads pocket CA coordinates and their residue indices from a single saved pickle file.
+
+        Args:
+            ligand_id (str): Identifier for the ligand.
+            p_name (str): Protein name.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: A tuple containing:
+                - pocket_coords: Tensor of pocket CA coordinates.
+                - residue_indices: Tensor of corresponding residue indices.
+        """
+        # Define path to the pickle file
+        pickle_path = f'{LIGAND_DIR}/{ligand_id}/{p_name}_pocket_data.pkl'
+
+        try:
+            # Load the data from the pickle file
+            with open(pickle_path, 'rb') as f:
+                data = pickle.load(f)
+
+            # Ensure the loaded data contains the expected keys
+            if not isinstance(data, dict) or 'pocket_ca_coords' not in data or 'residue_indices' not in data:
+                raise ValueError("Invalid pickle format. Expected a dictionary with 'pocket_coords' and 'residue_indices' keys.")
+
+            # Extract coordinates and residue indices
+            pocket_coords = torch.tensor(data['pocket_ca_coords'], dtype=torch.float32)
+            residue_indices = torch.tensor(data['residue_indices'], dtype=torch.int64)
+
+            if pocket_coords.numel() == 0:
+                raise ValueError(f"src_pocket is empty for {p_name}. Ensure the dataset entry is valid.")
+
+            return pocket_coords, residue_indices
+
+        except Exception as e:
+            logging.error(f"Error loading pocket data from {pickle_path}: {e}")
+            raise
   
    
 if __name__ == "__main__":

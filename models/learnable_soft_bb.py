@@ -11,19 +11,24 @@ from utils.kabsch import weighted_kabsch_torch
 from utils.deepbbs_utils import *
 from utils.transformation import rotation_matrix_to_euler_angles
 from metrics import PocketRMSD
-from utils.misc import build_object, flatten_dict
+from models.utils.misc import build_object, flatten_dict
+from models.utils.bbs import compute_mean_scalar_pocket_values
 
-from utils.plots import plot_transformed_point_clouds, generate_and_log_scatter_plot
+from models.utils.plots import  generate_and_log_scatter_plot, log_histograms
 
 torch.set_float32_matmul_precision('medium')
 
 
 class LearnableSoftBB(L.LightningModule):
-    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], layers, skip_connection: bool = True, max_iter: int = 5):
+    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer , scalar_layer, use_scalar_layer: bool = True, max_iter: int = 5, compute_pocket_importance: bool = False):
         super().__init__()
         self._validation_outputs = {}
-        self._input_tar_block = build_object(layers, 'layers')
-        self._input_src_block = build_object(layers, 'layers')
+        self._use_scalar_layer = use_scalar_layer
+        self._input_tar_block = build_object(input_layer, 'layers')
+        self._input_src_block = build_object(input_layer, 'layers')
+        if use_scalar_layer:
+            self._tar_linear = build_object(scalar_layer, 'layers')  # Projects tar_embedding to a scalar
+            self._src_linear = build_object(scalar_layer, 'layers')
         self._pocket_loss = build_object(loss['pocket'], 'losses')
         self._transformation_loss = None
         if 'transformation' in loss:
@@ -35,6 +40,7 @@ class LearnableSoftBB(L.LightningModule):
         self._min_diff = 0.05
         self._max_iter = max_iter
         self._lr = optimizer['args']['learning_rate']
+        self._compute_pocket_importance = compute_pocket_importance
     
     def get_d0(self, max_length) -> torch.Tensor:
         return 1.24*(torch.tensor(max_length, device=self.device) - 15)**(1/3) -1.8
@@ -86,7 +92,10 @@ class LearnableSoftBB(L.LightningModule):
             'pocket_rmsd': 'valid_pocket_rmsd',
             'ligand_rmsd': 'valid_ligand_rmsd',
             'pocket_rmsd_iter0': 'valid_pocket_rmsd_iter0',
-            'ligand_rmsd_iter0': 'valid_ligand_rmsd_iter0'
+            'src_pocket_embeddings_scalar':'src_pocket_embeddings_scalar',
+            'tar_pocket_embeddings_scalar':'tar_pocket_embeddings_scalar',
+            'src_non_pocket_embeddings_scalar':'src_non_pocket_embeddings_scalar',
+            'tar_non_pocket_embeddings_scalar':'tar_non_pocket_embeddings_scalar',
         }
         
         # Log total metrics
@@ -103,6 +112,14 @@ class LearnableSoftBB(L.LightningModule):
         self.log("total_count", metrics['total_count'], on_epoch=True)
         for cath_degree, count in metrics['counts_per_degree'].items():
             self.log(f'count_degree_{cath_degree}', count, on_epoch=True)
+        
+        log_histograms(
+        logger=self.logger,
+        cath_degrees=metrics['cath_degree_per_sample'],
+        pocket_rmsds=metrics['pocket_rmsd_per_sample'],
+        epoch=self.current_epoch,
+        bins=20  # You can adjust the number of bins as needed
+    )
 
         self.logger.experiment.log_image(image_data=generate_and_log_scatter_plot(metrics), name="Pocket RMSD")
             
@@ -113,17 +130,39 @@ class LearnableSoftBB(L.LightningModule):
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
+
+    def create_correspondences_matrix(self, batch, tar_embedding: torch.Tensor, src_embedding: torch.Tensor) -> dict[str, torch.Tensor]:
+        ret_dict = {}
+        tar_embedding, src_embedding  = self._input_tar_block(tar_embedding), self._input_src_block(src_embedding)
+
+        l2_embedding = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1))
+        if self._use_scalar_layer:
+            tar_scalar = self._tar_linear(tar_embedding).squeeze(-1) 
+            src_scalar = self._src_linear(src_embedding).squeeze(-1)
+
+            if self._compute_pocket_importance and not self.training:
+                tar_pocket_mean, tar_non_pocket_mean = compute_mean_scalar_pocket_values(tar_scalar, batch['tar_residue_indices'], batch['tar_pocket_mask'], batch['tar_mask'].sum(1))
+                src_pocket_mean, src_non_pocket_mean = compute_mean_scalar_pocket_values(src_scalar, batch['src_residue_indices'], batch['src_pocket_mask'], batch['src_mask'].sum(1))
+                ret_dict.update({"tar_pocket_scalar_mean": tar_pocket_mean, "tar_non_pocket_scalar_mean": tar_non_pocket_mean, "src_pocket_scalar_mean": src_pocket_mean, "src_non_pocket_scalar_mean": src_non_pocket_mean})
+                
+            tar_matrix = tar_scalar.unsqueeze(-1).expand_as(l2_embedding)  # Shape [B, N_tar, N_src]
+            src_matrix = src_scalar.unsqueeze(1).expand_as(l2_embedding)  # Shape [B, N_tar, N_src]
+
+            ret_dict.update({"l2_embedding" :l2_embedding + tar_matrix + src_matrix, "tar_embedding": tar_embedding, "src_embedding": src_embedding})
+        else:
+            ret_dict.update({"l2_embedding" :l2_embedding, "tar_embedding": tar_embedding, "src_embedding": src_embedding})
+        return ret_dict
     
     def training_step(self, batch: dict[torch.Tensor], batch_idx: int):
         batch = move_batch_to_device(batch, self.device)
         batch_size = batch['tar_embedding'].shape[0]
-        tar_embedding, src_embedding  = self._input_tar_block(batch['tar_embedding']), self._input_src_block(batch['src_embedding'])
-        combined_mask = self.create_2d_mask(batch)
 
-        l2_embedding = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1))
-        l2_embedding = l2_embedding * combined_mask
+        embeddings_dict = self.create_correspondences_matrix(batch, batch['tar_embedding'], batch['src_embedding'])
+
+        combined_mask = self.create_2d_mask(batch)
+        l2_embedding = embeddings_dict['l2_embedding'] * combined_mask
         l2_embedding = l2_embedding.masked_fill(~combined_mask, float('inf'))
-        gamma_0 = self._mask_and_normalize_matrix(l2_embedding, batch['src_mask'], batch['tar_mask'], src_embedding, tar_embedding) * combined_mask
+        gamma_0 = self._mask_and_normalize_matrix(l2_embedding, batch['src_mask'], batch['tar_mask'], embeddings_dict['src_embedding'], embeddings_dict['tar_embedding']) * combined_mask
 
         gamma = gamma_0.clone()
         src_coordinates = batch['src_coordinates']
@@ -159,13 +198,13 @@ class LearnableSoftBB(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         batch = move_batch_to_device(batch, self.device)
         batch_size = batch['tar_embedding'].shape[0]
-        tar_embedding, src_embedding  = self._input_tar_block(batch['tar_embedding']), self._input_src_block(batch['src_embedding'])
-        combined_mask = self.create_2d_mask(batch)
 
-        l2_embedding = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1))
-        l2_embedding = l2_embedding * combined_mask
+        embeddings_dict = self.create_correspondences_matrix(batch, batch['tar_embedding'], batch['src_embedding'])
+
+        combined_mask = self.create_2d_mask(batch)
+        l2_embedding = embeddings_dict['l2_embedding'] * combined_mask
         l2_embedding = l2_embedding.masked_fill(~combined_mask, float('inf'))
-        gamma_0 = self._mask_and_normalize_matrix(l2_embedding, batch['src_mask'], batch['tar_mask'], src_embedding, tar_embedding) * combined_mask
+        gamma_0 = self._mask_and_normalize_matrix(l2_embedding, batch['src_mask'], batch['tar_mask'], embeddings_dict['src_embedding'], embeddings_dict['tar_embedding']) * combined_mask
         gamma = gamma_0.clone()
         src_coordinates = batch['src_coordinates']
         all_R, all_t = [], []
@@ -188,14 +227,14 @@ class LearnableSoftBB(L.LightningModule):
         R_total, t_total = self._compose_transformations(batch_size, all_R, all_t)
         loss, loss_dict = self._compute_loss(batch, R_total, t_total)
         
-        outputs = {'loss': loss , 'loss_dict': loss_dict, 'pred_R': R_total, 'pred_t': t_total, 'pred_first_R': all_R[0], 'pred_first_t': all_t[0]}
+        outputs = {'loss': loss , 'loss_dict': loss_dict, 'pred_R': R_total, 'pred_t': t_total, 'pred_first_R': all_R[0], 'pred_first_t': all_t[0], "embeddings_dict": embeddings_dict}
         self._metrics.update(batch, outputs)
         return outputs
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self._lr)
         
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
         
         return {
             'optimizer': optimizer,
@@ -227,7 +266,8 @@ if __name__ == "__main__":
     logging.basicConfig(filename=os.path.join(log_dir, start_time + ".log"), level=logging.INFO, format='%(message)s')
 
     logger = logging.getLogger(__name__)
-    
+    torch.manual_seed(42)
+
 
     with open('configs/learnable_soft_bb.yaml') as f:
         config = yaml.safe_load(f)
@@ -265,7 +305,7 @@ if __name__ == "__main__":
     trainer.logger.log_hyperparams(flatten_dict(config))
 
     if config['trainer']['validate_only']:
-        trainer.validate(model, val_loader)
+        trainer.validate(model, val_loader, ckpt_path=config['trainer']['ckpt_path'])
     else:
         trainer.fit(model, train_loader, val_dataloaders=val_loader, ckpt_path=config['trainer']['ckpt_path'])
 

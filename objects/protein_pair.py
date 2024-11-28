@@ -10,12 +10,10 @@ from scipy.spatial import distance_matrix
 import torch
 
 
-from aligners.dali_aligner import DaliAligner
 from utils.constants import LIGAND_DIR
 
 from objects import Protein
 from utils.constants import NOT_ENOUGH_ATOMS_MESSAGE, TOO_MUCH_RESIDUES_MESSAGE, LIGAND_RESIDUE_IS_MISSED_MESSAGE, N_ATOMS_RATIO_MESSAGE, LIGAND_OVERLAP_MESSAGE, ResultHolder
-from aligners import BaseStructureAligner
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +65,7 @@ class ProteinPair:
         return ""
 
     def _apply_transformations_and_save_transformed_models(self, R: list[np.ndarray], t: list[np.ndarray],
-                                                           aligner: BaseStructureAligner,
+                                                           aligner,
                                                             ref_residue_index: int = 0, mov_residue_index: int = 0) -> None:
 
          for i in range(len(R)):
@@ -91,7 +89,7 @@ class ProteinPair:
         logging.info(f"n bb: {bbc} bbc ratio {bbc / min(mov_atoms.shape[0], ref_atoms.shape[0])}")
         return bbc / min(mov_atoms.shape[0], ref_atoms.shape[0])
     
-    def find_ligand_transformations(self, holder: ResultHolder, aligner: BaseStructureAligner, min_ligand_atoms: int = 3) -> None:
+    def find_ligand_transformations(self, holder: ResultHolder, aligner, min_ligand_atoms: int = 3) -> None:
         ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_residues()
         mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_residues()
         holder.n_residues_ref_ligand = len(ref_ligand)
@@ -143,14 +141,14 @@ class ProteinPair:
         if len(all_R) == 0:
             holder.failure_message = error_message
     
-    def find_protein_transformations(self, holder: ResultHolder, aligner: BaseStructureAligner | DaliAligner) -> tuple[tuple, tuple, tuple, tuple, str]:
+    def find_protein_transformations(self, holder: ResultHolder, aligner) -> tuple[tuple, tuple, tuple, tuple, str]:
         
         ref_chain = self._ref_protein.get_model(self._ref_model_idx, True)
         mov_chain = self._mov_protein.get_model(self._mov_model_idx, True)
         ref_coord, seq1 = Protein.get_residue_data(ref_chain)
         mov_coord, seq2 = Protein.get_residue_data(mov_chain)
     
-        if isinstance(aligner, DaliAligner):
+        if isinstance(aligner, aligner.name == "DaliAligner"):
             R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, f'{LIGAND_DIR}/{self._ligand_name}')
         else:
             R, t, rmsd, _ = aligner.impose_structure(ref_coord, mov_coord, seq1, seq2, self._base_dir)
@@ -200,22 +198,6 @@ class ProteinPair:
         squared_diff = np.sum((transformed_points_1 - transformed_points_2) ** 2, axis=1)
         rmsd_value = np.sqrt(np.mean(squared_diff))
 
-        return rmsd_value
-    
-    @staticmethod
-    def compute_rmsd_torch(coordinates: torch.Tensor, gt_R: torch.Tensor, gt_t: torch.Tensor, pred_R: torch.Tensor, pred_t:torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-
-        transformed_points_1 = torch.matmul(coordinates, gt_R) + gt_t[:,:3].unsqueeze(1)
-        
-        transformed_points_2 = torch.matmul(coordinates, pred_R) + pred_t.unsqueeze(1)
-        
-        squared_diff = torch.sum((transformed_points_1 - transformed_points_2) ** 2, dim=2)  # Shape (B, N)
-        masked_squared_diff = squared_diff * mask.float()  # Shape [B, N], mask applied
-
-        valid_counts = mask.sum(dim=1)  # Shape [B]
-
-        rmsd_value = torch.sqrt(masked_squared_diff.sum(dim=1) / valid_counts.clamp(min=1e-10))  # Shape [B]
-                
         return rmsd_value
 
     @property

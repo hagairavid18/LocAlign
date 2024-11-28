@@ -1,17 +1,18 @@
 trainer:
-  exp_name: "delete-test-all-changes-val-batch1"
-  max_epochs: 30
+  exp_name: "delete-no-constant-temperature"
+  max_epochs: 40
   validate_only: false
-  check_val_every_n_epoch: 1
+  check_val_every_n_epoch: 3
   gradient_clipping: 30.0
   profiler: false
-  # ckpt_path: "checkpoints/cath1-modelgpt-dropout005-withnormrelu/epoch=19-step=13040.ckpt"
+  # ckpt_path: "checkpoints/new-pockets/epoch=29-step=19560.ckpt"
   ckpt_path: null
 model:
   name: LearnableSoftBB
   args:
     max_iter: 5
-    layers:
+    compute_pocket_importance: True
+    input_layer:
       name:
         FeatureBlockGPT
       args:
@@ -20,6 +21,17 @@ model:
         input_dim: 128
         hidden_dim: 256
         output_dim: 128
+        dropout: 0.05
+    use_scalar_layer: false
+    scalar_layer:
+      name:
+        FeatureBlockGPT
+      args:
+        skip_connection: False
+        n_blocks: 2
+        input_dim: 128
+        hidden_dim: 64
+        output_dim: 1
         dropout: 0.05
     loss:
       pocket:
@@ -44,8 +56,8 @@ dataset:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/no_grouping/val.csv
-      seed: 81
       # n_samples: 100
+      seed: 81
       min_cath: 1
   test:
     name: ScannetDataset
@@ -54,7 +66,7 @@ dataset:
       seed: 81
       min_cath: 1
 dataloader:
-  train_batch_size: 8
+  train_batch_size: 4
   valid_batch_size: 1
   test_batch_size: 1
   n_workers: 30

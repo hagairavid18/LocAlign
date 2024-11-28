@@ -1,15 +1,29 @@
 trainer:
-  exp_name: "TMalign-eval-local"
+  exp_name: "TM-align-new-pocket"
+  max_epochs: 30
   validate_only: true
+  check_val_every_n_epoch: 2
+  gradient_clipping: 30.0
+  profiler: false
+  # ckpt_path: "checkpoints/test-weight-mlp-reformat/epoch=27-step=18256.ckpt"
+  ckpt_path: null
 model:
   name: TMaligner
+ 
 dataset:
+  train:
+    name: ScannetDataset
+    args:
+      df_path: datasets/csv_files/no_grouping/train.csv
+      # n_samples: 100
+      seed: 81
+      min_cath: 1
   validation:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/no_grouping/val.csv
-      infer_baseline: True
       seed: 81
+      # n_samples: 100
       min_cath: 1
   test:
     name: ScannetDataset
@@ -18,5 +32,7 @@ dataset:
       seed: 81
       min_cath: 1
 dataloader:
+  train_batch_size: 8
   valid_batch_size: 1
   test_batch_size: 1
+  n_workers: 30

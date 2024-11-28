@@ -6,8 +6,8 @@ import lightning as L
 
 from models.utils.collate import custom_collate_fn, move_batch_to_device
 from metrics import PocketRMSD
-from utils.misc import build_object, flatten_dict
-from utils.plots import generate_and_log_scatter_plot
+from models.utils.misc import build_object, flatten_dict
+from models.utils.plots import generate_and_log_scatter_plot
 
 
 class TMaligner(L.LightningModule):
@@ -20,9 +20,7 @@ class TMaligner(L.LightningModule):
         
         metric_types = {
             'pocket_rmsd': 'valid_pocket_rmsd',
-            'ligand_rmsd': 'valid_ligand_rmsd',
             'pocket_rmsd_iter0': 'valid_pocket_rmsd_iter0',
-            'ligand_rmsd_iter0': 'valid_ligand_rmsd_iter0'
         }
         
         # Log total metrics
