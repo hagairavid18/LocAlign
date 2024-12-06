@@ -1,4 +1,4 @@
-
+import comet_ml
 from datetime import datetime
 import os
 from typing import Any
@@ -12,15 +12,14 @@ from utils.deepbbs_utils import *
 from utils.transformation import rotation_matrix_to_euler_angles
 from metrics import PocketRMSD
 from models.utils.misc import build_object, flatten_dict
-from models.utils.bbs import compute_mean_scalar_pocket_values
-
-from models.utils.plots import  generate_and_log_scatter_plot, log_histograms
+from models.utils.bbs import compute_mean_scalar_pocket_values, compute_mean_bbs_pocket_values
+from models.utils.plots import  generate_and_log_scatter_plot, plot_transformed_point_clouds_interactive
 
 torch.set_float32_matmul_precision('medium')
 
 
 class LearnableSoftBB(L.LightningModule):
-    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer , scalar_layer, use_scalar_layer: bool = True, max_iter: int = 5, compute_pocket_importance: bool = False):
+    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer , scalar_layer: dict | None = None, use_scalar_layer: bool = False, max_iter: int = 5, compute_pocket_importance: bool = False, plot_alignments: bool = False):
         super().__init__()
         self._validation_outputs = {}
         self._use_scalar_layer = use_scalar_layer
@@ -30,9 +29,8 @@ class LearnableSoftBB(L.LightningModule):
             self._tar_linear = build_object(scalar_layer, 'layers')  # Projects tar_embedding to a scalar
             self._src_linear = build_object(scalar_layer, 'layers')
         self._pocket_loss = build_object(loss['pocket'], 'losses')
-        self._transformation_loss = None
-        if 'transformation' in loss:
-            self._transformation_loss = build_object(loss['transformation'], 'losses')
+        self._transformation_loss = build_object(loss['transformation'], 'losses')
+        self._use_transformation_loss = loss['use_transformation']
         self._alpha_loss = 0.5
         self._metrics = PocketRMSD()
         self.validation_step_outputs = []
@@ -41,6 +39,7 @@ class LearnableSoftBB(L.LightningModule):
         self._max_iter = max_iter
         self._lr = optimizer['args']['learning_rate']
         self._compute_pocket_importance = compute_pocket_importance
+        self._plot_alignments = plot_alignments
     
     def get_d0(self, max_length) -> torch.Tensor:
         return 1.24*(torch.tensor(max_length, device=self.device) - 15)**(1/3) -1.8
@@ -79,23 +78,20 @@ class LearnableSoftBB(L.LightningModule):
         self.log(f'train_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_step=True, on_epoch=True)
         current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log('learning_rate', current_lr, on_step=True, on_epoch=True, logger=True)
-        # transformations_to_plot = {"GT" : (batch['gt_R'], batch['gt_t'][:,:3]),
-        #                             "TMalign": (torch.Tensor(batch['metadata'][0]['TMaligner_rotations']), torch.Tensor(batch['metadata'][0]['TMaligner_translations'])),
-        #                             "iterative_SoftBBS" :(outputs['pred_R'].clone().detach(), outputs['pred_t'].clone().detach())}
-        # if batch_idx % 50 == 0:
-        #     logger.experiment.add_image("Transformed Point Clouds", plot_transformed_point_clouds(batch, transformations_to_plot,  compose = False), self.global_step)
     
     def on_validation_epoch_end(self):
         metrics = self._metrics.compute()
         
         metric_types = {
             'pocket_rmsd': 'valid_pocket_rmsd',
-            'ligand_rmsd': 'valid_ligand_rmsd',
             'pocket_rmsd_iter0': 'valid_pocket_rmsd_iter0',
+            'ligand_rmsd': 'valid_ligand_rmsd',
+            'ligand_rmsd_iter0': 'valid_ligand_rmsd_iter0',
             'src_pocket_embeddings_scalar':'src_pocket_embeddings_scalar',
             'tar_pocket_embeddings_scalar':'tar_pocket_embeddings_scalar',
             'src_non_pocket_embeddings_scalar':'src_non_pocket_embeddings_scalar',
             'tar_non_pocket_embeddings_scalar':'tar_non_pocket_embeddings_scalar',
+            'rmsd_below_4_proportion_per_degree' : 'rmsd_below_4',
         }
         
         # Log total metrics
@@ -113,14 +109,6 @@ class LearnableSoftBB(L.LightningModule):
         for cath_degree, count in metrics['counts_per_degree'].items():
             self.log(f'count_degree_{cath_degree}', count, on_epoch=True)
         
-        log_histograms(
-        logger=self.logger,
-        cath_degrees=metrics['cath_degree_per_sample'],
-        pocket_rmsds=metrics['pocket_rmsd_per_sample'],
-        epoch=self.current_epoch,
-        bins=20  # You can adjust the number of bins as needed
-    )
-
         self.logger.experiment.log_image(image_data=generate_and_log_scatter_plot(metrics), name="Pocket RMSD")
             
         self._metrics.reset()
@@ -130,7 +118,12 @@ class LearnableSoftBB(L.LightningModule):
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
-
+        transformations_to_plot = {"GT" : (batch['gt_R'], batch['gt_t'][:,:3]),
+                                    "TMalign": (torch.Tensor(batch['metadata'][0]['TMaligner_rotations']), torch.Tensor(batch['metadata'][0]['TMaligner_translations'])),
+                                    "SoftBBS" :(outputs['pred_R'].clone().detach(), outputs['pred_t'].clone().detach())}
+        if self._plot_alignments:
+            plot_transformed_point_clouds_interactive(self.logger, batch, transformations_to_plot, compose = False, loss_value=outputs['loss_dict']['pocket_rmsd'], step=batch_idx)
+    
     def create_correspondences_matrix(self, batch, tar_embedding: torch.Tensor, src_embedding: torch.Tensor) -> dict[str, torch.Tensor]:
         ret_dict = {}
         tar_embedding, src_embedding  = self._input_tar_block(tar_embedding), self._input_src_block(src_embedding)
@@ -139,11 +132,6 @@ class LearnableSoftBB(L.LightningModule):
         if self._use_scalar_layer:
             tar_scalar = self._tar_linear(tar_embedding).squeeze(-1) 
             src_scalar = self._src_linear(src_embedding).squeeze(-1)
-
-            if self._compute_pocket_importance and not self.training:
-                tar_pocket_mean, tar_non_pocket_mean = compute_mean_scalar_pocket_values(tar_scalar, batch['tar_residue_indices'], batch['tar_pocket_mask'], batch['tar_mask'].sum(1))
-                src_pocket_mean, src_non_pocket_mean = compute_mean_scalar_pocket_values(src_scalar, batch['src_residue_indices'], batch['src_pocket_mask'], batch['src_mask'].sum(1))
-                ret_dict.update({"tar_pocket_scalar_mean": tar_pocket_mean, "tar_non_pocket_scalar_mean": tar_non_pocket_mean, "src_pocket_scalar_mean": src_pocket_mean, "src_non_pocket_scalar_mean": src_non_pocket_mean})
                 
             tar_matrix = tar_scalar.unsqueeze(-1).expand_as(l2_embedding)  # Shape [B, N_tar, N_src]
             src_matrix = src_scalar.unsqueeze(1).expand_as(l2_embedding)  # Shape [B, N_tar, N_src]
@@ -187,11 +175,10 @@ class LearnableSoftBB(L.LightningModule):
     
     def _compute_loss(self, batch, R_total, t_total):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
-        loss = loss_dict['pocket_rmsd']
-        if self._transformation_loss:
-            loss_dict.update(self._transformation_loss(batch, R_total, t_total))
-            loss = self._alpha_loss * loss_dict['pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
-            # loss_dict = loss_dict | transformation_loss
+        loss = loss_dict['non_linear_pocket_rmsd']
+        loss_dict.update(self._transformation_loss(batch, R_total, t_total))
+        if self._use_transformation_loss:
+            loss = self._alpha_loss * loss_dict['non_linear_pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
         loss_dict['loss'] = loss
         return loss, loss_dict
 
@@ -205,6 +192,11 @@ class LearnableSoftBB(L.LightningModule):
         l2_embedding = embeddings_dict['l2_embedding'] * combined_mask
         l2_embedding = l2_embedding.masked_fill(~combined_mask, float('inf'))
         gamma_0 = self._mask_and_normalize_matrix(l2_embedding, batch['src_mask'], batch['tar_mask'], embeddings_dict['src_embedding'], embeddings_dict['tar_embedding']) * combined_mask
+        if self._compute_pocket_importance:
+            tar_pocket_mean, tar_non_pocket_mean = compute_mean_bbs_pocket_values(gamma_0, batch['tar_residue_indices'], batch['tar_pocket_mask'], batch['tar_mask'].sum(1))
+            src_pocket_mean, src_non_pocket_mean = compute_mean_bbs_pocket_values(gamma_0.transpose(1,2), batch['src_residue_indices'], batch['src_pocket_mask'], batch['src_mask'].sum(1))
+            embeddings_dict.update({"tar_pocket_scalar_mean": tar_pocket_mean, "tar_non_pocket_scalar_mean": tar_non_pocket_mean, "src_pocket_scalar_mean": src_pocket_mean, "src_non_pocket_scalar_mean": src_non_pocket_mean})
+        
         gamma = gamma_0.clone()
         src_coordinates = batch['src_coordinates']
         all_R, all_t = [], []

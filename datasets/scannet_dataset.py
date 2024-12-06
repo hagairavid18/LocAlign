@@ -41,6 +41,7 @@ class ScannetDataset(BasePairDataset):
         try:
             tar_embedding, tar_coordinates, tar_res_indices = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
             src_embedding, src_coordinates, src_res_indices = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+            src_ligand_coordinates = self._read_ligand(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
         except Exception as e:
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
@@ -80,7 +81,8 @@ class ScannetDataset(BasePairDataset):
         ret['tar_pocket_mask'] = F.pad(torch.ones(filtered_tar_pocket_residue_indices.shape[0]), (0, self.MAX_SEQUENCE_LENGTH - filtered_tar_pocket_residue_indices.shape[0]), value=0).bool()
         ret['src_residue_indices'] = F.pad(filtered_src_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_src_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
         ret['tar_residue_indices'] = F.pad(filtered_tar_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_tar_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
-
+        ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - len(src_ligand_coordinates)))
+        ret['src_ligand_mask'] = F.pad(torch.ones(len(src_ligand_coordinates)), (0, self.MAX_SEQUENCE_LENGTH - len(src_ligand_coordinates)), value=0).bool()
         return ret
     
     def _read_embedding(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, torch.Tensor]:
@@ -120,6 +122,24 @@ class ScannetDataset(BasePairDataset):
         assert all(value > 0 for value in residue_indices), "all indices should be non negative"
 
         return embeddings, coordinates, residue_indices
+    
+    def _read_ligand(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, torch.Tensor]:
+        ligand_model_path = os.path.join(self._base_data_path, ligand_id,  chain + '_ligand.pdb')
+        if not os.path.exists(ligand_model_path):
+            print(f"Can't find ligand path for {chain}")
+            raise ValueError
+        structure: Structure = self._mmcif_parser.get_structure(chain, ligand_model_path)
+        coordinates, residues_ids = [], []
+        chain : Chain = list(list(structure)[0])[0]
+        if len(list(chain)) > 1: 
+            print(f"ligand {ligand_id} found in {chain} more than once")
+        for residue in chain:
+            for atom in residue:
+                coordinates.append(torch.Tensor(atom.get_coord()))
+
+        coordinates = torch.stack(coordinates)
+
+        return coordinates
     
 
     def _read_pocket_coordinates(self, ligand_id: str, p_name: str) -> tuple[torch.Tensor, torch.Tensor]:

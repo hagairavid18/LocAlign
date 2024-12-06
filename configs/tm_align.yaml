@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "TM-align-new-pocket"
+  exp_name: "TM-align-4a"
   max_epochs: 30
   validate_only: true
   check_val_every_n_epoch: 2

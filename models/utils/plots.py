@@ -1,64 +1,129 @@
-import io
 import tempfile
 import matplotlib.pyplot as plt
 import os
 import numpy as np
 import torch
-from PIL import Image
+import plotly.graph_objects as go
 
 from models.utils.collate import move_batch_to_device
+from models.utils.math import compute_rmsd_torch
 
 
-def plot_transformed_point_clouds(batch, transformations, loss_value: float | None = None, batch_idx=0, compose: bool=True):
-    plt.ioff()
+
+def plot_transformed_point_clouds_interactive(logger, batch, transformations, loss_value: float | None = None, batch_idx=0, step: int = 0, compose: bool=True):
     batch = move_batch_to_device(batch, 'cpu')
     transformations = move_batch_to_device(transformations, 'cpu')
-    plt.clf()
-    
-    path = f"plots/{batch['metadata'][0]['mov_protein']}_to_{batch['metadata'][0]['ref_protein']}_transformations.png"
-    if os.path.exists(path):
-        return
     src = batch['src_coordinates'][batch_idx]
     tar = batch['tar_coordinates'][batch_idx]
     
-    perspectives = [(30, 45), (60, 90), (90, 0)]
+    src_pocket_indices = batch['src_residue_indices'][batch_idx]
+    src_pocket_mask = batch['src_pocket_mask'][batch_idx]
     
-    src_transformed = src.clone()
-    tar_transformed = tar.clone()
+    tar_pocket_indices = batch['tar_residue_indices'][batch_idx]
+    tar_pocket_mask = batch['tar_pocket_mask'][batch_idx]
     
-    fig = plt.figure(figsize=(15, 20))  # Increase figure height for more space
+    src_pocket_coords = src[src_pocket_indices[src_pocket_mask]]
+    tar_pocket_coords = tar[tar_pocket_indices[tar_pocket_mask]]
 
-    plt.subplots_adjust(hspace=0.6)  # Increase vertical space between rows
-    n_transformation = len(list(transformations.keys()))
-    for idx, (aligner_name, (R_gamma, t_gamma)) in enumerate(transformations.items()):
-        if compose:
-            src_transformed = (torch.matmul(src_transformed, R_gamma[batch_idx]) + t_gamma[batch_idx].unsqueeze(0))
-        else:
-            src_transformed = (torch.matmul(src.clone(), R_gamma[batch_idx]) + t_gamma[batch_idx].unsqueeze(0))
-        for i, (elev, azim) in enumerate(perspectives):
-            ax = fig.add_subplot(n_transformation, len(perspectives), idx * len(perspectives) + i + 1, projection='3d')
+    # Choose 5 points to highlight
+    highlight_indices = torch.arange(min(5, len(src_pocket_coords)))
 
-            ax.scatter(src_transformed[:, 0], src_transformed[:, 1], src_transformed[:, 2], c='r', marker='o', label='Source', s=1)
-            ax.scatter(tar_transformed[:, 0], tar_transformed[:, 1], tar_transformed[:, 2], c='b', marker='^', label='Target', s=1)
+    # Prepare figure
+    fig = go.Figure()
 
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'{aligner_name} - View {i+1}')
-            ax.view_init(elev=elev, azim=azim)
-    
-    plt.suptitle(f"{batch['metadata'][0]['mov_protein']} to {batch['metadata'][0]['ref_protein']}", fontsize=20)
-    plt.tight_layout(rect=[0, 0, 1, 0.93])
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=500)
-    buf.seek(0)
-    
-    image = Image.open(buf)
-    image = np.array(image)
-    image = torch.tensor(image).permute(2, 0, 1)
-    plt.close()
-    buf.close()
-    return image
+    # Colors for each aligner
+    aligner_colors = {
+        'GT': 'rgba(255, 0, 0, 0.6)',   # Red
+        'TMalign': 'rgba(0, 255, 0, 0.6)',   # Green
+        'SoftBBS': 'rgba(0, 0, 255, 0.6)',   # Blue
+        # Add more colors if needed
+    }
+
+    # RMSD storage
+    rmsd_values = {}
+
+    # Plot the target points (non-pocket and pocket), with default visibility for the pocket points only
+    fig.add_trace(go.Scatter3d(
+        x=tar[:, 0], y=tar[:, 1], z=tar[:, 2],
+        mode='markers', marker=dict(size=5, color='blue'),
+        name='Target (non-pocket)', visible=False  # Non-pocket points hidden by default
+    ))
+
+    fig.add_trace(go.Scatter3d(
+        x=tar_pocket_coords[:, 0], y=tar_pocket_coords[:, 1], z=tar_pocket_coords[:, 2],
+        mode='markers', marker=dict(size=5, color='purple'),
+        name='Target (pocket)', visible=True  # Pocket points visible by default
+    ))
+
+    # Loop through aligners and plot transformed points
+    for aligner_name, (R_gamma, t_gamma) in transformations.items():
+        src_transformed = (torch.matmul(src.clone(), R_gamma[batch_idx]) + t_gamma[batch_idx].unsqueeze(0))
+        src_pocket_transformed = (torch.matmul(src_pocket_coords, R_gamma[batch_idx]) + t_gamma[batch_idx].unsqueeze(0))
+
+        fig.add_trace(go.Scatter3d(
+            x=src_transformed[:, 0], y=src_transformed[:, 1], z=src_transformed[:, 2],
+            mode='markers', 
+            marker=dict(size=5, color='gray'),
+            name=f'Source (transformed protein) - {aligner_name}', visible=True  # Hidden by default
+        ))
+
+        fig.add_trace(go.Scatter3d(
+            x=src_pocket_transformed[:, 0], y=src_pocket_transformed[:, 1], z=src_pocket_transformed[:, 2],
+            mode='markers', 
+            marker=dict(size=5, color=aligner_colors.get(aligner_name, 'gray')),
+            name=f'Source (transformed pocket) - {aligner_name}', visible=True  # Pocket points visible by default
+        ))
+
+        # Highlight 5 specific points with indices
+        fig.add_trace(go.Scatter3d(
+            x=src_pocket_transformed[highlight_indices, 0],
+            y=src_pocket_transformed[highlight_indices, 1],
+            z=src_pocket_transformed[highlight_indices, 2],
+            mode='markers+text',
+            marker=dict(size=10, color=aligner_colors.get(aligner_name, 'gray'), symbol="diamond"),
+            text=[str(i.item()) for i in highlight_indices],
+            textposition="top center",
+            name=f'Highlights ({aligner_name})', visible=True  # Highlighted points visible by default
+        ))
+
+        # Compute RMSD
+        rmsd = compute_rmsd_torch(
+            batch['src_pocket'], batch['gt_R'], batch['gt_t'], R_gamma, t_gamma, batch['src_pocket_mask']
+        )[0]
+        rmsd_values[aligner_name] = rmsd.item()
+
+    # Update layout with RMSD and matrices below the plot
+    aligner_rmsd_str = ", ".join([f"{aligner}: {rmsd:.4f}" for aligner, rmsd in rmsd_values.items()])
+    matrix_text = "<br>".join([
+        f"<b>{aligner}:</b><br>" + "<br>".join([" &nbsp; ".join([f"{v:.2f}" for v in row]) for row in R_gamma[batch_idx].numpy()])
+        for aligner, (R_gamma, _) in transformations.items()
+    ])
+
+    fig.update_layout(
+        title=f"3D Scatter and RMSD: {aligner_rmsd_str} - Step {step}",
+        scene=dict(
+            xaxis_title='X',
+            yaxis_title='Y',
+            zaxis_title='Z'
+        ),
+        margin=dict(l=0, r=0, b=0, t=40),
+        annotations=[
+            dict(
+                text=matrix_text,
+                showarrow=False,
+                xref="paper", yref="paper",
+                x=0.5, y=-0.3,
+                align="left",
+                font=dict(size=10),
+            )
+        ]
+    )
+
+    # Save the HTML plot
+    html_folder = os.path.join("plots", logger._experiment_name)
+    os.makedirs(html_folder, exist_ok=True)
+    html_file_path = os.path.join(html_folder, f"plot_{step}.html")
+    fig.write_html(html_file_path)
 
 
 def plot_gamma(combined_mask, gamma, postfix=""):
@@ -94,35 +159,6 @@ def plot_gamma(combined_mask, gamma, postfix=""):
     # Save the plot
     plt.savefig(path, dpi=500)
     plt.show()
-
-
-
-def log_histograms(logger, cath_degrees, pocket_rmsds, epoch, bins=20):
-    """
-    Log histograms for Pocket RMSD per CATH degree to the Comet logger.
-
-    Args:
-        logger: The Comet logger instance.
-        cath_degrees (list): List of CATH degree values for each sample.
-        pocket_rmsds (list): List of Pocket RMSD values corresponding to each sample.
-        epoch (int): The current training epoch, used as the step in the logger.
-        bins (int): Number of bins for the histogram.
-    """
-    unique_cath_degrees = sorted(set(cath_degrees))
-    histogram_data = {degree: [] for degree in unique_cath_degrees}
-
-    # Group RMSD values by CATH degree
-    for degree, rmsd in zip(cath_degrees, pocket_rmsds):
-        histogram_data[degree].append(rmsd)
-
-    # Compute and log histograms
-    for degree, rmsds in histogram_data.items():
-        if len(rmsds) > 1:  # At least two points needed to create a histogram
-            logger.experiment.log_histogram_3d(
-                name=f'Histogram_CATH_Degree_{degree}',
-                values=rmsds,
-                step=epoch
-            )
 
 def generate_and_log_scatter_plot(metrics):
     """

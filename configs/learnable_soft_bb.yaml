@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "delete-no-constant-temperature"
+  exp_name: "add-ligand-rmsd-loss-is-on-ligand"
   max_epochs: 40
   validate_only: false
   check_val_every_n_epoch: 3
@@ -10,8 +10,10 @@ trainer:
 model:
   name: LearnableSoftBB
   args:
+    plot_alignments: False
     max_iter: 5
     compute_pocket_importance: True
+    use_scalar_layer: true
     input_layer:
       name:
         FeatureBlockGPT
@@ -22,7 +24,6 @@ model:
         hidden_dim: 256
         output_dim: 128
         dropout: 0.05
-    use_scalar_layer: false
     scalar_layer:
       name:
         FeatureBlockGPT
@@ -34,12 +35,13 @@ model:
         output_dim: 1
         dropout: 0.05
     loss:
+      use_transformation: False
       pocket:
         name: PocketLoss
         args: {"return_non_linear": True}
-      # transformation:
-      #   name: RTLoss
-      #   args: {}
+      transformation:
+        name: RTLoss
+        args: {"translation_weight": 0.001}
     optimizer:
       name: Adam
       args:

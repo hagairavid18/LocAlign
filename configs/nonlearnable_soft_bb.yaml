@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "delete-non-learnable-softbbs-test-rmsd"
+  exp_name: "non-learnable-softbbs"
   validate_only: true
   max_epochs: 1
   check_val_every_n_epoch: 3
@@ -11,7 +11,7 @@ model:
   name: LearnableSoftBB
   args:
     max_iter: 5
-    layers:
+    input_layer:
       name:
         IdentityLayer
     loss:

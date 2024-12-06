@@ -16,6 +16,8 @@ class PocketRMSD(Module):
         # Initialize metrics for each degree 1 through 8
         self.pocket_rmsd_per_degree = {deg: 0 for deg in range(1, 9)}
         self.pocket_rmsd_first_iter_per_degree = {deg: 0 for deg in range(1, 9)}
+        self.ligand_rmsd_per_degree = {deg: 0 for deg in range(1, 9)}
+        self.ligand_rmsd_first_iter_per_degree = {deg: 0 for deg in range(1, 9)}
         self.src_pocket_embeddings_scalar = {deg: 0 for deg in range(1, 9)}
         self.src_non_pocket_embeddings_scalar = {deg: 0 for deg in range(1, 9)}
         self.tar_pocket_embeddings_scalar = {deg: 0 for deg in range(1, 9)}
@@ -39,12 +41,14 @@ class PocketRMSD(Module):
 
             # Compute RMSDs
             pocket_rmsd = compute_rmsd_torch(batch['src_pocket'], batch['gt_R'], batch['gt_t'], outputs['pred_R'], outputs['pred_t'], batch['src_pocket_mask'])[batch_id]
+            ligand_rmsd = compute_rmsd_torch(batch['src_ligand_coordinates'], batch['gt_R'], batch['gt_t'], outputs['pred_R'], outputs['pred_t'], batch['src_ligand_mask'])[batch_id]
 
             # Update metrics
             self.pocket_rmsd_per_degree[cath_degree] += pocket_rmsd
+            self.ligand_rmsd_per_degree[cath_degree] += ligand_rmsd
             self.count_per_degree[cath_degree] += 1
 
-            if "src_pocket_scalar_mean" in outputs['embeddings_dict']:
+            if  'embeddings_dict' in outputs and "src_pocket_scalar_mean" in outputs['embeddings_dict']:
                 self.src_pocket_embeddings_scalar[cath_degree]+= outputs['embeddings_dict']['src_pocket_scalar_mean']
                 self.src_non_pocket_embeddings_scalar[cath_degree]+= outputs['embeddings_dict']['src_non_pocket_scalar_mean']
                 self.tar_pocket_embeddings_scalar[cath_degree]+= outputs['embeddings_dict']['tar_pocket_scalar_mean']
@@ -73,6 +77,8 @@ class PocketRMSD(Module):
         per_degree_metrics = {
             'pocket_rmsd': {deg: (self.pocket_rmsd_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(1, 9)},
             'pocket_rmsd_iter0': {deg: (self.pocket_rmsd_first_iter_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(1, 9)},
+            'ligand_rmsd': {deg: (self.ligand_rmsd_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(1, 9)},
+            'ligand_rmsd_iter0': {deg: (self.ligand_rmsd_first_iter_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(1, 9)},
         }
         
         pocket_embeddings_metrics = {
@@ -86,5 +92,20 @@ class PocketRMSD(Module):
             'total_count': self.total_count
         }
 
+
+         # Calculate proportion of RMSD < 4 per degree and overall
+        rmsd_below_4_per_degree = {deg: 0 for deg in range(1, 9)}
+        total_rmsd_below_4 = 0
+        for rmsd, degree in zip(self.sample_metrics['pocket_rmsd_per_sample'], self.sample_metrics['cath_degree_per_sample']):
+            if rmsd < 4:
+                rmsd_below_4_per_degree[degree] += 1
+                total_rmsd_below_4 += 1
+
+        proportion_below_4_per_degree = {
+            deg: (rmsd_below_4_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(1, 9)
+        }
+        total_proportion_below_4 = total_rmsd_below_4 / self.total_count if self.total_count > 0 else 0
+
         # Return both total and per-degree metrics
-        return {**total_metrics, **per_degree_metrics, **counts, **self.sample_metrics, **pocket_embeddings_metrics}
+        return {**total_metrics, **per_degree_metrics, **counts, **self.sample_metrics, **pocket_embeddings_metrics, 'rmsd_below_4_proportion_per_degree': proportion_below_4_per_degree,
+        'rmsd_below_4_total_proportion': total_proportion_below_4,}
