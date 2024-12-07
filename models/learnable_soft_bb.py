@@ -271,12 +271,14 @@ if __name__ == "__main__":
 
     model = build_object(config['model'], 'models')
 
-    comet_logger = CometLogger(
-        api_key="9ydBzigeK75Z6RhAiX63xGdsg",
-        workspace="hagairavid18",
-        project_name="pocket_aligner",
-        experiment_name=config['trainer']['exp_name']
-    )
+    log_exp = "delete" not in config['trainer']['exp_name']
+    if log_exp:
+        comet_logger = CometLogger(
+            api_key="9ydBzigeK75Z6RhAiX63xGdsg",
+            workspace="hagairavid18",
+            project_name="pocket_aligner",
+            experiment_name=config['trainer']['exp_name']
+        )
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=f"checkpoints/{config['trainer']['exp_name']}",
@@ -284,7 +286,8 @@ if __name__ == "__main__":
         every_n_epochs=1, 
     )
 
-    trainer = L.Trainer(logger=comet_logger,
+
+    trainer = L.Trainer(logger=comet_logger if log_exp else None ,
                         # profiler = AdvancedProfiler(filename="profile_results_cloud_noprotein.txt", dirpath='.') if config['trainer']['profiler'] == True else None,
                         max_epochs=config['trainer']['max_epochs'], 
                         check_val_every_n_epoch=config['trainer']['check_val_every_n_epoch'],

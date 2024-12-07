@@ -68,8 +68,7 @@ class FeatureBlockGPT(nn.Module):
 
         # Output layer
         layers.append(nn.Linear(hidden_dim, output_dim))
-        # layers.append(normalization(output_dim))
-        # layers.append(activation())
+        layers.append(normalization(output_dim))
 
         # Combine layers into a sequential module
         self.model = nn.Sequential(*layers)

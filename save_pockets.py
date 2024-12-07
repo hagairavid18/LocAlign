@@ -6,7 +6,7 @@ import os
 import pandas as pd
 
 from utils.loading import deserialize_nested_lists
-from utils.process_pair import save_pockets
+from utils.process_pair import save_pockets, save_pockets_pdb
 
 # Setup logging
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -30,14 +30,14 @@ def run(pairs_df: pd.DataFrame, debug: bool = False) -> None:
 
             try:
                 # Save pocket for each protein
-                save_pockets(
+                save_pockets_pdb(
                     row['mov_protein'],
                     row['mov_chain'],
                     ligand=ligand,
                     ligand_res_idx=0,  # Or any other logic for ligand residue index
                 )
                 # Save pocket for each protein
-                save_pockets(
+                save_pockets_pdb(
                     row['ref_protein'],
                     row['ref_chain'],
                     ligand=ligand,

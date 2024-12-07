@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 def run(pairs_df: pd.DataFrame, ligand_aligner_config: dict[str, Any], protein_aligner_config: dict[str, Any],
          debug: bool = False, save_transformed_models: bool = False) -> None:
      
-    ligand_aligner: BaseStructurealigner = build_object(ligand_aligner_config, "aligners")
-    protein_aligners: list[BaseStructurealigner | DaliAligner] = [build_object(aligner_config, "aligners") for aligner_config in protein_aligner_config]
+    ligand_aligner = build_object(ligand_aligner_config, "aligners")
+    protein_aligners = [build_object(aligner_config, "aligners") for aligner_config in protein_aligner_config]
     result_list = []
     pool = multiprocessing.Pool(30)
     
