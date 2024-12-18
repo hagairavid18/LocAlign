@@ -41,6 +41,7 @@ class LearnableSoftBB(L.LightningModule):
         self._compute_pocket_importance = compute_pocket_importance
         self._plot_alignments = plot_alignments
     
+        self._use_atom_distances = use_atom_distances
     def get_d0(self, max_length) -> torch.Tensor:
         return 1.24*(torch.tensor(max_length, device=self.device) - 15)**(1/3) -1.8
     
@@ -87,11 +88,11 @@ class LearnableSoftBB(L.LightningModule):
             'pocket_rmsd_iter0': 'valid_pocket_rmsd_iter0',
             'ligand_rmsd': 'valid_ligand_rmsd',
             'ligand_rmsd_iter0': 'valid_ligand_rmsd_iter0',
-            'src_pocket_embeddings_scalar':'src_pocket_embeddings_scalar',
-            'tar_pocket_embeddings_scalar':'tar_pocket_embeddings_scalar',
-            'src_non_pocket_embeddings_scalar':'src_non_pocket_embeddings_scalar',
-            'tar_non_pocket_embeddings_scalar':'tar_non_pocket_embeddings_scalar',
-            'rmsd_below_4_proportion_per_degree' : 'rmsd_below_4',
+            'src_pocket_embeddings_scalar': 'src_pocket_embeddings_scalar',
+            'tar_pocket_embeddings_scalar': 'tar_pocket_embeddings_scalar',
+            'src_non_pocket_embeddings_scalar': 'src_non_pocket_embeddings_scalar',
+            'tar_non_pocket_embeddings_scalar': 'tar_non_pocket_embeddings_scalar',
+            'rmsd_below_4_proportion_per_degree': 'rmsd_below_4',
         }
         
         # Log total metrics
@@ -109,8 +110,30 @@ class LearnableSoftBB(L.LightningModule):
         for cath_degree, count in metrics['counts_per_degree'].items():
             self.log(f'count_degree_{cath_degree}', count, on_epoch=True)
         
-        self.logger.experiment.log_image(image_data=generate_and_log_scatter_plot(metrics), name="Pocket RMSD")
+        # Log protein names and pocket_rmsd per degree in a table
+        protein_rmsd_data = []
+        
+        for cath_degree in range(1, 9):
+            pair_infos = metrics['pair_infos_per_degree'][cath_degree]
+            pocket_rmsd_values = metrics['pocket_rmsd_per_degree_protein'][cath_degree]
             
+            for pair_info, pocket_rmsd in zip(pair_infos, pocket_rmsd_values):
+                protein_rmsd_data.append({
+                    'ligand': pair_info[0],
+                    'src protein': pair_info[1],
+                    'tar protein': pair_info[2],
+                    'CATH Degree': cath_degree,
+                    'Pocket RMSD': pocket_rmsd.item()
+                })
+        
+        if protein_rmsd_data:
+            df = pd.DataFrame(protein_rmsd_data)
+            self.logger.experiment.log_table("Protein_RMSD_Results.csv", df)
+        
+        # Optionally, log the plot
+        if self._plot_alignments:
+            self.logger.experiment.log_image(image_data=generate_and_log_scatter_plot(metrics), name="Pocket RMSD")
+        
         self._metrics.reset()
     
     def on_validation_batch_end(self, outputs, batch, batch_idx):
@@ -130,8 +153,8 @@ class LearnableSoftBB(L.LightningModule):
 
         l2_embedding = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1))
         if self._use_scalar_layer:
-            tar_scalar = self._tar_linear(tar_embedding).squeeze(-1) 
-            src_scalar = self._src_linear(src_embedding).squeeze(-1)
+            tar_scalar = self._tar_linear(tar_embedding, mask=batch['tar_mask']).squeeze(-1) 
+            src_scalar = self._src_linear(src_embedding, mask=batch['src_mask']).squeeze(-1)
                 
             tar_matrix = tar_scalar.unsqueeze(-1).expand_as(l2_embedding)  # Shape [B, N_tar, N_src]
             src_matrix = src_scalar.unsqueeze(1).expand_as(l2_embedding)  # Shape [B, N_tar, N_src]
@@ -141,33 +164,58 @@ class LearnableSoftBB(L.LightningModule):
             ret_dict.update({"l2_embedding" :l2_embedding, "tar_embedding": tar_embedding, "src_embedding": src_embedding})
         return ret_dict
     
-    def training_step(self, batch: dict[torch.Tensor], batch_idx: int):
-        batch = move_batch_to_device(batch, self.device)
-        batch_size = batch['tar_embedding'].shape[0]
-
+    def compute_embeddings_and_masks(self, batch):
         embeddings_dict = self.create_correspondences_matrix(batch, batch['tar_embedding'], batch['src_embedding'])
 
         combined_mask = self.create_2d_mask(batch)
         l2_embedding = embeddings_dict['l2_embedding'] * combined_mask
         l2_embedding = l2_embedding.masked_fill(~combined_mask, float('inf'))
-        gamma_0 = self._mask_and_normalize_matrix(l2_embedding, batch['src_mask'], batch['tar_mask'], embeddings_dict['src_embedding'], embeddings_dict['tar_embedding']) * combined_mask
+        src_mask = batch['src_all_mask'] if self._use_atom_level else batch['src_mask']
+        tar_mask = batch['tar_all_mask'] if self._use_atom_level else batch['tar_mask']
+        return embeddings_dict, combined_mask, l2_embedding, src_mask, tar_mask
 
+    def compute_transformation(self, batch, gamma_0, src_coordinates, tar_coordinates, src_atom_coordinates, src_mask, tar_mask, combined_mask, iter_limit=2):
         gamma = gamma_0.clone()
         src_coordinates = batch['src_coordinates']
         all_R, all_t = [], []
         iter_num = 0
-        while(iter_num < 2):
-            R_gamma, t_gamma, _, _ = weighted_kabsch_torch(src_coordinates,  batch['tar_coordinates'], gamma.float(),  batch['src_mask'],  batch['tar_mask'])
+        while iter_num < iter_limit:
+            R_gamma, t_gamma, _, _ = weighted_kabsch_torch(src_coordinates, tar_coordinates, gamma.float())
             all_R.append(R_gamma)
             all_t.append(t_gamma)
-            src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) * batch['src_mask'].unsqueeze(-1).expand_as(batch['src_coordinates'])
+            src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) * src_mask.unsqueeze(-1).expand_as(tar_coordinates)
+            src_tgt_euc_dist = cdist_torch(tar_coordinates, src_coordinates, 3)
             
-            src_tgt_euc_dist = cdist_torch(batch['tar_coordinates'], src_coordinates, 3)
-            gamma = (gamma_0 / (( 1 + (src_tgt_euc_dist / self.get_d0(batch['max_length'])[:, None, None])**2)**2)) * combined_mask
-            iter_num +=1
+            if self._use_atom_distances:
+                src_atom_coordinates = torch.cat([(torch.matmul(src_atom_coordinates[..., :3], R_gamma) + t_gamma.unsqueeze(1)) * batch['src_all_mask'].unsqueeze(-1).expand_as(batch['src_all_coordinates'][..., :3]), batch['src_all_coordinates'][..., 3:]], dim=-1)
+                
+                src_tgt_euc_dist = compute_residue_min_distances2(
+                    src_all_coordinates=src_atom_coordinates,
+                    tar_all_coordinates=batch["tar_all_coordinates"],
+                    src_residue_indices=batch["src_residue_indices"],
+                    tar_residue_indices=batch["tar_residue_indices"],
+                    src_all_mask=batch["src_all_mask"],
+                    tar_all_mask=batch["tar_all_mask"],
+                    src_mask=batch["src_mask"],
+                    tar_mask=batch["tar_mask"]
+                ).transpose(1,2)
+                print((src_tgt_euc_dist - cdist_torch(tar_coordinates, src_coordinates, 3)).min())
+            gamma = (gamma_0 / ((1 + (src_tgt_euc_dist / self.get_d0(batch['max_length'])[:, None, None])**2)**2)) * combined_mask
+            iter_num += 1
+
+        R ,t = self._compose_transformations(batch['src_embedding'].shape[0], all_R, all_t)
+        return R, t, all_R, all_t
+
+    def training_step(self, batch: dict[torch.Tensor]):
+        batch = move_batch_to_device(batch, self.device)
+        embeddings_dict, combined_mask, l2_embedding, src_mask, tar_mask = self.compute_embeddings_and_masks(batch)
+
+        gamma_0 = self._mask_and_normalize_matrix(l2_embedding, src_mask, tar_mask, embeddings_dict['src_embedding'], embeddings_dict['tar_embedding']) * combined_mask
+        src_coordinates = batch['src_all_coordinates'][...,:3] if self._use_atom_level else batch['src_coordinates']
+        tar_coordinates = batch['src_all_coordinates'][...,:3] if self._use_atom_level else batch['tar_coordinates']
         
-        R_total, t_total = self._compose_transformations(batch_size, all_R, all_t)
-        
+        R_total, t_total, all_R, all_t = self.compute_transformation(batch, gamma_0, src_coordinates, tar_coordinates, batch['src_all_coordinates'], src_mask, tar_mask, combined_mask, iter_limit=3)
+
         loss, loss_dict = self._compute_loss(batch, R_total, t_total)
         
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'pred_R': R_total, 'pred_t': t_total, 'pred_first_R': all_R[0], 'pred_first_t': all_t[0]}        
@@ -182,41 +230,22 @@ class LearnableSoftBB(L.LightningModule):
         loss_dict['loss'] = loss
         return loss, loss_dict
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch):
         batch = move_batch_to_device(batch, self.device)
-        batch_size = batch['tar_embedding'].shape[0]
+        embeddings_dict, combined_mask, l2_embedding, src_mask, tar_mask = self.compute_embeddings_and_masks(batch)
 
-        embeddings_dict = self.create_correspondences_matrix(batch, batch['tar_embedding'], batch['src_embedding'])
-
-        combined_mask = self.create_2d_mask(batch)
-        l2_embedding = embeddings_dict['l2_embedding'] * combined_mask
-        l2_embedding = l2_embedding.masked_fill(~combined_mask, float('inf'))
-        gamma_0 = self._mask_and_normalize_matrix(l2_embedding, batch['src_mask'], batch['tar_mask'], embeddings_dict['src_embedding'], embeddings_dict['tar_embedding']) * combined_mask
+        gamma_0 = self._mask_and_normalize_matrix(l2_embedding, src_mask, tar_mask, embeddings_dict['src_embedding'], embeddings_dict['tar_embedding']) * combined_mask
+        
         if self._compute_pocket_importance:
             tar_pocket_mean, tar_non_pocket_mean = compute_mean_bbs_pocket_values(gamma_0, batch['tar_residue_indices'], batch['tar_pocket_mask'], batch['tar_mask'].sum(1))
             src_pocket_mean, src_non_pocket_mean = compute_mean_bbs_pocket_values(gamma_0.transpose(1,2), batch['src_residue_indices'], batch['src_pocket_mask'], batch['src_mask'].sum(1))
             embeddings_dict.update({"tar_pocket_scalar_mean": tar_pocket_mean, "tar_non_pocket_scalar_mean": tar_non_pocket_mean, "src_pocket_scalar_mean": src_pocket_mean, "src_non_pocket_scalar_mean": src_non_pocket_mean})
         
-        gamma = gamma_0.clone()
-        src_coordinates = batch['src_coordinates']
-        all_R, all_t = [], []
-        not_converged = True
-        iter_num = 1
-        while(not_converged):
-            R_gamma, t_gamma, rmsd_gamma, rmsd_per_corr_gamma = weighted_kabsch_torch(src_coordinates,  batch['tar_coordinates'], gamma.float(),  batch['src_mask'],  batch['tar_mask'])
-            all_R.append(R_gamma)
-            all_t.append(t_gamma)
-            euler_angles = rotation_matrix_to_euler_angles(R_gamma)
-            diff = torch.mean(euler_angles.abs())
-            if diff < self._min_diff or iter_num >= self._max_iter:
-                not_converged = False
-            src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) * batch['src_mask'].unsqueeze(-1).expand_as(batch['src_coordinates'])
-            
-            src_tgt_euc_dist = cdist_torch(batch['tar_coordinates'], src_coordinates, 3)
-            gamma = (gamma_0 / (( 1 + (src_tgt_euc_dist / self.get_d0(batch['max_length'])[:, None, None])**2)**2))* combined_mask
-            iter_num +=1        
-           
-        R_total, t_total = self._compose_transformations(batch_size, all_R, all_t)
+        src_coordinates = batch['src_all_coordinates'][...,:3] if self._use_atom_level else batch['src_coordinates']
+        tar_coordinates = batch['src_all_coordinates'][...,:3] if self._use_atom_level else batch['tar_coordinates']
+        
+        R_total, t_total, all_R, all_t = self.compute_transformation(batch, gamma_0, src_coordinates, tar_coordinates, batch['src_all_coordinates'], src_mask, tar_mask, combined_mask, iter_limit=self._max_iter)
+
         loss, loss_dict = self._compute_loss(batch, R_total, t_total)
         
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'pred_R': R_total, 'pred_t': t_total, 'pred_first_R': all_R[0], 'pred_first_t': all_t[0], "embeddings_dict": embeddings_dict}

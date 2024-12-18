@@ -44,7 +44,7 @@ def kabsch_torch(P, Q):
     return R.T, t, rmsd, rmsd_per_bb
 
     
-def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tensor, P_mask, Q_mask):
+def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tensor):
     """
     Computes the optimal rotation and translation to align two sets of points (P -> Q),
     and their RMSD.
@@ -75,8 +75,6 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     # SVD
     U, S, raw_Vt = torch.linalg.svd(H)
     
-    # S = S.detach()
-
     # Validate right-handed coordinate system
     Vt = raw_Vt.clone()
     for i, value in  enumerate(torch.det(torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2)))):
@@ -85,11 +83,9 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
             Vt[i, -1, :] = -raw_Vt[i, -1, :] # change 0 to batch idx
 
     # Optimal rotation
-    # R = torch.linalg.inv(torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2)))
     R = torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2))
     t =  weighted_centroids_Q - torch.bmm(R.transpose(1,2), weighted_centroids_P[:, :, None]).squeeze(2)
     diff = (torch.bmm(P, R.transpose(1,2)) + t[:, None, :]) - Q
-    # diff = torch.matmul(p, R.transpose(0, 1)) - q
     rmsd_per_bb = torch.sqrt(torch.sum(torch.square(diff), axis=1))
     rmsd = torch.sqrt(torch.mean(torch.sum(torch.square(diff), axis=1)))
 

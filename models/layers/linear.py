@@ -25,12 +25,55 @@ class LinearBlock(nn.Module):
 
     
 
+class MaskedBatchNorm1d(nn.Module):
+    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+        super(MaskedBatchNorm1d, self).__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.momentum = momentum
+        
+        # Learnable parameters
+        self.weight = nn.Parameter(torch.ones(num_features))
+        self.bias = nn.Parameter(torch.zeros(num_features))
+
+    def forward(self, x, mask=None):
+        """
+        Forward pass for masked batch normalization.
+
+        Parameters:
+        - x (torch.Tensor): Input tensor of shape (B, N, C), where C is the number of channels/features.
+        - mask (torch.Tensor, optional): A tensor of shape (B, N) indicating which elements are unmasked (1 for unmasked, 0 for masked).
+
+        Returns:
+        - torch.Tensor: Normalized tensor.
+        """
+        B, N, C = x.shape
+
+        if mask is not None:
+            # Ensure mask is of shape (B, N) and broadcast it to match the input shape (B, N, C)
+            mask = mask.unsqueeze(-1)  # Shape (B, N, 1)
+            x = x * mask  # Mask the input tensor (0 for masked positions)
+
+            # Compute mean and variance for unmasked elements
+            sum_mask = mask.sum(dim=(0, 1), keepdim=True)  # Sum of valid elements for each channel
+            masked_mean = x.sum(dim=(0, 1), keepdim=True) / sum_mask
+            masked_var = ((x - masked_mean) ** 2).sum(dim=(0, 1), keepdim=True) / sum_mask
+        else:
+            # Standard BN without mask
+            masked_mean = x.mean(dim=(0, 1), keepdim=True)
+            masked_var = x.var(dim=(0, 1), keepdim=True, unbiased=False)
+
+        # Normalize
+        x_normalized = (x - masked_mean) / torch.sqrt(masked_var + self.eps)
+        return self.weight * x_normalized + self.bias
+
+
 class FeatureBlockGPT(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, n_blocks=3, 
-                 activation=nn.ReLU, normalization=nn.BatchNorm1d,
+                 activation=nn.ReLU, normalization=MaskedBatchNorm1d,
                  dropout=0.1, skip_connection=False, gated_skip=False):
         """
-        FeatureBlock with flexible configurations, including skip connections, dropout, and gated skip.
+        FeatureBlock with flexible configurations, including skip connections, dropout, gated skip, and mask compatibility.
 
         Parameters:
         - input_dim (int): Dimension of the input features.
@@ -38,7 +81,7 @@ class FeatureBlockGPT(nn.Module):
         - output_dim (int): Dimension of the output features.
         - n_blocks (int): Number of fully connected blocks (default: 3).
         - activation (nn.Module): Activation function (default: nn.ReLU).
-        - normalization (nn.Module): Normalization function (default: nn.LayerNorm).
+        - normalization (nn.Module): Normalization function (default: MaskedBatchNorm1d).
         - dropout (float): Dropout rate (default: 0.1).
         - skip_connection (bool): Whether to add a skip connection (default: False).
         - gated_skip (bool): Whether to use a learned gated skip connection.
@@ -87,24 +130,33 @@ class FeatureBlockGPT(nn.Module):
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
 
-    def forward(self, features):
+    def forward(self, features, mask=None):
         """
-        Forward pass through the block of layers.
+        Forward pass through the block of layers, with optional mask support.
 
         Parameters:
         - features (torch.Tensor): Input tensor of shape (B, N, input_dim).
+        - mask (torch.Tensor, optional): A tensor of shape (B, N) indicating which values should be masked.
 
         Returns:
         - torch.Tensor: Output tensor of shape (B, N, output_dim) after passing through the layers.
         """
         B, N, _ = features.shape
         original_features = features  # Save for skip connection if needed
-        combined_output = features.view(B * N, -1)  # Flatten for Linear Layer
+
+        # Flatten features to (B * N, input_dim)
+        combined_output = features.view(B * N, -1)
 
         # Forward pass through layers
-        combined_output = self.model(combined_output)
+        for layer in self.model:
+            if isinstance(layer, MaskedBatchNorm1d):
+                # Reshape back to (B, N, C) for MaskedBatchNorm1d
+                combined_output = combined_output.view(B, N, -1)  # Reshape to (B, N, hidden_dim)
+                combined_output = layer(combined_output, mask=mask)  # Pass mask here
+            else:
+                combined_output = layer(combined_output)
 
-        # Reshape back to B x N x output_dim
+        # Reshape back to (B, N, output_dim)
         combined_output = combined_output.view(B, N, -1)
 
         # Apply skip connection if enabled and dimensions match

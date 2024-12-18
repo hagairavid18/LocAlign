@@ -9,9 +9,10 @@ from Bio.PDB import PDBParser
 from Bio.PDB.Atom import PDBConstructionWarning
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Structure import Structure
+from Bio.PDB.Polypeptide import protein_letters_3to1
+
 import warnings
 
-# from objects.protein import Protein
 from utils.constants import LIGAND_DIR
 warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ScannetDataset(BasePairDataset):
     MAX_SEQUENCE_LENGTH = 1000
+    MAX_ATOMS = 3000
 
     def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, infer_baseline: bool = False, n_samples: int | None = None, min_cath: int = 0, seed: int| None = None) -> None:
         super().__init__(df_path, base_data_path, n_samples, min_cath, seed)
@@ -39,8 +41,8 @@ class ScannetDataset(BasePairDataset):
             return ret
 
         try:
-            tar_embedding, tar_coordinates, tar_res_indices = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
-            src_embedding, src_coordinates, src_res_indices = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+            tar_embedding, tar_coordinates, tar_res_indices, tar_all_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
+            src_embedding, src_coordinates, src_res_indices, src_all_coordinates = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
             src_ligand_coordinates = self._read_ligand(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
         except Exception as e:
             idx = torch.randint(0, len(self), (1,)).item()
@@ -69,9 +71,13 @@ class ScannetDataset(BasePairDataset):
         ret['tar_embedding'] = F.pad(tar_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length))
         ret['tar_coordinates'] = F.pad(tar_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length))
         ret['tar_mask'] = F.pad(torch.ones(tar_length), (0, self.MAX_SEQUENCE_LENGTH - tar_length), value=0).bool()
+        ret['tar_all_coordinates'] = F.pad(tar_all_coordinates, (0, 0, 0, self.MAX_ATOMS - tar_all_coordinates.shape[0]))
+        ret['tar_all_mask'] = F.pad(torch.ones(tar_all_coordinates.shape[0]), (0, self.MAX_ATOMS - tar_all_coordinates.shape[0]), value=0).bool()
         ret['src_embedding'] = F.pad(src_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length))
         ret['src_coordinates'] = F.pad(src_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length))
         ret['src_mask'] = F.pad(torch.ones(src_length), (0, self.MAX_SEQUENCE_LENGTH - src_length), value=0).bool()
+        ret['src_all_coordinates'] = F.pad(src_all_coordinates, (0, 0, 0, self.MAX_ATOMS - src_all_coordinates.shape[0]))
+        ret['src_all_mask'] = F.pad(torch.ones(src_all_coordinates.shape[0]), (0, self.MAX_ATOMS - src_all_coordinates.shape[0]), value=0).bool()
         ret['gt_R'] = torch.Tensor(row.to_dict()['rotations'][0][0])
         ret['gt_t'] = torch.Tensor(row.to_dict()['translations'][0][0])
         ret['max_length'] = max(tar_length, src_length)
@@ -79,8 +85,10 @@ class ScannetDataset(BasePairDataset):
         ret['src_pocket'] = F.pad(src_pocket, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_pocket.shape[0]))
         ret['src_pocket_mask'] = F.pad(torch.ones(filtered_src_pocket_residue_indices.shape[0]), (0, self.MAX_SEQUENCE_LENGTH - filtered_src_pocket_residue_indices.shape[0]), value=0).bool()
         ret['tar_pocket_mask'] = F.pad(torch.ones(filtered_tar_pocket_residue_indices.shape[0]), (0, self.MAX_SEQUENCE_LENGTH - filtered_tar_pocket_residue_indices.shape[0]), value=0).bool()
-        ret['src_residue_indices'] = F.pad(filtered_src_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_src_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
-        ret['tar_residue_indices'] = F.pad(filtered_tar_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_tar_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
+        ret['src_pocket_residue_indices'] = F.pad(filtered_src_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_src_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
+        ret['tar_pocket_residue_indices'] = F.pad(filtered_tar_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_tar_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
+        ret['src_residue_indices'] = F.pad(torch.tensor(src_res_indices), (0, self.MAX_SEQUENCE_LENGTH - len(src_res_indices)), value=0)  # Use -1 for padding residue indices
+        ret['tar_residue_indices'] = F.pad(torch.tensor(tar_res_indices), (0, self.MAX_SEQUENCE_LENGTH - len(tar_res_indices)), value=0)  # Use -1 for padding residue indices
         ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - len(src_ligand_coordinates)))
         ret['src_ligand_mask'] = F.pad(torch.ones(len(src_ligand_coordinates)), (0, self.MAX_SEQUENCE_LENGTH - len(src_ligand_coordinates)), value=0).bool()
         return ret
@@ -100,28 +108,43 @@ class ScannetDataset(BasePairDataset):
             # print(f"Can't find non ligand path for {chain}")
             raise ValueError
         structure: Structure = self._mmcif_parser.get_structure(chain, non_ligand_model_path)
-        coordinates, residues_ids = [], []
+        ca_coordinates, all_coordinates, residues_ids = [], [], []
         chain : Chain = list(list(structure)[0])[0]
         for residue in chain:
-            for atom in residue:
-                if atom.id == 'CA':
-                    residues_ids.append((0, chain.id, residue.id[1]))
-                    coordinates.append(torch.Tensor(atom.get_coord()))
-
-        coordinates = torch.stack(coordinates)
+            n_atoms = 0
+            if "CA" in residue.child_dict and residue.resname in protein_letters_3to1:
+                for atom in residue:
+                    if atom.id == "H":
+                        print(f"found H atom {chain}")
+                        continue
+                    
+                    if atom.id == 'CA':
+                        residues_ids.append((0, chain.id, residue.id[1]))
+                        ca_coordinates.append(torch.Tensor(atom.get_coord()))
+                        all_coordinates.append(torch.cat((torch.tensor(atom.get_coord()), torch.tensor([residue.id[1]])), dim=0))
+                    if atom.id != 'CA' and n_atoms < 2:
+                        all_coordinates.append(torch.cat((torch.tensor(atom.get_coord()), torch.tensor([residue.id[1]])), dim=0))
+                        n_atoms += 1
+                if n_atoms < 2:
+                    print(f"Adding dummy atoms to residue {residue.id[1]} in chain {chain}")
+                    dummy_coord = torch.randn(3) * 1e6  # Dummy coordinates (could be zero or other values)
+                    dummy_residue_idx = -1  # Dummy residue index
+                    # Add dummy atom to fill the missing atom
+                    for _ in range(2 - n_atoms):  # Add the necessary number of dummy atoms
+                        all_coordinates.append(torch.cat((dummy_coord, torch.tensor([dummy_residue_idx])), dim=0))
+        ca_coordinates = torch.stack(ca_coordinates)
+        all_coordinates = torch.stack(all_coordinates)
         residue_indices = [tup[2] for tup in embedding_ids]
         if not [tup[2] for tup in embedding_ids] == [tup[2] for tup in residues_ids]:
             intersection = set(embedding_ids) & set(residues_ids)
             residue_indices = [tup[2] for tup in intersection]
 
             embeddings = embeddings[[i for i, x in enumerate(embedding_ids) if x in intersection]]
-            coordinates = coordinates[[i for i, x in enumerate(residues_ids) if x in intersection]]
-            assert len(embeddings) == len(coordinates)
-            # print("found diffs between embedding and resildues ids")
-            # raise ValueError
+            ca_coordinates = ca_coordinates[[i for i, x in enumerate(residues_ids) if x in intersection]]
+            assert len(embeddings) == len(ca_coordinates)
         assert all(value > 0 for value in residue_indices), "all indices should be non negative"
 
-        return embeddings, coordinates, residue_indices
+        return embeddings, ca_coordinates, residue_indices, all_coordinates
     
     def _read_ligand(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, torch.Tensor]:
         ligand_model_path = os.path.join(self._base_data_path, ligand_id,  chain + '_ligand.pdb')
@@ -140,7 +163,6 @@ class ScannetDataset(BasePairDataset):
         coordinates = torch.stack(coordinates)
 
         return coordinates
-    
 
     def _read_pocket_coordinates(self, ligand_id: str, p_name: str) -> tuple[torch.Tensor, torch.Tensor]:
         """

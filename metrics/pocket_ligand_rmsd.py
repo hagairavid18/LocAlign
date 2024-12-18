@@ -24,13 +24,18 @@ class PocketRMSD(Module):
         self.tar_non_pocket_embeddings_scalar = {deg: 0 for deg in range(1, 9)}
         self.count_per_degree = {deg: 0 for deg in range(1, 9)}
         self.total_count = 0
-        self.sample_metrics = {'cath_degree_per_sample': [], 'pocket_rmsd_per_sample': []}
+        self.sample_metrics = {'cath_degree_per_sample': [], 'pocket_rmsd_per_sample': [], 'pair_infos': []}
+
+        # Initialize a dictionary to store protein names and their pocket_rmsd per degree
+        self.pair_infos_per_degree = {deg: [] for deg in range(1, 9)}
+        self.pocket_rmsd_per_degree_protein = {deg: [] for deg in range(1, 9)}
 
     def update(self, batch, outputs):
         batch_size = len(batch['metadata'])
         for batch_id in range(batch_size):
             metadata = batch['metadata'][batch_id]
             cath_degree = metadata['cath_degree']
+            pair_info = (batch['metadata'][0]['Ligand_ID'], batch['metadata'][0]['mov_protein'], batch['metadata'][0]['ref_protein'])
 
             # Compute transformations
             gt_T, pred_T = torch.eye(4), torch.eye(4)
@@ -48,14 +53,19 @@ class PocketRMSD(Module):
             self.ligand_rmsd_per_degree[cath_degree] += ligand_rmsd
             self.count_per_degree[cath_degree] += 1
 
-            if  'embeddings_dict' in outputs and "src_pocket_scalar_mean" in outputs['embeddings_dict']:
-                self.src_pocket_embeddings_scalar[cath_degree]+= outputs['embeddings_dict']['src_pocket_scalar_mean']
-                self.src_non_pocket_embeddings_scalar[cath_degree]+= outputs['embeddings_dict']['src_non_pocket_scalar_mean']
-                self.tar_pocket_embeddings_scalar[cath_degree]+= outputs['embeddings_dict']['tar_pocket_scalar_mean']
-                self.tar_non_pocket_embeddings_scalar[cath_degree]+= outputs['embeddings_dict']['tar_non_pocket_scalar_mean']
+            if 'embeddings_dict' in outputs and "src_pocket_scalar_mean" in outputs['embeddings_dict']:
+                self.src_pocket_embeddings_scalar[cath_degree] += outputs['embeddings_dict']['src_pocket_scalar_mean']
+                self.src_non_pocket_embeddings_scalar[cath_degree] += outputs['embeddings_dict']['src_non_pocket_scalar_mean']
+                self.tar_pocket_embeddings_scalar[cath_degree] += outputs['embeddings_dict']['tar_pocket_scalar_mean']
+                self.tar_non_pocket_embeddings_scalar[cath_degree] += outputs['embeddings_dict']['tar_non_pocket_scalar_mean']
 
             self.sample_metrics['cath_degree_per_sample'].append(cath_degree)
             self.sample_metrics['pocket_rmsd_per_sample'].append(pocket_rmsd.cpu())
+            self.sample_metrics['pair_infos'].append(pair_info)  # Store the protein name
+
+            # Update the dictionary with protein names and pocket_rmsd per degree
+            self.pair_infos_per_degree[cath_degree].append(pair_info)
+            self.pocket_rmsd_per_degree_protein[cath_degree].append(pocket_rmsd.cpu())
 
             # First iteration metrics
             if 'pred_first_R' in outputs:
@@ -63,7 +73,7 @@ class PocketRMSD(Module):
                 pred_T[:3, 3] = outputs['pred_first_t'][batch_id]
                 pocket_rmsd_first = compute_rmsd_torch(batch['src_pocket'], batch['gt_R'], batch['gt_t'], outputs['pred_first_R'], outputs['pred_first_t'], batch['src_pocket_mask'])[batch_id]
                 self.pocket_rmsd_first_iter_per_degree[cath_degree] += pocket_rmsd_first
-                
+
         self.total_count += batch_size
 
     def compute(self):
@@ -92,8 +102,7 @@ class PocketRMSD(Module):
             'total_count': self.total_count
         }
 
-
-         # Calculate proportion of RMSD < 4 per degree and overall
+        # Return both total and per-degree metrics, including protein names and pocket RMSD for each degree
         rmsd_below_4_per_degree = {deg: 0 for deg in range(1, 9)}
         total_rmsd_below_4 = 0
         for rmsd, degree in zip(self.sample_metrics['pocket_rmsd_per_sample'], self.sample_metrics['cath_degree_per_sample']):
@@ -105,7 +114,11 @@ class PocketRMSD(Module):
             deg: (rmsd_below_4_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(1, 9)
         }
         total_proportion_below_4 = total_rmsd_below_4 / self.total_count if self.total_count > 0 else 0
-
-        # Return both total and per-degree metrics
-        return {**total_metrics, **per_degree_metrics, **counts, **self.sample_metrics, **pocket_embeddings_metrics, 'rmsd_below_4_proportion_per_degree': proportion_below_4_per_degree,
-        'rmsd_below_4_total_proportion': total_proportion_below_4,}
+        return {   # Calculate proportion of RMSD < 4 per degree and overall
+            **total_metrics, **per_degree_metrics, **counts, **self.sample_metrics, 
+            **pocket_embeddings_metrics, 
+            'pair_infos_per_degree': self.pair_infos_per_degree, 
+            'pocket_rmsd_per_degree_protein': self.pocket_rmsd_per_degree_protein,
+             'rmsd_below_4_proportion_per_degree': proportion_below_4_per_degree,
+            'rmsd_below_4_total_proportion': total_proportion_below_4,
+        }

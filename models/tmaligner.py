@@ -21,6 +21,7 @@ class TMaligner(L.LightningModule):
         metric_types = {
             'pocket_rmsd': 'valid_pocket_rmsd',
             'pocket_rmsd_iter0': 'valid_pocket_rmsd_iter0',
+            'rmsd_below_4_proportion_per_degree' : 'rmsd_below_4',
         }
         
         # Log total metrics

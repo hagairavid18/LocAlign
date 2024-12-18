@@ -17,7 +17,7 @@ class RTLoss(nn.Module):
     def forward(self, batch, rotation_ab_pred, translation_ab_pred):
         rotation_mse = rotation_loss_frobenius(rotation_ab_pred, batch['gt_R'])
         translation_mse = F.mse_loss(translation_ab_pred, batch['gt_t'][:, :3])
-        translation_rmse = torch.sqrt(translation_rmse)
+        translation_rmse = torch.sqrt(translation_mse)
         return {'transformation': rotation_mse + self._translation_weight * translation_mse, 'rotation': rotation_mse, 'translation': translation_rmse}
 
 class PocketLoss(nn.Module):

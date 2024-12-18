@@ -1,18 +1,20 @@
 trainer:
-  exp_name: "add-ligand-rmsd-loss-is-on-ligand"
+  exp_name: "test-add-p_names"
   max_epochs: 40
   validate_only: false
   check_val_every_n_epoch: 3
   gradient_clipping: 30.0
   profiler: false
-  # ckpt_path: "checkpoints/new-pockets/epoch=29-step=19560.ckpt"
+  # ckpt_path: "checkpoints/add-ligand-rmsd-log-transloss/epoch=23-step=31296.ckpt"
   ckpt_path: null
 model:
   name: LearnableSoftBB
   args:
     plot_alignments: False
+    use_atom_level: False
+    use_atom_distances: True
     max_iter: 5
-    compute_pocket_importance: True
+    compute_pocket_importance: False
     use_scalar_layer: true
     input_layer:
       name:
@@ -35,13 +37,13 @@ model:
         output_dim: 1
         dropout: 0.05
     loss:
-      use_transformation: False
+      use_transformation: false
       pocket:
         name: PocketLoss
         args: {"return_non_linear": True}
       transformation:
         name: RTLoss
-        args: {"translation_weight": 0.001}
+        args: {"translation_weight": 0.1}
     optimizer:
       name: Adam
       args:
@@ -68,7 +70,7 @@ dataset:
       seed: 81
       min_cath: 1
 dataloader:
-  train_batch_size: 4
+  train_batch_size: 8
   valid_batch_size: 1
   test_batch_size: 1
-  n_workers: 30
+  n_workers: 15
