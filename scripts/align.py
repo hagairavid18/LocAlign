@@ -14,7 +14,7 @@ from utils.process_pair import align_pair
 from parsers.pair import parse_protein_pairs
 
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-logging.basicConfig(filename=os.path.join("logs", start_time + ".log"), level=logging.INFO, format='%(message)s')
+logging.basicConfig(filename=os.path.join("logs", 'align', start_time + ".log"), level=logging.INFO, format='%(message)s')
 
 logger = logging.getLogger(__name__)
 

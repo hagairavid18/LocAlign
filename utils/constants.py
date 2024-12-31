@@ -27,6 +27,7 @@ class ResultHolder:
         self.rmse: list[list[float]] = []
         self.coverage: list[list[float]] = []
         self.bbr: list[list[float]] = []
+        self.bbc: list[list[float]] = []
         self.cath_degree: int = pair_dict['cath_level']
         self.ref_ligand_n_atoms: int = -1
         self.mov_ligand_n_atoms: int = -1

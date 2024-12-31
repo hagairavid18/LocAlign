@@ -20,18 +20,38 @@ logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 
-def best_buddy_count(P, Q):
+from scipy.spatial import distance_matrix
+import numpy as np
+
+from scipy.spatial.transform import Rotation
+import numpy as np
+
+
+def best_buddy_count(P, Q, dist_thresh=None):
+    """
+    Count the number of best buddies between two point sets P and Q.
+    
+    Args:
+        P (np.ndarray): Point set P (N x D array).
+        Q (np.ndarray): Point set Q (M x D array).
+        dist_thresh (float, optional): Distance threshold. If provided, only pairs
+                                       within this distance are counted as best buddies.
+
+    Returns:
+        int: Number of best buddies.
+    """
     dist_PQ = distance_matrix(P, Q)
     dist_QP = distance_matrix(Q, P)
     closest_in_Q_to_P = np.argmin(dist_PQ, axis=1)
     closest_in_P_to_Q = np.argmin(dist_QP, axis=1)
-    
     best_buddies = 0
     for i, j in enumerate(closest_in_Q_to_P):
         if closest_in_P_to_Q[j] == i:
-            best_buddies += 1
-            
+            if dist_thresh is None or dist_PQ[i, j] < dist_thresh:
+                best_buddies += 1
+
     return best_buddies
+
 
 
 class ProteinPair:
@@ -81,13 +101,33 @@ class ProteinPair:
             except Exception as e:
                 print(e)
     
-    def _get_best_buddy_ratio(self, R, t, mov_ligand_res_idx, ref_ligand_res_idx) -> float:
-        mov_atoms: np.ndarray = self._mov_protein.get_pocket_atoms(ligand_res_idx = mov_ligand_res_idx)
-        ref_atoms: np.ndarray = self._ref_protein.get_pocket_atoms(ligand_res_idx = ref_ligand_res_idx)
+    def _get_best_buddy_ratio(self, R, t, mov_ligand_res_idx, ref_ligand_res_idx, bb_ratio: None | float = None) -> float:
+        mov_atoms, _ = self._mov_protein.get_pocket_atoms_within_4A(ligand_res_idx = mov_ligand_res_idx, distance_thresh=4.0)
+        ref_atoms, _ = self._ref_protein.get_pocket_atoms_within_4A(ligand_res_idx = ref_ligand_res_idx, distance_thresh=4.0)
         transformed_mov_pocket = np.dot(mov_atoms, R) + t[:3]
-        bbc = best_buddy_count(transformed_mov_pocket, ref_atoms)
-        logging.info(f"n bb: {bbc} bbc ratio {bbc / min(mov_atoms.shape[0], ref_atoms.shape[0])}")
-        return bbc / min(mov_atoms.shape[0], ref_atoms.shape[0])
+        bbc = best_buddy_count(transformed_mov_pocket, ref_atoms, bb_ratio)
+        bb_ratio = bbc/ min(mov_atoms.shape[0], ref_atoms.shape[0])
+        logging.info(f"4 ang n bb: {bbc} bbc ratio {bb_ratio}")
+        return bb_ratio, bbc
+    
+    def _get_best_buddy_around_ref_center(self, R, t, bb_ratio: None | float = None, distance_thresh: float = 4.0) -> float:
+        
+        all_atoms_ref = np.array([atom.coord for atom in self._ref_protein._get_atoms(all_atoms=True) if atom.element != "H"])
+        ref_close_atoms = Protein.get_atoms_within_distance(all_atoms_ref ,center=all_atoms_ref.mean(0), distance_thresh=distance_thresh)
+        
+        copy_model = self._mov_protein.get_model(self._mov_model_idx).copy()
+        for atom in copy_model.get_atoms():
+            atom.transform(R[:3, :3], t[:3])
+        transformed_mov_coord = [atom.coord for atom in copy_model.get_atoms()]
+        
+        mov_close_atoms = Protein.get_atoms_within_distance(transformed_mov_coord, center=all_atoms_ref.mean(0), distance_thresh=distance_thresh)
+        
+        # Compute best buddy count and ratio
+        bbc = best_buddy_count(mov_close_atoms, ref_close_atoms, bb_ratio)
+        bbr = bbc / min(mov_close_atoms.shape[0], ref_close_atoms.shape[0])
+        logging.info(f"{distance_thresh}A n bb: {bbc} bb ratio {bbr}")
+        
+        return bbr, bbc
     
     def find_ligand_transformations(self, holder: ResultHolder, aligner, min_ligand_atoms: int = 3) -> None:
         ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_residues()
@@ -102,7 +142,7 @@ class ProteinPair:
             holder.failure_message = TOO_MUCH_RESIDUES_MESSAGE
             return
         error_message = ""
-        all_R, all_t, all_rmse, all_coverage, all_bbr = ([[] for _ in range(n_ligand_pairs)] for _ in range(5))
+        all_R, all_t, all_rmse, all_coverage, all_bbr, all_bbc = ([[] for _ in range(n_ligand_pairs)] for _ in range(6))
         curr_pair_idx = 0
         for i, ref_residue in enumerate(ref_ligand):
             for j, mov_residue in enumerate(mov_ligand):
@@ -123,7 +163,10 @@ class ProteinPair:
                 all_rmse[curr_pair_idx] = rmse
                 all_coverage[curr_pair_idx] = coverage
                 try:
-                    all_bbr[curr_pair_idx] = [self._get_best_buddy_ratio(R[k], t[k], j , i) for k in range(len(R))]
+                    for k in range(len(R)):
+                        bbr, bbc = self._get_best_buddy_ratio(R[k], t[k], j , i, 2.0)
+                        all_bbr[curr_pair_idx].append(bbr)
+                        all_bbc[curr_pair_idx].append(bbc)
                 except Exception as e:
                     logging.info(e)
                     holder.failure_message = "Failed to compute in bbr"
@@ -137,6 +180,7 @@ class ProteinPair:
         holder.rmse = all_rmse
         holder.coverage = all_coverage
         holder.bbr = all_bbr
+        holder.bbc = all_bbc
         holder.n_transformations = sum([len(rot) for rot in all_R])
         if len(all_R) == 0:
             holder.failure_message = error_message
@@ -145,10 +189,10 @@ class ProteinPair:
         
         ref_chain = self._ref_protein.get_model(self._ref_model_idx, True)
         mov_chain = self._mov_protein.get_model(self._mov_model_idx, True)
-        ref_coord, seq1 = Protein.get_residue_data(ref_chain)
-        mov_coord, seq2 = Protein.get_residue_data(mov_chain)
+        ref_coord, seq1, _ = Protein.get_residue_data(ref_chain)
+        mov_coord, seq2, _ = Protein.get_residue_data(mov_chain)
     
-        if isinstance(aligner, aligner.name == "DaliAligner"):
+        if aligner.name ==  "DaliAligner":
             R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, f'{LIGAND_DIR}/{self._ligand_name}')
         else:
             R, t, rmsd, _ = aligner.impose_structure(ref_coord, mov_coord, seq1, seq2, self._base_dir)
@@ -158,6 +202,26 @@ class ProteinPair:
         
         if len(R) > 0:
             ligand_rmsd =  self._compute_ligand_rmsd(R[0], t[0])
+            try:
+
+                ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_residues()
+                mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_residues()
+                n_ligand_pairs = len(ref_ligand) * len(mov_ligand)
+                all_bbr, all_bbc = ([[] for _ in range(n_ligand_pairs)] for _ in range(2))
+                curr_pair_idx = 0
+                for i, ref_residue in enumerate(ref_ligand):
+                    for j, mov_residue in enumerate(mov_ligand):
+                            error_message: str = ProteinPair.validate_ligand_pair(ref_residue, mov_residue)
+                            if len(error_message) > 1:
+                                continue
+                            for k in range(len(R)):
+                                bbr, bbc = self._get_best_buddy_around_ref_center(R[k], t[k], bb_ratio=2.0, distance_thresh=7.0)
+                                all_bbr[curr_pair_idx].append(bbr)
+                                all_bbc[curr_pair_idx].append(bbc)
+                            curr_pair_idx +=1
+            except Exception as e:
+                logging.info(e)
+                holder.failure_message = "Failed to compute in bbr"
         else:
             ligand_rmsd = None
         
@@ -165,6 +229,8 @@ class ProteinPair:
         holder.__setattr__(f"{aligner.name}_translations", t)
         holder.__setattr__(f"{aligner.name}_protein_rmsd", rmsd)
         holder.__setattr__(f"{aligner.name}_rmsd", ligand_rmsd)
+        holder.__setattr__(f"{aligner.name}_bbr", all_bbr)
+        holder.__setattr__(f"{aligner.name}_bbc", all_bbc)
 
     def _compute_ligand_rmsd(self, R, t):
         try:

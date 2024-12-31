@@ -78,12 +78,6 @@ class Protein:
         os.makedirs(cache_dir, exist_ok=True)
         cache_file = os.path.join(cache_dir, f"{self._pdb_name}_non_ligand_model.pkl")
 
-        # Check if cached model exists
-        if os.path.exists(cache_file):
-            with open(cache_file, 'rb') as f:
-                return pickle.load(f)
-
-        # Compute the non-ligand model
         peptide_model = self.get_model(self._model_idx)
         non_ligand_model, num_of_ligand_atoms = Protein.create_non_ligand_model(peptide_model, self._ligand_name, self._chain_id)
 
@@ -116,12 +110,64 @@ class Protein:
     def get_ligand_residues(self) -> list[Residue]:
         return list(list(self._ligand_model.get_chains())[0])
     
-    def get_pocket_atoms(self, residues_thresh: float = 5.0, atoms_thresh: float =  8.0, ligand_res_idx: int = 0) -> np.ndarray:
+    def get_pocket_atoms_within_4A(
+        self, 
+        distance_thresh: float = 4.0, 
+        ligand_res_idx: int = 0
+    ) -> np.ndarray:
+        ligand_residue = self.get_ligand_residues()[ligand_res_idx]  # Handle ligand with more residues if needed
+        ligand_coors = np.array([atom.coord for atom in ligand_residue.get_atoms() if atom.element != "H"])
+        pocket_atoms = []
+        pocket_residue_indices = []
+
+        # First loop: Identify atoms within the threshold distance
+        for residue in list(self.get_model(self._model_idx, True)):
+            if residue.resname == self._ligand_name:  # Skip ligand itself
+                continue
+            for atom in residue.get_atoms():
+                if atom.element != "H":  # Ignore hydrogens
+                    atom_coor = np.array([atom.coord])
+                    distances = cdist(ligand_coors, atom_coor, metric='euclidean')
+                    if distances.min() < distance_thresh:
+                        pocket_atoms.append(atom)
+                        pocket_residue_indices.append(residue.id[1])
+
+        # Extract coordinates of pocket atoms
+        pocket_atoms_coors = np.array([atom.coord for atom in pocket_atoms])
+
+        return pocket_atoms_coors, pocket_residue_indices
     
-        ligand_residue = self.get_ligand_residues()[ligand_res_idx] # TODO: handle ligand with more residues
+    @staticmethod
+    def get_atoms_within_distance(all_atoms_coord: np.ndarray, center: np.ndarray, distance_thresh: float = 4.0) -> np.ndarray:
+        """
+        Extract atoms within a specified distance from the given center point.
+        
+        Args:
+            center: A 3D coordinate representing the reference point.
+            distance_thresh: The threshold distance to include atoms.
+            
+        Returns:
+            An array of coordinates for atoms within the specified distance.
+        """
+        atoms_within_distance = []
+        for atom_coord in all_atoms_coord:
+            distance = np.linalg.norm(atom_coord - center)
+            if distance < distance_thresh:
+                atoms_within_distance.append(atom_coord)
+        return np.array(atoms_within_distance)
+    
+    def get_pocket_atoms(
+        self, 
+        residues_thresh: float = 5.0, 
+        atoms_thresh: float = 8.0, 
+        ligand_res_idx: int = 0, 
+        first_loop_only: bool = False
+    ) -> np.ndarray:
+        ligand_residue = self.get_ligand_residues()[ligand_res_idx]  # TODO: handle ligand with more residues
         ligand_coors = [atom.coord for atom in ligand_residue.get_atoms() if atom.element != "H"]
         pocket_residues = []
         pocket_atoms = []
+        pocket_residue_indices = []
         for residue in list(self.get_model(self._model_idx, True)):
             if residue.resname == self._ligand_name:
                 continue
@@ -130,8 +176,16 @@ class Protein:
             if distances.min() < residues_thresh:
                 pocket_residues.append(residue)
                 pocket_atoms += list(residue)
+                pocket_residue_indices.append(residue.id[1])
         
+        # If only results from the first loop are needed
+        if first_loop_only:
+            pocket_atoms_coors = np.array([atom.coord for atom in pocket_atoms if atom.element != "H"])
+            return pocket_atoms_coors, pocket_residue_indices
+
+        # Continue with second loop
         pocket_atoms_coors = np.array([atom.coord for atom in pocket_atoms if atom.element != "H"])
+        pocket_atoms_ca_coors = np.array([atom.coord for atom in pocket_atoms if atom.element != "CA"])
         close_atoms = np.empty((0, 3))
 
         for residue in list(self.get_model(self._model_idx, True)):
@@ -143,16 +197,70 @@ class Protein:
             if res_coors.any():
                 distances = cdist(pocket_atoms_coors, res_coors, metric='euclidean')
                 close_atoms = np.vstack((close_atoms, res_coors[np.unique(np.where(distances < atoms_thresh)[1])]))
+                close_ca_indices = np.unique(np.where(distances < atoms_thresh)[1])
+                if len(close_ca_indices) > 0:
+                    pocket_residue_indices.append(residue.id[1])
+                    pocket_residues
 
         result = np.vstack((close_atoms, pocket_atoms_coors))
-        cache_dir = f"{LIGAND_DIR}/{self._ligand_name}/cache"
-        pocket_atoms_file = os.path.join(cache_dir, f"{self._pdb_name}_pocket_atoms.pkl")
-        # Save results to cache
-        with open(pocket_atoms_file, 'wb') as f:
-            pickle.dump(result, f)
 
-        return result
+        return result, pocket_residue_indices
+
     
+    def get_pocket_atoms_with_ca(
+    self, residues_thresh: float = 5.0, atoms_thresh: float = 8.0, ligand_res_idx: int = 0
+) -> tuple[np.ndarray, list[int]]:
+        """
+        Calculate pocket atoms and return only the Cα coordinates of the pocket along with residue indices.
+        """
+        # Get ligand residue and its coordinates
+        ligand_residue = self.get_ligand_residues()[ligand_res_idx]
+        ligand_coors = [atom.coord for atom in ligand_residue.get_atoms() if atom.element != "H"]
+
+        pocket_residues = []
+        pocket_atoms = []
+        pocket_ca_residue_indices = []
+        pocket_ca_coords = []
+
+        # First loop: Find residues near the ligand (within residues_thresh)
+        for residue in list(self.get_model(self._model_idx, True)):
+            if residue.resname == self._ligand_name:
+                continue
+
+            # Get all heavy atom coordinates in the residue
+            res_coors = [atom.coord for atom in residue.get_atoms() if atom.element != "H"]
+            distances = cdist(ligand_coors, res_coors, metric="euclidean")
+            if distances.min() < residues_thresh:
+                pocket_residues.append(residue)
+                pocket_atoms += list(residue)
+
+                # Add Cα atom coordinates if available
+                ca_atom = next((atom for atom in residue.get_atoms() if atom.name == "CA"), None)
+                if ca_atom is not None:
+                    pocket_ca_coords.append(ca_atom.coord)
+                    pocket_ca_residue_indices.append(residue.id[1])
+
+        pocket_atoms_coors = np.array([atom.coord for atom in pocket_atoms if atom.element != "H"])
+        pocket_ca_coords = np.array(pocket_ca_coords)
+
+        # Second loop: Include residues with Cα atoms near the pocket (within atoms_thresh)
+        for residue in list(self.get_model(self._model_idx, True)):
+            if residue.resname == self._ligand_name or residue in pocket_residues:
+                continue
+
+            # Check distances for Cα atoms
+            ca_atom = next((atom for atom in residue.get_atoms() if atom.name == "CA"), None)
+            if ca_atom is not None:
+                ca_coord = ca_atom.coord
+                distances = cdist(pocket_atoms_coors, np.array([ca_coord]), metric="euclidean")
+                if distances.min() < atoms_thresh:
+                    pocket_ca_coords = np.vstack((pocket_ca_coords, ca_coord))
+                    pocket_ca_residue_indices.append(residue.id[1])
+
+        # Ensure consistency in return values
+        pocket_ca_coords = np.array(pocket_ca_coords)
+        return pocket_ca_coords, pocket_ca_residue_indices
+
     @staticmethod
     def create_ligand_model(model: Model, ligand_name: str, chain_idx: int) -> tuple[Model, list[int]]:
         
@@ -191,13 +299,12 @@ class Protein:
         non_ligand_model.add(non_ligand_chain)
         return non_ligand_model, num_atoms
     
-    def _get_atoms(self, id: str = " ") -> list[list[Atom]]:
+    def _get_atoms(self, id: str = " ", all_atoms: bool = False) -> list[list[Atom]]:
         atoms =  [] 
 
         for residue in list(self.get_model(self._model_idx, True)):
-            if residue.resname == id:
-                atoms.append(list(residue))
-     
+            if all_atoms or residue.resname == id:
+                atoms += (list(residue))
         return atoms
     
     @staticmethod
@@ -226,23 +333,31 @@ class Protein:
         io.save(output_filename)
     
     @staticmethod
-    def get_residue_data(chain: Chain) -> tuple[np.ndarray, str]:
+    def get_residue_data(chain: Chain) -> tuple[np.ndarray, str, list[int]]:
+        """
+        Extracts CA coordinates, residue sequence, and residue indices from a chain.
+
+        Args:
+            chain (Bio.PDB.Chain): A chain from a PDB structure.
+
+        Returns:
+            tuple[np.ndarray, str, list[int]]: A tuple containing:
+                - A NumPy array of CA atom coordinates.
+                - A string of the protein sequence derived from the residues.
+                - A list of residue indices corresponding to the coordinates.
+        """
         coords = []
         seq = []
+        residue_indices = []
+        
         for residue in chain.get_residues():
             if "CA" in residue.child_dict and residue.resname in protein_letters_3to1:
                 coords.append(residue.child_dict["CA"].coord)
                 seq.append(protein_letters_3to1[residue.resname])
+                residue_indices.append(residue.id[1])  # Extract residue index
 
-        return np.vstack(coords), "".join(seq)
+        return np.vstack(coords), "".join(seq), residue_indices
+
     
     def get_num_of_ligand_atoms(self) -> int:
         return self._num_of_ligand_atoms
-
-
-  
-
-
-
-
-

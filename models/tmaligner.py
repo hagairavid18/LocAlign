@@ -21,7 +21,13 @@ class TMaligner(L.LightningModule):
         metric_types = {
             'pocket_rmsd': 'valid_pocket_rmsd',
             'pocket_rmsd_iter0': 'valid_pocket_rmsd_iter0',
-            'rmsd_below_4_proportion_per_degree' : 'rmsd_below_4',
+            'ligand_rmsd': 'valid_ligand_rmsd',
+            'ligand_rmsd_iter0': 'valid_ligand_rmsd_iter0',
+            'src_pocket_embeddings_scalar': 'src_pocket_embeddings_scalar',
+            'tar_pocket_embeddings_scalar': 'tar_pocket_embeddings_scalar',
+            'src_non_pocket_embeddings_scalar': 'src_non_pocket_embeddings_scalar',
+            'tar_non_pocket_embeddings_scalar': 'tar_non_pocket_embeddings_scalar',
+            'rmsd_below_4_proportion_per_degree': 'rmsd_below_4',
         }
         
         # Log total metrics
@@ -38,9 +44,34 @@ class TMaligner(L.LightningModule):
         self.log("total_count", metrics['total_count'], on_epoch=True)
         for cath_degree, count in metrics['counts_per_degree'].items():
             self.log(f'count_degree_{cath_degree}', count, on_epoch=True)
-
-        self.logger.experiment.log_image(image_data=generate_and_log_scatter_plot(metrics), name="Pocket RMSD")
+        
+        # Log protein names and pocket_rmsd per degree in a table
+        protein_rmsd_data = []
+        
+        for cath_degree in range(1, 9):
+            pair_infos = metrics['pair_infos_per_degree'][cath_degree]
+            pocket_rmsd_values = metrics['pocket_rmsd_per_degree_protein'][cath_degree]
             
+            for pair_info, pocket_rmsd in zip(pair_infos, pocket_rmsd_values):
+                protein_rmsd_data.append({
+                    'ligand': pair_info[0],
+                    'src protein': pair_info[1],
+                    'tar protein': pair_info[2],
+                    'bbr': pair_info[3],
+                    'CATH Degree': cath_degree,
+                    'Pocket RMSD': pocket_rmsd.item()
+                })
+        
+        
+        if protein_rmsd_data:
+            import pandas as pd
+            dir_path = os.path.join("results", "validation_results", self.logger.experiment.get_name())
+            os.makedirs(dir_path, exist_ok=True)
+            df = pd.DataFrame(protein_rmsd_data)
+            df.to_csv(os.path.join(dir_path, f"Protein_RMSD_Results_{self.current_epoch}.csv"))
+            self.logger.experiment.log_table(f"Protein_RMSD_Results_{self.current_epoch}.csv", df)
+        
+        
         self._metrics.reset()
 
     def validation_step(self, batch, batch_idx):
