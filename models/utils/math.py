@@ -15,3 +15,26 @@ def compute_rmsd_torch(coordinates: torch.Tensor, gt_R: torch.Tensor, gt_t: torc
     rmsd_value = torch.sqrt(masked_squared_diff.sum(dim=1) / valid_counts.clamp(min=1e-10))  # Shape [B]
             
     return rmsd_value
+
+
+def compose_transformations(rotations: list[torch.Tensor], translations: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compose the transformations to get the final rotation and translation matrices.
+
+        Args:
+            rotations (list[torch.Tensor]): Residual rotation from each step.
+            translations (list[torch.Tensor]): residual translation from each step.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: The final rotation and translation matrices.
+        """
+        batch_size = rotations[0].shape[0]
+        device = rotations[0].device        
+        R_total = torch.eye(3, device=device).unsqueeze(0).repeat(batch_size, 1, 1) 
+        t_total = torch.zeros(batch_size, 3, device=device)
+
+        for R, t in zip(rotations, translations):
+            R_total = R_total @ R
+            t_total = torch.bmm(t_total.unsqueeze(1), R).squeeze(1) + t
+
+        return R_total, t_total

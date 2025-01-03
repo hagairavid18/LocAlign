@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "test-add-p_names"
+  exp_name: "reformat-test-30-grad-seed-fix-mask-maskbn"
   max_epochs: 40
   validate_only: false
   check_val_every_n_epoch: 3
@@ -8,16 +8,15 @@ trainer:
   # ckpt_path: "checkpoints/add-ligand-rmsd-log-transloss/epoch=23-step=31296.ckpt"
   ckpt_path: null
 model:
-  name: LearnableSoftBB
+  name: SoftBB
   args:
-    plot_alignments: False
     use_atom_level: False
-    use_atom_distances: True
+    use_atom_distances: False
     max_iter: 5
     compute_pocket_importance: False
     use_scalar_layer: true
     input_layer:
-      name:
+      name: 
         FeatureBlockGPT
       args:
         skip_connection: True
@@ -73,4 +72,4 @@ dataloader:
   train_batch_size: 8
   valid_batch_size: 1
   test_batch_size: 1
-  n_workers: 15
+  n_workers: 10
