@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "reformat-test-30-grad-seed-fix-mask-maskbn"
+  exp_name: "sanity-check2"
   max_epochs: 40
   validate_only: false
   check_val_every_n_epoch: 3
@@ -10,11 +10,7 @@ trainer:
 model:
   name: SoftBB
   args:
-    use_atom_level: False
-    use_atom_distances: False
     max_iter: 5
-    compute_pocket_importance: False
-    use_scalar_layer: true
     input_layer:
       name: 
         FeatureBlockGPT

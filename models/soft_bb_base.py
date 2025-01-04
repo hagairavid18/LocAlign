@@ -13,7 +13,7 @@ torch.set_float32_matmul_precision('medium')
 
 
 class SoftBBBase(L.LightningModule, ABC):
-    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], max_iter: int = 5, use_atom_level: bool = False) -> None:
+    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], max_iter: int = 5) -> None:
         """
         Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of embeddings and computes the optimal transformation between them.
         Iterate over the optimal transformation and the correspondence matrix to minimize the pocket RMSD loss function.
@@ -22,7 +22,6 @@ class SoftBBBase(L.LightningModule, ABC):
             loss (dict[str, Any]): loss functions to be used in the model.
             optimizer (dict[str, Any]): optimizer configuration.
             max_iter (int, optional): Since the process is iterative, we define max iterations. Defaults to 5.
-            use_atom_level (bool, optional): True if inputs are atom, false for residues. Defaults to False.
         """        
         super().__init__()
         self._pocket_loss = build_object(loss['pocket'], 'losses')
@@ -33,7 +32,6 @@ class SoftBBBase(L.LightningModule, ABC):
         self._min_diff = 0.05
         self._max_iter = max_iter
         self._lr = optimizer['args']['learning_rate']
-        self._use_atom_level = use_atom_level
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_embedding'].shape[0]
@@ -103,30 +101,6 @@ class SoftBBBase(L.LightningModule, ABC):
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
-    
-    def compute_correspondences(self, batch, combined_mask: torch.Tensor) -> dict[str, torch.Tensor]:
-        """
-        Compute a soft correspondences matrix  between the source and target embeddings.
-
-        Args:
-            batch (_type_): contains the source and target embeddings.
-            combined_mask (torch.Tensor): 2D mask for the combined mask.
-
-        Returns:
-            _type_: _description_
-        """        
-        
-        embeddings_dict = self.create_correspondences_matrix(batch, batch['tar_embedding'], batch['src_embedding'])
-        print(f"l2_embedding mean: {embeddings_dict['l2_embedding'].mean()}, l2_embedding std: {embeddings_dict['l2_embedding'].std()}")
-        l2_embedding = embeddings_dict['l2_embedding'] * combined_mask
-        print(f"l2_embedding mean after mask: {l2_embedding.mean()}, l2_embedding std after mask: {l2_embedding.std()}")
-        l2_embedding = l2_embedding.masked_fill(~combined_mask, float('inf'))
-        return embeddings_dict, l2_embedding
-
-    
-    @abstractmethod
-    def create_correspondences_matrix(self) -> dict[str, torch.Tensor]:
-        pass
 
     @abstractmethod
     def training_step(self):
