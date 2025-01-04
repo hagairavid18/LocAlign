@@ -2,6 +2,14 @@ from torch import nn
 import torch
 
 
+def set_seed(seed: int):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+set_seed(42)
+
 class IdentityLayer(nn.Module):
     def __init__(self):
         super(IdentityLayer, self).__init__()
