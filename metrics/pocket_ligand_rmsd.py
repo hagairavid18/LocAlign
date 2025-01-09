@@ -45,7 +45,8 @@ class PocketRMSD(Module):
             pred_T[:3, 3] = outputs['transformation_dict']['pred_t'][batch_id]
 
             # Compute RMSDs
-            pocket_rmsd = compute_rmsd_torch(batch['src_pocket'], batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_pocket_mask'])[batch_id]
+            pocket_coordinates = batch['src_pocket_frames'][:, :, 0, :]
+            pocket_rmsd = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_pocket_mask'])[batch_id]
             ligand_rmsd = compute_rmsd_torch(batch['src_ligand_coordinates'], batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_ligand_mask'])[batch_id]
 
             # Update metrics
@@ -71,7 +72,7 @@ class PocketRMSD(Module):
             if 'pred_first_R' in outputs:
                 pred_T[:3, :3] = outputs['pred_first_R'][batch_id]
                 pred_T[:3, 3] = outputs['pred_first_t'][batch_id]
-                pocket_rmsd_first = compute_rmsd_torch(batch['src_pocket'], batch['gt_R'], batch['gt_t'], outputs['pred_first_R'], outputs['pred_first_t'], batch['src_pocket_mask'])[batch_id]
+                pocket_rmsd_first = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], outputs['pred_first_R'], outputs['pred_first_t'], batch['src_pocket_mask'])[batch_id]
                 self.pocket_rmsd_first_iter_per_degree[cath_degree] += pocket_rmsd_first
 
         self.total_count += batch_size

@@ -1,14 +1,14 @@
 trainer:
-  exp_name: "softbbs-pocket"
+  exp_name: "virtual-atom-full-embed-heavier-2"
   max_epochs: 40
   validate_only: false
   check_val_every_n_epoch: 3
   gradient_clipping: 30.0
   profiler: false
-  # ckpt_path: "checkpoints/add-ligand-rmsd-log-transloss/epoch=23-step=31296.ckpt"
+  # ckpt_path: "checkpoints/first-test-cloud-pockets-no-clamp-translation-are-coord-T/epoch=23-step=15648.ckpt"
   ckpt_path: null
 model:
-  name: SoftBB
+  name: VirtualSoftBB
   args:
     max_iter: 5
     input_layer:
@@ -16,21 +16,31 @@ model:
         FeatureBlockGPT
       args:
         skip_connection: True
-        n_blocks: 3
+        n_blocks: 4
         input_dim: 256
         hidden_dim: 256
         output_dim: 256
-        dropout: 0.05
+        dropout: 0.1
+    virtual_layer:
+      name: 
+        FeatureBlockGPT
+      args:
+        skip_connection: No
+        n_blocks: 4
+        input_dim: 256
+        hidden_dim: 256
+        output_dim: 3
+        dropout: 0.1
     scalar_layer:
       name:
         FeatureBlockGPT
       args:
         skip_connection: False
-        n_blocks: 2
+        n_blocks: 3
         input_dim: 256
-        hidden_dim: 64
+        hidden_dim: 128
         output_dim: 1
-        dropout: 0.05
+        dropout: 0.1
     loss:
       use_transformation: false
       pocket:
@@ -49,26 +59,25 @@ dataset:
     args:
       df_path: datasets/csv_files/no_grouping/train.csv
       # n_samples: 100
-      level: "pocket"
-      seed: 81
+      seed: 41
       min_cath: 1
+      level: "pocket"
   validation:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/no_grouping/val.csv
       # n_samples: 100
-      level: "pocket"
       seed: 81
       min_cath: 1
+      level: "pocket"
   test:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/no_grouping/test.csv
       seed: 81
-      level: "pocket"
       min_cath: 1
 dataloader:
   train_batch_size: 8
   valid_batch_size: 1
   test_batch_size: 1
-  n_workers: 12
+  n_workers: 10

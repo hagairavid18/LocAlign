@@ -4,84 +4,31 @@ import os
 import torch
 import lightning as L
 
+from models.soft_bb_base import SoftBBBase
 from models.utils.collate import custom_collate_fn, move_batch_to_device
 from metrics import PocketRMSD
 from models.utils.misc import build_object, flatten_dict
-from models.utils.plots import generate_and_log_scatter_plot
 
 
-class TMaligner(L.LightningModule):
+class TMaligner(SoftBBBase):
     def __init__(self):
-        super().__init__()
+        super().__init__(loss=None, optimizer=None)
         self._metrics = PocketRMSD()
-        
-    def on_validation_epoch_end(self):
-        metrics = self._metrics.compute()
-        
-        metric_types = {
-            'pocket_rmsd': 'valid_pocket_rmsd',
-            'pocket_rmsd_iter0': 'valid_pocket_rmsd_iter0',
-            'ligand_rmsd': 'valid_ligand_rmsd',
-            'ligand_rmsd_iter0': 'valid_ligand_rmsd_iter0',
-            'src_pocket_embeddings_scalar': 'src_pocket_embeddings_scalar',
-            'tar_pocket_embeddings_scalar': 'tar_pocket_embeddings_scalar',
-            'src_non_pocket_embeddings_scalar': 'src_non_pocket_embeddings_scalar',
-            'tar_non_pocket_embeddings_scalar': 'tar_non_pocket_embeddings_scalar',
-            'rmsd_below_4_proportion_per_degree': 'rmsd_below_4',
-        }
-        
-        # Log total metrics
-        for metric_key, log_name in metric_types.items():
-            total_value = sum(metrics[metric_key].values()) / len(metrics[metric_key])
-            self.log(log_name, total_value, on_epoch=True)
-        
-        # Log each metric type per `cath_degree`
-        for metric_key, log_name in metric_types.items():
-            for cath_degree, value in metrics[metric_key].items():
-                self.log(f'{log_name}_degree_{cath_degree}', value, on_epoch=True)
-        
-        # Log counts
-        self.log("total_count", metrics['total_count'], on_epoch=True)
-        for cath_degree, count in metrics['counts_per_degree'].items():
-            self.log(f'count_degree_{cath_degree}', count, on_epoch=True)
-        
-        # Log protein names and pocket_rmsd per degree in a table
-        protein_rmsd_data = []
-        
-        for cath_degree in range(1, 9):
-            pair_infos = metrics['pair_infos_per_degree'][cath_degree]
-            pocket_rmsd_values = metrics['pocket_rmsd_per_degree_protein'][cath_degree]
-            
-            for pair_info, pocket_rmsd in zip(pair_infos, pocket_rmsd_values):
-                protein_rmsd_data.append({
-                    'ligand': pair_info[0],
-                    'src protein': pair_info[1],
-                    'tar protein': pair_info[2],
-                    'bbr': pair_info[3],
-                    'CATH Degree': cath_degree,
-                    'Pocket RMSD': pocket_rmsd.item()
-                })
-        
-        
-        if protein_rmsd_data:
-            import pandas as pd
-            dir_path = os.path.join("results", "validation_results", self.logger.experiment.get_name())
-            os.makedirs(dir_path, exist_ok=True)
-            df = pd.DataFrame(protein_rmsd_data)
-            df.to_csv(os.path.join(dir_path, f"Protein_RMSD_Results_{self.current_epoch}.csv"))
-            self.logger.experiment.log_table(f"Protein_RMSD_Results_{self.current_epoch}.csv", df)
-        
-        
-        self._metrics.reset()
 
     def validation_step(self, batch, batch_idx):
         batch = move_batch_to_device(batch, self.device)
         assert len(batch['metadata']) == 1
         R = torch.Tensor(batch['metadata'][0]['TMaligner_rotations'])
         t = torch.Tensor(batch['metadata'][0]['TMaligner_translations'])        
-        outputs = {'pred_R': R, 'pred_t': t}
+        outputs = { 'transformation_dict': {'pred_R': R, 'pred_t': t}}
         self._metrics.update(batch, outputs)
         return outputs
+    
+    def training_step(self):
+        pass
+
+    def configure_optimizers(self):
+        pass
 
 
 if __name__ == "__main__":

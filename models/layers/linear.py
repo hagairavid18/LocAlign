@@ -32,7 +32,6 @@ class LinearBlock(nn.Module):
         return x.view(B, N, -1) 
 
     
-
 class MaskedBatchNorm1d(nn.Module):
     def __init__(self, num_features, eps=1e-5, momentum=0.1):
         super(MaskedBatchNorm1d, self).__init__()

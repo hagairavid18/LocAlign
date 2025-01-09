@@ -13,7 +13,7 @@ torch.set_float32_matmul_precision('medium')
 
 
 class SoftBBBase(L.LightningModule, ABC):
-    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], max_iter: int = 5) -> None:
+    def __init__(self, loss: dict[str, Any] | None, optimizer: dict[str, Any] | None, max_iter: int = 5) -> None:
         """
         Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of embeddings and computes the optimal transformation between them.
         Iterate over the optimal transformation and the correspondence matrix to minimize the pocket RMSD loss function.
@@ -24,14 +24,14 @@ class SoftBBBase(L.LightningModule, ABC):
             max_iter (int, optional): Since the process is iterative, we define max iterations. Defaults to 5.
         """        
         super().__init__()
-        self._pocket_loss = build_object(loss['pocket'], 'losses')
-        self._transformation_loss = build_object(loss['transformation'], 'losses')
-        self._use_transformation_loss = loss['use_transformation']
+        self._pocket_loss = build_object(loss['pocket'], 'losses') if loss is not None else None
+        self._transformation_loss = build_object(loss['transformation'], 'losses') if loss is not None else None
+        self._use_transformation_loss = loss['use_transformation'] if loss is not None else False
         self._alpha_loss = 0.5
         self._metrics = PocketRMSD()
         self._min_diff = 0.05
         self._max_iter = max_iter
-        self._lr = optimizer['args']['learning_rate']
+        self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_embedding'].shape[0]
@@ -97,18 +97,12 @@ class SoftBBBase(L.LightningModule, ABC):
         self._metrics.reset()
     
     def on_validation_batch_end(self, outputs, batch, batch_idx):
+        if 'loss_dict' not in outputs:
+            return
         batch_size = batch['tar_embedding'].shape[0]
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
-
-    @abstractmethod
-    def training_step(self):
-       pass
-    
-    @abstractmethod
-    def validation_step(self):
-        pass
 
     def _compute_loss(self, batch, R_total, t_total):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)

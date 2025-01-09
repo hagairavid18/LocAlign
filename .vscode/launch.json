@@ -15,13 +15,13 @@
             "name": "align",
             "type": "debugpy",
             "request": "launch",
-            "program": "align.py",
+            "program": "scripts/align.py",
             "console": "integratedTerminal",
             "justMyCode": false, 
             "args": [
                 "--config" ,
-                "align_config.json",
-                // "--debug",
+                "configs/align_config.json",
+                "--debug",
             ]
         },
         {
@@ -38,13 +38,41 @@
             ]
         },
         {
-            "name": "softBBS",
+            "name": "save pockets",
             "type": "debugpy",
             "request": "launch",
-            "program": "models/learnable_soft_bb.py",
+            "program": "save_pockets.py",
             "console": "integratedTerminal",
             "justMyCode": false, 
             "args": [
+                "--config" ,
+                "rmsd_config.json",
+                "--debug",
+            ]
+        },
+        {
+            "name": "regular softBBS",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "lightning_trainer.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+                "--config" ,
+                "configs/soft_bb.yaml",
+             
+            ]
+        },
+        {
+            "name": "virtual softBBS",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "lightning_trainer.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+                "--config" ,
+                "configs/virtual_soft_bb.yaml",
              
             ]
         },
@@ -52,10 +80,13 @@
             "name": "infer tmalign",
             "type": "debugpy",
             "request": "launch",
-            "program": "models/tmaligner.py",
+            "program": "lightning_trainer.py",
             "console": "integratedTerminal",
             "justMyCode": false, 
             "args": [
+                "--config" ,
+                "configs/tm_align.yaml",
+                "--validate_only",
              
             ]
         },

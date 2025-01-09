@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "TM-align-4a"
+  exp_name: "TM-align-atoms"
   max_epochs: 30
   validate_only: true
   check_val_every_n_epoch: 2
@@ -17,12 +17,14 @@ dataset:
       df_path: datasets/csv_files/no_grouping/train.csv
       # n_samples: 100
       seed: 81
+      level: "atom"
       min_cath: 1
   validation:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/no_grouping/val.csv
       seed: 81
+      level: "atom"
       # n_samples: 100
       min_cath: 1
   test:
@@ -35,4 +37,4 @@ dataloader:
   train_batch_size: 8
   valid_batch_size: 1
   test_batch_size: 1
-  n_workers: 30
+  n_workers: 15

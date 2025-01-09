@@ -21,6 +21,7 @@ class BasePairDataset(Dataset):
     def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0, only_one_transformation:bool = True, seed: int | None = None):
         self._df_path = df_path
         self._base_data_path = base_data_path
+        self._base_embedding_path = '/home/iscb/wolfson/hagairavid/scannet_outputs'
         self._n_samples = n_samples
         self._only_one_transformation = only_one_transformation
         self._min_cath = min_cath

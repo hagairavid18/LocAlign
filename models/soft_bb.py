@@ -2,7 +2,7 @@ from typing import Any
 import torch
 
 from models.soft_bb_base import SoftBBBase
-from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord, expand_embeddings_to_atoms, mask_and_normalize_matrix
+from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord, mask_and_normalize_matrix
 
 class SoftBB(SoftBBBase):
     def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer, scalar_layer: dict | None = None, max_iter: int = 5, compute_pocket_importance: bool = False, plot_alignments: bool = False):
@@ -46,11 +46,12 @@ class SoftBB(SoftBBBase):
 
         Returns:
             tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]: A tuple containing the transformation dictionary and the embeddings dictionary.
-        """        
+        """
+        src_coordinates, tar_coordinates = batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :]     
         tar_embedding, src_embedding  = self._input_tar_block(batch['tar_embedding'], mask=batch['tar_mask']), self._input_src_block(batch['src_embedding'], mask =batch['src_mask'])
         distance_matrix: torch.Tensor = self._get_distance_matrix(batch, src_embedding=src_embedding, tar_embedding=tar_embedding)
         soft_correspondences, mask_2d = mask_and_normalize_matrix(distance_matrix, batch['src_mask'], batch['tar_mask'], src_embedding, tar_embedding)
-        optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], soft_correspondences, batch['src_coordinates'], batch['tar_coordinates'], batch['src_mask'], mask_2d, iter_limit=self._max_iter if not self.training else 2)   
+        optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], soft_correspondences, src_coordinates, tar_coordinates, batch['src_mask'], mask_2d, iter_limit=self._max_iter if not self.training else 2)   
         return optimal_transformation
 
     def training_step(self, batch: dict[torch.Tensor]):

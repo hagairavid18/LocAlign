@@ -5,11 +5,11 @@ import torch.nn.functional as F
 from datasets import BasePairDataset
 import pickle
 
+import numpy as np
 from Bio.PDB import PDBParser
 from Bio.PDB.Atom import PDBConstructionWarning
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Structure import Structure
-from Bio.PDB.Polypeptide import protein_letters_3to1
 
 import warnings
 
@@ -20,29 +20,38 @@ logger = logging.getLogger(__name__)
 
 
 class ScannetDataset(BasePairDataset):
-    MAX_SEQUENCE_LENGTH = 1000
-    MAX_ATOMS = 3000
+    MAX_LENGTH_DICT = {'residue': 1000, 'atom': 2000, 'pocket': 1000}
 
-    def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, infer_baseline: bool = False, n_samples: int | None = None, min_cath: int = 0, seed: int| None = None) -> None:
+    def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, infer_baseline: bool = False, level: str = 'residue', n_samples: int | None = None, min_cath: int = 0, seed: int| None = None) -> None:
         super().__init__(df_path, base_data_path, n_samples, min_cath, seed)
         self._mmcif_parser = PDBParser()
         original_num_pairs = len(self._df)        
         self._infer_baseline = infer_baseline      
         self._df = self._df[self._df['has_scannet_embedding'] == True]  
         num_lost_pairs = original_num_pairs - len(self._df)
+        assert level in ['residue', 'atom', 'pocket'], "level must be one of ['residue', 'atom', 'pocket']"
+        self._level = level
         print(f"Number of pairs lost due to missing embeddings: {num_lost_pairs}")
 
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
         row = self._df.iloc[idx]
-        if self._infer_baseline:
-            ret = {'metadata': row.to_dict()}
-            ret['gt_R'] = torch.Tensor(row.to_dict()['rotations'][0][0])
-            ret['gt_t'] = torch.Tensor(row.to_dict()['translations'][0][0])
-            return ret
+        if row['mov_protein'] == '3n6r' or row['mov_protein'] == '4hyj' or idx in [5094, 5095]:
+                print(f"idx {idx} {row['Ligand_ID']} {row['mov_protein']} {row['ref_protein']}")
+                idx = torch.randint(0, len(self), (1,)).item()
+                return self.__getitem__(idx)
+
+        # if self._infer_baseline:
+        #     return {
+        #         'metadata': row.to_dict(),
+        #         'gt_R': torch.Tensor(row['rotations'][0][0]),
+        #         'gt_t': torch.Tensor(row['translations'][0][0]),
+        #     }
 
         try:
-            tar_embedding, tar_coordinates, tar_res_indices, tar_all_coordinates, tar_residue_frames = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
-            src_embedding, src_coordinates, src_res_indices, src_all_coordinates, src_residue_frames = self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+            embedding_dicts = {
+                "tar": self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein']),
+                "src": self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+            }
             src_ligand_coordinates = self._read_ligand(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
         except Exception as e:
             print(f"Error reading embeddings for {row['Ligand_ID']} {row['mov_protein']} {row['ref_protein']}: {e}")
@@ -50,139 +59,118 @@ class ScannetDataset(BasePairDataset):
             return self.__getitem__(idx)
 
         try:
-            src_pocket, src_pocket_residue_indices = self._read_pocket_coordinates(
-                ligand_id=row['Ligand_ID'], 
-                p_name=row['mov_protein']
-            )
-            tar_pocket, tar_pocket_residue_indices = self._read_pocket_coordinates(
-                ligand_id=row['Ligand_ID'], 
-                p_name=row['ref_protein']
-            )
-
-            filtered_src_pocket_residue_indices = torch.nonzero(torch.isin(src_res_indices, src_pocket_residue_indices )).squeeze()
-            filtered_tar_pocket_residue_indices = torch.nonzero(torch.isin(tar_res_indices, tar_pocket_residue_indices )).squeeze()
-
-
+            pocket_data = {
+                "src": self._read_pocket_coordinates(ligand_id=row['Ligand_ID'], p_name=row['mov_protein']),
+                "tar": self._read_pocket_coordinates(ligand_id=row['Ligand_ID'], p_name=row['ref_protein'])
+            }
+            
         except Exception as e:
+            print(f"Error reading pocket data: {e}")
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
 
-        tar_length, src_length = tar_embedding.shape[0], src_coordinates.shape[0]
-        tar_pocket_length, src_pocket_length = filtered_tar_pocket_residue_indices.shape[0], filtered_src_pocket_residue_indices.shape[0]
         ret = {}
-        # ret['tar_embedding'] = F.pad(tar_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length))
-        # ret['tar_coordinates'] = F.pad(tar_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_length))
-        # if ret['tar_coordinates'].shape[0] < self.MAX_SEQUENCE_LENGTH:
-        #     print(f"tar_coordinates shape {ret['tar_coordinates'].shape}")
-        # ret['tar_mask'] = F.pad(torch.ones(tar_length), (0, self.MAX_SEQUENCE_LENGTH - tar_length), value=0).bool()
-        ret['tar_embedding'] = F.pad(tar_embedding[filtered_tar_pocket_residue_indices], (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_pocket_length))
-        ret['tar_coordinates'] = F.pad(tar_coordinates[filtered_tar_pocket_residue_indices], (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_pocket_length))
-        ret['tar_frames'] = F.pad(tar_residue_frames[filtered_tar_pocket_residue_indices], (0, 0, 0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_pocket_length))
-        ret['tar_mask'] = F.pad(torch.ones(tar_pocket_length), (0, self.MAX_SEQUENCE_LENGTH - tar_pocket_length), value=0).bool()
+        if self._level in ['residue', 'atom']:
+            ret['max_length'] = max(embedding_dicts['src'][f'{self._level}_embeddings'].shape[0], embedding_dicts['tar'][f'{self._level}_embeddings'].shape[0])
+        else:
+            ret['max_length'] = max(pocket_data['src'][0].shape[0], pocket_data['tar'][0].shape[0])
+        for key in ["src", "tar"]:
+            embedding_dict = embedding_dicts[key]
+            pocket_atoms, pocket_residue_indices = pocket_data[key]
 
-        # ret['tar_all_coordinates'] = F.pad(tar_all_coordinates, (0, 0, 0, self.MAX_ATOMS - tar_all_coordinates.shape[0]))
-        # ret['tar_all_mask'] = F.pad(torch.ones(tar_all_coordinates.shape[0]), (0, self.MAX_ATOMS - tar_all_coordinates.shape[0]), value=0).bool()
+            indices_for_pocket = torch.isin(embedding_dict["sequence_indices_atom"], pocket_residue_indices)
+            if indices_for_pocket.sum() < 10:
+                print(f"Error: {indices_for_pocket.sum()} indices for pocket")
+                idx = torch.randint(0, len(self), (1,)).item()
+                return self.__getitem__(idx)
+
+            embedding_dict['pocket_embeddings'] = embedding_dict['atom_embeddings'][indices_for_pocket]
+            embedding_dict['pocket_frames'] = embedding_dict['atom_frames'][indices_for_pocket]
+            pocket_length = embedding_dict['pocket_frames'].shape[0]
+            length = embedding_dict[f'{self._level}_embeddings'].shape[0]
+
+            ret[f'{key}_embedding'] = F.pad(embedding_dict[f'{self._level}_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
+            ret[f'{key}_frames'] = F.pad(embedding_dict[f'{self._level}_frames'], (0, 0, 0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
+            ret[f'{key}_mask'] = F.pad(torch.ones(length), (0, self.MAX_LENGTH_DICT[self._level] - length), value=0).bool()
+          
+            ret[f'{key}_pocket_embedding'] = F.pad(embedding_dict['pocket_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT['pocket'] - pocket_length))
+            ret[f'{key}_pocket_frames'] = F.pad(embedding_dict['pocket_frames'], (0, 0, 0, 0, 0, self.MAX_LENGTH_DICT['pocket'] - pocket_length))
+            ret[f'{key}_pocket_mask'] = F.pad(torch.ones(pocket_length), (0, self.MAX_LENGTH_DICT['pocket'] - pocket_length), value=0).bool()
+
+        ret['gt_R'] = torch.Tensor(row['rotations'][0][0])
+        ret['gt_t'] = torch.Tensor(row['translations'][0][0])
         
-        # ret['src_embedding'] = F.pad(src_embedding, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length))
-        # ret['src_coordinates'] = F.pad(src_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_length))
-        # ret['src_mask'] = F.pad(torch.ones(src_length), (0, self.MAX_SEQUENCE_LENGTH - src_length), value=0).bool()
-        ret['src_embedding'] = F.pad(src_embedding[filtered_src_pocket_residue_indices], (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_pocket_length))
-        ret['src_coordinates'] = F.pad(src_coordinates[filtered_src_pocket_residue_indices], (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_pocket_length))
-        ret['src_frames'] = F.pad(src_residue_frames[filtered_src_pocket_residue_indices], (0, 0, 0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_pocket_length))
-        ret['src_mask'] = F.pad(torch.ones(src_pocket_length), (0, self.MAX_SEQUENCE_LENGTH - src_pocket_length), value=0).bool()
-        
-        # ret['src_all_coordinates'] = F.pad(src_all_coordinates, (0, 0, 0, self.MAX_ATOMS - src_all_coordinates.shape[0]))
-        # ret['src_all_mask'] = F.pad(torch.ones(src_all_coordinates.shape[0]), (0, self.MAX_ATOMS - src_all_coordinates.shape[0]), value=0).bool()
-        
-        ret['gt_R'] = torch.Tensor(row.to_dict()['rotations'][0][0])
-        ret['gt_t'] = torch.Tensor(row.to_dict()['translations'][0][0])
-        ret['max_length'] = max(tar_length, src_length)
         ret['metadata'] = row.to_dict()
-        # ret['sample_weight'] = torch.tensor(2 * row['bbr'][0][0] + row['coverage'][0][0] + (1 - row['rmse'][0][0])) / 4
+        ret['metadata']['idx'] = idx
         ret['sample_weight'] = torch.tensor(row['coverage'][0][0])
-        ret['src_pocket'] = F.pad(src_pocket, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - src_pocket.shape[0]))
-        ret['tar_pocket'] = F.pad(tar_pocket, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - tar_pocket.shape[0]))
-        ret['src_pocket_mask'] = F.pad(torch.ones(filtered_src_pocket_residue_indices.shape[0]), (0, self.MAX_SEQUENCE_LENGTH - filtered_src_pocket_residue_indices.shape[0]), value=0).bool()
-        ret['tar_pocket_mask'] = F.pad(torch.ones(filtered_tar_pocket_residue_indices.shape[0]), (0, self.MAX_SEQUENCE_LENGTH - filtered_tar_pocket_residue_indices.shape[0]), value=0).bool()
-        # ret['src_pocket_residue_indices'] = F.pad(filtered_src_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_src_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
-        # ret['tar_pocket_residue_indices'] = F.pad(filtered_tar_pocket_residue_indices, (0, self.MAX_SEQUENCE_LENGTH - len(filtered_tar_pocket_residue_indices)), value=0)  # Use -1 for padding residue indices
-        # ret['src_residue_indices'] = F.pad(src_res_indices, (0, self.MAX_SEQUENCE_LENGTH - len(src_res_indices)), value=0)  # Use -1 for padding residue indices
-        # ret['tar_residue_indices'] = F.pad(tar_res_indices, (0, self.MAX_SEQUENCE_LENGTH - len(tar_res_indices)), value=0)  # Use -1 for padding residue indices
-        ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self.MAX_SEQUENCE_LENGTH - len(src_ligand_coordinates)))
-        ret['src_ligand_mask'] = F.pad(torch.ones(len(src_ligand_coordinates)), (0, self.MAX_SEQUENCE_LENGTH - len(src_ligand_coordinates)), value=0).bool()
-        
+        ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self.MAX_LENGTH_DICT['residue'] - len(src_ligand_coordinates)))
+        ret['src_ligand_mask'] = F.pad(torch.ones(len(src_ligand_coordinates)), (0, self.MAX_LENGTH_DICT['residue'] - len(src_ligand_coordinates)), value=0).bool()
+        for key, tensor in ret.items():
+            if isinstance(tensor, torch.Tensor):
+                if torch.isnan(tensor).any():  # Checks if there are any NaNs in the tensor
+                    print(f"NaN detected in {key}")
+                    idx = torch.randint(0, len(self), (1,)).item()
+                    return self.__getitem__(idx)
         return ret
-    
+
     def _read_embedding(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, torch.Tensor]:
-        # embedding_path_tar = os.path.join(self._base_data_path, ligand_id,  chain + '_scannet.pkl')
-        embedding_path_tar = os.path.join(self._base_embedding_path, ligand_id,  chain + '_scannet_atoms.pkl')
-        if not os.path.exists(embedding_path_tar):
+        embedding_path = os.path.join(self._base_embedding_path, ligand_id,  chain + '_scannet_atoms.pkl')
+        if not os.path.exists(embedding_path):
             logger.info(f"Can't find embedding path for ligand: {ligand_id} protein: {chain}")
             raise ValueError
-        with open(embedding_path_tar, 'rb') as f:
+        with open(embedding_path, 'rb') as f:
             data = pickle.load(f)
-        embeddings = data.get("residue_embeddings", None)
-        # atom_embeddings = data.get.get("atomic_embeddings", None)
-        residue_frames = data.get("frames", None)
-        # sequence_indices_atom = data_dict.get("sequence_indices_atom", None)
-        embedding_ids = data.get("residue_ids", None)
-        # sequence_indices_residue = data_dict.get("sequence_indices_residue", None)
+        # Example data
+        residue_embeddings = data["residue_embeddings"]
+        residue_frames = data["residue_frames"]
+        residue_ids = data["residue_ids"]
+        atom_embeddings = data["atomic_embeddings"]
+        atom_residue_index = data["sequence_indices_atom"]  # Residue index for each atom
+        atom_frames = data["atomic_frames"]
+        residue_embeddings_up_pooled = residue_embeddings[atom_residue_index]
+        atomic_plus_residue_embedding = np.concatenate((atom_embeddings, residue_embeddings_up_pooled),axis=-1)
         
-        non_ligand_model_path = os.path.join(self._base_data_path, ligand_id,  chain + '_non_ligand.ent')
-        if not os.path.exists(non_ligand_model_path):
-            # print(f"Can't find non ligand path for {chain}")
-            raise ValueError
-        structure: Structure = self._mmcif_parser.get_structure(chain, non_ligand_model_path)
-        ca_coordinates, all_coordinates, residues_ids = [], [], []
-        corrupt_residues_idx = []
-        chain: Chain = list(list(structure)[0])[0]
-        residue_lookup = {residue.id[1]: residue for residue in chain}
-        for embedding_id in embedding_ids:
-            residue = residue_lookup.get(int(embedding_id[2]))
-            # if not residue.id[1] > -1: #TODO: check if this is the correct way to filter out non amino acids
-            #     continue
-            n_atoms = 0
-            if "CA" not in residue.child_dict:
-                corrupt_residues_idx.append(int(embedding_id[2]))
-                # print(f"CA atom not found in residue {residue.id[1]} in chain {chain}")
-                # raise ValueError("CA atom not found")
-            for atom in residue:
-                if atom.id == "H":
-                    print(f"found H atom {chain}")
-                    continue
-                
-                if atom.id == 'CA':
-                    residues_ids.append((0, chain.id, residue.id[1]))
-                    ca_coordinates.append(torch.Tensor(atom.get_coord()))
-                    # all_coordinates.append(torch.cat((torch.tensor(atom.get_coord()), torch.tensor([residue.id[1]])), dim=0))
-                if atom.id != 'CA' and n_atoms < 2:
-                    # all_coordinates.append(torch.cat((torch.tensor(atom.get_coord()), torch.tensor([residue.id[1]])), dim=0))
-                    n_atoms += 1
-                # if n_atoms < 2:
-                #     print(f"Adding dummy atoms to residue {residue.id[1]} in chain {chain}")
-                #     dummy_coord = torch.randn(3) * 1e6  # Dummy coordinates (could be zero or other values)
-                #     dummy_residue_idx = -1  # Dummy residue index
-                #     # Add dummy atom to fill the missing atom
-                #     for _ in range(2 - n_atoms):  # Add the necessary number of dummy atoms
-                #         all_coordinates.append(torch.cat((dummy_coord, torch.tensor([dummy_residue_idx])), dim=0))
-        ca_coordinates = torch.stack(ca_coordinates)
-        if len(corrupt_residues_idx) > 0:
-            valid_residue_list_indices = [i for i, tup in enumerate(embedding_ids) if int(tup[2]) not in corrupt_residues_idx]
-            embeddings = [embeddings[i] for i in valid_residue_list_indices]
-            embedding_ids = [embedding_ids[i] for i in valid_residue_list_indices]
-            residue_frames = [residue_frames[i] for i in valid_residue_list_indices]
-        # all_coordinates = torch.stack(all_coordinates)
-        residue_indices = [int(tup[2]) for tup in embedding_ids]
-        assert all([len(embeddings) == len(ca_coordinates), len(embeddings) == len(residue_indices)])
-        return torch.Tensor(embeddings), ca_coordinates, torch.Tensor(residue_indices), all_coordinates, torch.Tensor(residue_frames)
-    
+        atom_sampled_indices = np.random.choice(len(atom_embeddings), size=min(len(atom_embeddings), self.MAX_LENGTH_DICT['atom']), replace=False)
+        atom_embeddings = atom_embeddings[atom_sampled_indices]
+        atom_residue_index = atom_residue_index[atom_sampled_indices]
+        atom_frames = atom_frames[atom_sampled_indices]
+        atomic_plus_residue_embedding = atomic_plus_residue_embedding[atom_sampled_indices]
+
+
+        residue_indices = residue_ids[:, -1].astype(int)  # Extract residue indices (last column of residue_ids)
+        atom_residue_index = residue_indices[atom_residue_index]
+
+        # Validate input data
+        if residue_frames is None or residue_ids is None or atom_residue_index is None:
+            raise ValueError("Missing required data: 'frames', 'residue_ids', or 'sequence_indices_atom'.")
+
+        # Extract residue indices and create a mapping from residue index to position in residue_frames
+        # atom_residue_index = np.random.choice(residue_indices, size=len(atom_residue_index))  # TODO: until indices are fixed
+        # residue_index_to_frame_idx = {residue_idx: i for i, residue_idx in enumerate(residue_indices)}
+
+        # Map sequence_indices_atom to residue frame indices
+        # atom_frame_indices = np.array([residue_index_to_frame_idx[idx] for idx in atom_residue_index])
+
+        # Broadcast residue frames to atom level
+        # atom_frames = residue_frames[atom_frame_indices]
+
+        ret_dict = {
+            'atom_frames': atom_frames,
+            'residue_frames': residue_frames,
+            'atom_embeddings': atomic_plus_residue_embedding,
+            'residue_embeddings': residue_embeddings,
+            'residue_indices': residue_indices,
+            'sequence_indices_atom': atom_residue_index
+        }
+        return {key: torch.tensor(value) for key, value in ret_dict.items()}
+
     def _read_ligand(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, torch.Tensor]:
         ligand_model_path = os.path.join(self._base_data_path, ligand_id,  chain + '_ligand.pdb')
         if not os.path.exists(ligand_model_path):
             print(f"Can't find ligand path for {chain}")
             raise ValueError
         structure: Structure = self._mmcif_parser.get_structure(chain, ligand_model_path)
-        coordinates, residues_ids = [], []
+        coordinates = []
         chain : Chain = list(list(structure)[0])[0]
         if len(list(chain)) > 1: 
             print(f"ligand {ligand_id} found in {chain} more than once")
@@ -190,9 +178,7 @@ class ScannetDataset(BasePairDataset):
             for atom in residue:
                 coordinates.append(torch.Tensor(atom.get_coord()))
 
-        coordinates = torch.stack(coordinates)
-
-        return coordinates
+        return torch.stack(coordinates)
 
     def _read_pocket_coordinates(self, ligand_id: str, p_name: str) -> tuple[torch.Tensor, torch.Tensor]:
         """
