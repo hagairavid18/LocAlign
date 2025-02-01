@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 class ScannetDataset(BasePairDataset):
-    MAX_LENGTH_DICT = {'residue': 1000, 'atom': 2000, 'pocket': 1000}
+    MAX_LENGTH_DICT = {'residue': 1000, 'atom': 2500, 'pocket': 1000}
 
-    def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, infer_baseline: bool = False, level: str = 'residue', n_samples: int | None = None, min_cath: int = 0, seed: int| None = None) -> None:
-        super().__init__(df_path, base_data_path, n_samples, min_cath, seed)
+    def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, infer_baseline: bool = False, level: str = 'residue', n_samples: int | None = None, min_cath: int = 0, max_cath: int = 8, bbr_filter_ratio: float = 0.0, seed: int| None = None) -> None:
+        super().__init__(df_path, base_data_path, n_samples, min_cath, max_cath, seed=seed, bbr_filter_ratio=bbr_filter_ratio)
         self._mmcif_parser = PDBParser()
         original_num_pairs = len(self._df)        
         self._infer_baseline = infer_baseline      
@@ -70,10 +70,6 @@ class ScannetDataset(BasePairDataset):
             return self.__getitem__(idx)
 
         ret = {}
-        if self._level in ['residue', 'atom']:
-            ret['max_length'] = max(embedding_dicts['src'][f'{self._level}_embeddings'].shape[0], embedding_dicts['tar'][f'{self._level}_embeddings'].shape[0])
-        else:
-            ret['max_length'] = max(pocket_data['src'][0].shape[0], pocket_data['tar'][0].shape[0])
         for key in ["src", "tar"]:
             embedding_dict = embedding_dicts[key]
             pocket_atoms, pocket_residue_indices = pocket_data[key]
@@ -97,6 +93,7 @@ class ScannetDataset(BasePairDataset):
             ret[f'{key}_pocket_frames'] = F.pad(embedding_dict['pocket_frames'], (0, 0, 0, 0, 0, self.MAX_LENGTH_DICT['pocket'] - pocket_length))
             ret[f'{key}_pocket_mask'] = F.pad(torch.ones(pocket_length), (0, self.MAX_LENGTH_DICT['pocket'] - pocket_length), value=0).bool()
 
+        ret['max_length'] = max(embedding_dicts['src'][f'{self._level}_embeddings'].shape[0], embedding_dicts['tar'][f'{self._level}_embeddings'].shape[0])
         ret['gt_R'] = torch.Tensor(row['rotations'][0][0])
         ret['gt_t'] = torch.Tensor(row['translations'][0][0])
         
@@ -130,12 +127,12 @@ class ScannetDataset(BasePairDataset):
         residue_embeddings_up_pooled = residue_embeddings[atom_residue_index]
         atomic_plus_residue_embedding = np.concatenate((atom_embeddings, residue_embeddings_up_pooled),axis=-1)
         
-        atom_sampled_indices = np.random.choice(len(atom_embeddings), size=min(len(atom_embeddings), self.MAX_LENGTH_DICT['atom']), replace=False)
-        atom_embeddings = atom_embeddings[atom_sampled_indices]
-        atom_residue_index = atom_residue_index[atom_sampled_indices]
-        atom_frames = atom_frames[atom_sampled_indices]
-        atomic_plus_residue_embedding = atomic_plus_residue_embedding[atom_sampled_indices]
-
+        if self._level == 'atom':
+            atom_sampled_indices = np.random.choice(len(atom_embeddings), size=min(len(atom_embeddings), self.MAX_LENGTH_DICT['atom']), replace=False)
+            atom_embeddings = atom_embeddings[atom_sampled_indices]
+            atom_residue_index = atom_residue_index[atom_sampled_indices]
+            atom_frames = atom_frames[atom_sampled_indices]
+            atomic_plus_residue_embedding = atomic_plus_residue_embedding[atom_sampled_indices]
 
         residue_indices = residue_ids[:, -1].astype(int)  # Extract residue indices (last column of residue_ids)
         atom_residue_index = residue_indices[atom_residue_index]
@@ -143,16 +140,6 @@ class ScannetDataset(BasePairDataset):
         # Validate input data
         if residue_frames is None or residue_ids is None or atom_residue_index is None:
             raise ValueError("Missing required data: 'frames', 'residue_ids', or 'sequence_indices_atom'.")
-
-        # Extract residue indices and create a mapping from residue index to position in residue_frames
-        # atom_residue_index = np.random.choice(residue_indices, size=len(atom_residue_index))  # TODO: until indices are fixed
-        # residue_index_to_frame_idx = {residue_idx: i for i, residue_idx in enumerate(residue_indices)}
-
-        # Map sequence_indices_atom to residue frame indices
-        # atom_frame_indices = np.array([residue_index_to_frame_idx[idx] for idx in atom_residue_index])
-
-        # Broadcast residue frames to atom level
-        # atom_frames = residue_frames[atom_frame_indices]
 
         ret_dict = {
             'atom_frames': atom_frames,

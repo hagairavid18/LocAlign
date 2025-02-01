@@ -21,4 +21,7 @@
 *hparams.yaml
 events*
 *.ckpt
+*.html
+*.pb
+*.cxc
 

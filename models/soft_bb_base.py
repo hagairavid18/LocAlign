@@ -32,6 +32,7 @@ class SoftBBBase(L.LightningModule, ABC):
         self._min_diff = 0.05
         self._max_iter = max_iter
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
+        self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_embedding'].shape[0]
@@ -106,10 +107,10 @@ class SoftBBBase(L.LightningModule, ABC):
 
     def _compute_loss(self, batch, R_total, t_total):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
-        loss = loss_dict['non_linear_pocket_rmsd']
+        loss = loss_dict['pocket_rmsd']
         loss_dict.update(self._transformation_loss(batch, R_total, t_total))
         if self._use_transformation_loss:
-            loss = self._alpha_loss * loss_dict['non_linear_pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
+            loss = self._alpha_loss * loss_dict['pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
         loss_dict['loss'] = loss
         return loss, loss_dict
 

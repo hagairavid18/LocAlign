@@ -18,13 +18,16 @@ def set_seed(seed: int):
 
 
 class BasePairDataset(Dataset):
-    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0, only_one_transformation:bool = True, seed: int | None = None):
+    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0, max_cath: int = 8, only_one_transformation:bool = True, bbr_filter_ratio = 0.0, seed: int | None = None):
         self._df_path = df_path
         self._base_data_path = base_data_path
         self._base_embedding_path = '/home/iscb/wolfson/hagairavid/scannet_outputs'
         self._n_samples = n_samples
         self._only_one_transformation = only_one_transformation
         self._min_cath = min_cath
+        self._max_cath = max_cath
+        assert max_cath >= min_cath, f"max_cath ({max_cath}) must be greater than min_cath ({min_cath})"
+        self._bbr_filter_ratio = bbr_filter_ratio
         if seed:
             set_seed(seed)
 
@@ -38,6 +41,7 @@ class BasePairDataset(Dataset):
         if self._only_one_transformation:
             pairs = pairs[pairs['n_transformations'] == 1]
         pairs = pairs[pairs['cath_degree'] >= self._min_cath].reset_index()
+        pairs = pairs[pairs['cath_degree'] <= self._max_cath].reset_index()
 
         if self._n_samples:
             pairs = pairs.reset_index().sample(n=self._n_samples, random_state=42, replace=True)
@@ -47,6 +51,11 @@ class BasePairDataset(Dataset):
                 
                 pairs[col] = pairs[col].apply(lambda x: json.loads(x))
                 pairs[col] = pairs[col].apply(lambda x: deserialize_nested_lists(x, col))
+        
+        pairs['bbr'] = pairs['bbr'].apply(lambda x: max([max(y) for y in x if len(y) > 0], default=float('-inf')))
+        print(f"Read df with {len(pairs)} pairs")
+        pairs = pairs[pairs['bbr'] > self._bbr_filter_ratio]
+
         print(f"Read df with {len(pairs)} pairs")
 
         return pairs

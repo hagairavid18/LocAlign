@@ -75,55 +75,132 @@ class MaskedBatchNorm1d(nn.Module):
         return self.weight * x_normalized + self.bias
 
 
-class FeatureBlockGPT(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, n_blocks=3, 
-                 activation=nn.ReLU, normalization=MaskedBatchNorm1d,
-                 dropout=0.1, skip_connection=False, gated_skip=False):
+class MaskedLayerNorm(nn.Module):
+    def __init__(self, normalized_shape, eps=1e-5):
         """
-        FeatureBlock with flexible configurations, including skip connections, dropout, gated skip, and mask compatibility.
+        Masked LayerNorm for tensors of shape (B, N, C).
 
         Parameters:
+        - normalized_shape (int): The size of the feature dimension (C).
+        - eps (float): A small constant to avoid division by zero.
+        """
+        super(MaskedLayerNorm, self).__init__()
+        self.normalized_shape = normalized_shape
+        self.eps = eps
+
+        # Learnable parameters
+        self.weight = nn.Parameter(torch.ones(normalized_shape))  # Scale
+        self.bias = nn.Parameter(torch.zeros(normalized_shape))   # Shift
+
+    def forward(self, x, mask=None):
+        """
+        Forward pass for masked layer normalization.
+
+        Parameters:
+        - x (torch.Tensor): Input tensor of shape (B, N, C), where C is the number of features.
+        - mask (torch.Tensor, optional): Mask of shape (B, N), where 1 indicates unmasked and 0 indicates masked elements.
+
+        Returns:
+        - torch.Tensor: Normalized tensor of shape (B, N, C).
+        """
+        # Compute mean and variance along the last dimension (C) for each sample
+        if mask is not None:
+            # Reshape mask to broadcast along the feature dimension
+            mask = mask.unsqueeze(-1)  # Shape: (B, N, 1)
+            x = x * mask  # Mask the input tensor (masked positions are zeroed)
+
+            # Compute mean and variance for unmasked elements along the last dimension
+            sum_mask = mask.sum(dim=-2, keepdim=True)  # Sum across the sequence dimension (N)
+            masked_mean = (x.sum(dim=-2, keepdim=True) / sum_mask).nan_to_num(0.0)
+            masked_var = ((x - masked_mean) ** 2).sum(dim=-2, keepdim=True) / sum_mask
+            masked_var = masked_var.nan_to_num(0.0)  # Replace NaNs due to zero division
+        else:
+            # Standard LayerNorm (normalize along the last dimension)
+            masked_mean = x.mean(dim=-1, keepdim=True)
+            masked_var = x.var(dim=-1, keepdim=True, unbiased=False)
+
+        # Normalize
+        x_normalized = (x - masked_mean) / torch.sqrt(masked_var + self.eps)
+
+        # Apply learnable parameters (scale and shift)
+        return self.weight * x_normalized + self.bias
+
+
+class FeatureBlockGPT(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_dim: int | None = None, n_blocks=3, 
+                 activation=nn.ReLU, normalization=None,
+                 dropout=0.1, skip_connection=False, gated_skip=False, norm_in_last_layer: bool = True):
+        """
+        FeatureBlock with flexible configurations, including skip connections, dropout, gated skip, and mask compatibility.
+        
+        Parameters:
         - input_dim (int): Dimension of the input features.
-        - hidden_dim (int): Dimension of hidden layers.
         - output_dim (int): Dimension of the output features.
+        - hidden_dim (int | None): Dimension of hidden layers (if None, only input-to-output layer is used).
         - n_blocks (int): Number of fully connected blocks (default: 3).
-        - activation (nn.Module): Activation function (default: nn.ReLU).
-        - normalization (nn.Module): Normalization function (default: MaskedBatchNorm1d).
+        - activation (nn.Module or str): Activation function (default: nn.ReLU).
+        - normalization (nn.Module or str | None): Normalization function (default: None).
         - dropout (float): Dropout rate (default: 0.1).
         - skip_connection (bool): Whether to add a skip connection (default: False).
         - gated_skip (bool): Whether to use a learned gated skip connection.
+        - norm_in_last_layer (bool): Apply normalization in the last layer (default: True).
         """
         super(FeatureBlockGPT, self).__init__()
         self.skip_connection = skip_connection
         self.gated_skip = gated_skip
         self.dropout = nn.Dropout(dropout)
 
+        if isinstance(activation, str):
+            activations_map = {
+                "ReLU": nn.ReLU,
+                "Tanh": nn.Tanh,
+                "LeakyReLU": nn.LeakyReLU,
+                "Sigmoid": nn.Sigmoid,
+            }
+            activation = activations_map.get(activation, nn.ReLU)  # Default to ReLU
+        elif callable(activation):
+            activation = activation
+        
+        if isinstance(normalization, str):
+            normalization_map = {
+                "LayerNorm": MaskedLayerNorm,
+                "BatchNorm": MaskedBatchNorm1d,
+            }
+            normalization = normalization_map.get(normalization)
+        elif callable(normalization):
+            normalization = normalization
+
         # Create layers
         layers = []
 
-        # Input layer
-        layers.append(nn.Linear(input_dim, hidden_dim))
-        if normalization:
-            layers.append(normalization(hidden_dim))
-        layers.append(activation())
-        layers.append(self.dropout)
-
-        # Hidden layers
-        for _ in range(n_blocks - 2):
-            layers.append(nn.Linear(hidden_dim, hidden_dim))
+        if hidden_dim is None:
+            # Only input-to-output layer if hidden_dim is None
+            layers.append(nn.Linear(input_dim, output_dim))
+            if norm_in_last_layer and normalization:
+                layers.append(normalization(output_dim))
+        else:
+            # Input layer
+            layers.append(nn.Linear(input_dim, hidden_dim))
             if normalization:
                 layers.append(normalization(hidden_dim))
             layers.append(activation())
             layers.append(self.dropout)
 
-        # Output layer
-        layers.append(nn.Linear(hidden_dim, output_dim))
-        layers.append(normalization(output_dim))
+            # Hidden layers
+            for _ in range(n_blocks - 2):
+                layers.append(nn.Linear(hidden_dim, hidden_dim))
+                if normalization:
+                    layers.append(normalization(hidden_dim))
+                layers.append(activation())
+                layers.append(self.dropout)
+
+            # Output layer
+            layers.append(nn.Linear(hidden_dim, output_dim))
+            if norm_in_last_layer and normalization:
+                layers.append(normalization(output_dim))
 
         # Combine layers into a sequential module
         self.model = nn.Sequential(*layers)
-
-        # Apply weight initialization
         self._initialize_weights()
 
         # Gating layer for gated skip connections
@@ -156,7 +233,7 @@ class FeatureBlockGPT(nn.Module):
 
         # Forward pass through layers
         for layer in self.model:
-            if isinstance(layer, MaskedBatchNorm1d):
+            if isinstance(layer, (MaskedBatchNorm1d, MaskedLayerNorm)):
                 # Reshape back to (B, N, C) for MaskedBatchNorm1d
                 combined_output = combined_output.view(B, N, -1)  # Reshape to (B, N, hidden_dim)
                 combined_output = layer(combined_output, mask=mask)  # Pass mask here
@@ -178,4 +255,3 @@ class FeatureBlockGPT(nn.Module):
                 combined_output = combined_output + original_features
 
         return combined_output
-

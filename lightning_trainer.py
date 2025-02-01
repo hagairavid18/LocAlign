@@ -70,7 +70,7 @@ def main():
             project_name="pocket_aligner",
             experiment_name=config['trainer']['exp_name']
         )
-
+        comet_logger.experiment.add_tags(config['trainer'].get('tags', []))
     checkpoint_callback = ModelCheckpoint(
         dirpath=f"checkpoints/{config['trainer']['exp_name']}",
         save_top_k=-1,

@@ -28,7 +28,7 @@ class PocketLoss(nn.Module):
     
     def forward(self, batch, rotation_ab_pred, translation_ab_pred):
         pocket_coordinates = batch['src_pocket_frames'][:, :, 0, :]
-        pocket_rmsd = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], rotation_ab_pred, translation_ab_pred, batch['src_pocket_mask'])
+        pocket_rmsd = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], rotation_ab_pred, translation_ab_pred, batch['src_pocket_mask']).mean()
         if self._return_non_linear:
             non_linear_pocket_rmsd = pocket_rmsd / (pocket_rmsd + self._alpha ** 2)
-        return {'non_linear_pocket_rmsd': non_linear_pocket_rmsd.mean(), "pocket_rmsd": pocket_rmsd.mean() }
+        return {'non_linear_pocket_rmsd': non_linear_pocket_rmsd, "pocket_rmsd": pocket_rmsd}
