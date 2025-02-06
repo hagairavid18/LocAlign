@@ -10,7 +10,7 @@ from utils.process_pair import save_pockets, save_pockets_pdb
 
 # Setup logging
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-log_dir = os.path.join("logs", "baseline")
+log_dir = os.path.join("logs", "save_pockets")
 os.makedirs(log_dir, exist_ok=True)
 logging.basicConfig(filename=os.path.join(log_dir, start_time + ".log"), level=logging.INFO, format='%(message)s')
 
@@ -30,14 +30,14 @@ def run(pairs_df: pd.DataFrame, debug: bool = False) -> None:
 
             try:
                 # Save pocket for each protein
-                save_pockets_pdb(
+                save_pockets(
                     row['mov_protein'],
                     row['mov_chain'],
                     ligand=ligand,
                     ligand_res_idx=0,  # Or any other logic for ligand residue index
                 )
                 # Save pocket for each protein
-                save_pockets_pdb(
+                save_pockets(
                     row['ref_protein'],
                     row['ref_chain'],
                     ligand=ligand,

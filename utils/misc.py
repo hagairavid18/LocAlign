@@ -25,7 +25,7 @@ def build_object(config: dict, default_module: str|None = None) -> Any:
          return None
     return getattr(importlib.import_module(module_name), config['name'])(**config.get('args', {}))
 
-def save_results_to_csv(results: list[tuple] | pd.DataFrame, start_time: str, base_dir: str = "temp_results") -> None:
+def save_results_to_csv(results: list[tuple] | pd.DataFrame, start_time: str, base_dir: str = "temp_results", prev_results: pd.DataFrame |  None = None) -> None:
     save_dir = os.path.join("results", base_dir)
     os.makedirs(save_dir , exist_ok=True)
     df = results if isinstance(results, pd.DataFrame) else  pd.DataFrame([obj.__dict__ for obj in results])
@@ -34,7 +34,9 @@ def save_results_to_csv(results: list[tuple] | pd.DataFrame, start_time: str, ba
         if df[col].apply(lambda x: isinstance(x, (list, np.ndarray))).any():
             df[col] = df[col].apply(lambda x: json.dumps(serialize_nested_lists(x)))
             
-    df.to_csv(f'{save_dir}/{start_time}_{len(results)}.csv', index=False)
+    if prev_results is not None:
+        df = pd.concat([prev_results, df], ignore_index=True)
+    df.to_csv(f'{save_dir}/{start_time}_{df.shape[0]}.csv', index=False)
 
 
 def flatten_dict(d, parent_key='', sep='_'):

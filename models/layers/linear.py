@@ -132,18 +132,6 @@ class FeatureBlockGPT(nn.Module):
                  dropout=0.1, skip_connection=False, gated_skip=False, norm_in_last_layer: bool = True):
         """
         FeatureBlock with flexible configurations, including skip connections, dropout, gated skip, and mask compatibility.
-        
-        Parameters:
-        - input_dim (int): Dimension of the input features.
-        - output_dim (int): Dimension of the output features.
-        - hidden_dim (int | None): Dimension of hidden layers (if None, only input-to-output layer is used).
-        - n_blocks (int): Number of fully connected blocks (default: 3).
-        - activation (nn.Module or str): Activation function (default: nn.ReLU).
-        - normalization (nn.Module or str | None): Normalization function (default: None).
-        - dropout (float): Dropout rate (default: 0.1).
-        - skip_connection (bool): Whether to add a skip connection (default: False).
-        - gated_skip (bool): Whether to use a learned gated skip connection.
-        - norm_in_last_layer (bool): Apply normalization in the last layer (default: True).
         """
         super(FeatureBlockGPT, self).__init__()
         self.skip_connection = skip_connection
@@ -176,8 +164,6 @@ class FeatureBlockGPT(nn.Module):
         if hidden_dim is None:
             # Only input-to-output layer if hidden_dim is None
             layers.append(nn.Linear(input_dim, output_dim))
-            if norm_in_last_layer and normalization:
-                layers.append(normalization(output_dim))
         else:
             # Input layer
             layers.append(nn.Linear(input_dim, hidden_dim))
@@ -196,8 +182,6 @@ class FeatureBlockGPT(nn.Module):
 
             # Output layer
             layers.append(nn.Linear(hidden_dim, output_dim))
-            if norm_in_last_layer and normalization:
-                layers.append(normalization(output_dim))
 
         # Combine layers into a sequential module
         self.model = nn.Sequential(*layers)
@@ -206,6 +190,9 @@ class FeatureBlockGPT(nn.Module):
         # Gating layer for gated skip connections
         if self.gated_skip:
             self.gate = nn.Linear(input_dim, output_dim)
+
+        # Final normalization after skip connection (if enabled)
+        self.last_norm = normalization(output_dim) if norm_in_last_layer and normalization else None
 
     def _initialize_weights(self):
         for layer in self.model:
@@ -217,13 +204,6 @@ class FeatureBlockGPT(nn.Module):
     def forward(self, features, mask=None):
         """
         Forward pass through the block of layers, with optional mask support.
-
-        Parameters:
-        - features (torch.Tensor): Input tensor of shape (B, N, input_dim).
-        - mask (torch.Tensor, optional): A tensor of shape (B, N) indicating which values should be masked.
-
-        Returns:
-        - torch.Tensor: Output tensor of shape (B, N, output_dim) after passing through the layers.
         """
         B, N, _ = features.shape
         original_features = features  # Save for skip connection if needed
@@ -234,7 +214,6 @@ class FeatureBlockGPT(nn.Module):
         # Forward pass through layers
         for layer in self.model:
             if isinstance(layer, (MaskedBatchNorm1d, MaskedLayerNorm)):
-                # Reshape back to (B, N, C) for MaskedBatchNorm1d
                 combined_output = combined_output.view(B, N, -1)  # Reshape to (B, N, hidden_dim)
                 combined_output = layer(combined_output, mask=mask)  # Pass mask here
             else:
@@ -246,12 +225,17 @@ class FeatureBlockGPT(nn.Module):
         # Apply skip connection if enabled and dimensions match
         if self.skip_connection:
             if self.gated_skip:
-                # Gated skip connection
                 gate_value = torch.sigmoid(self.gate(original_features.view(B * N, -1)))
                 gate_value = gate_value.view(B, N, -1)
                 combined_output = combined_output * gate_value + original_features * (1 - gate_value)
             else:
-                # Standard skip connection
                 combined_output = combined_output + original_features
+
+        # Apply last normalization **after** skip connection
+        if self.last_norm:
+            if isinstance(self.last_norm, (MaskedBatchNorm1d, MaskedLayerNorm)):
+                combined_output = self.last_norm(combined_output, mask=mask)
+            else:
+                combined_output = self.last_norm(combined_output)
 
         return combined_output
