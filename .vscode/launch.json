@@ -117,14 +117,15 @@
             "justMyCode": false,
             "args": [
                 "--input_csv", 
-                "results/alignment_results/2024-07-17_19-21-30_10000.csv",
+                // "results/alignment_temp_results/2025-02-01_17-48-34_3000.csv",
+                "results/alignment_results/2025-02-04_09-07-32_106886.csv",
                 "--output_dir", 
-                "datasets/csv_files/no_grouping",       // Directory to save the train, val, and test CSVs
+                "datasets/csv_files/grouping_1302",       // Directory to save the train, val, and test CSVs
                 "--test_size", 
                 "0.0",               // Optional: Adjust the test set size (default 0.2)
                 "--val_size", 
-                "0.15",
-                // "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
+                "0.2",
+                "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
             ]
         }
     ]
