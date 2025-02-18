@@ -31,8 +31,14 @@ class SoftBBBase(L.LightningModule, ABC):
         self._metrics = PocketRMSD()
         self._min_diff = 0.05
         self._max_iter = max_iter
+        self._n_iter_train = n_iter_train
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
+        self._plot = False
+        if plot_dir is not None:
+            os.makedirs(plot_dir, exist_ok=True)
+            self._plot = True
+            self._plot_dir = plot_dir
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_embedding'].shape[0]
@@ -116,16 +122,22 @@ class SoftBBBase(L.LightningModule, ABC):
 
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=self._lr)
-        
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
+        optimizer = optim.Adam(self.parameters(), lr=self._lr, weight_decay=1e-4)        
+        # optimizer = optim.Adam(self.parameters(), lr=self._lr)        
+        if self._scheduler_config is not None:
+            self._scheduler_config['args']['optimizer'] = optimizer
+            interval = self._scheduler_config['args'].pop('interval', 'step')
+            scheduler = build_object(self._scheduler_config, "torch.optim.lr_scheduler")
+        else:
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+            interval = 'epoch'
         
         return {
             'optimizer': optimizer,
             'lr_scheduler': {
                 'scheduler': scheduler,
                 'monitor': 'valid_loss',  # Monitors validation loss or another metric
-                'interval': 'epoch',      # Frequency to update the scheduler ('epoch' or 'step')
+                'interval': interval,      # Frequency to update the scheduler ('epoch' or 'step')
                 'frequency': 1,           # Frequency of calling the scheduler
             }
         }

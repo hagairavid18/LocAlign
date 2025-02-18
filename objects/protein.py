@@ -3,6 +3,8 @@ import logging
 import pickle
 import warnings
 from scipy.spatial.distance import cdist
+import subprocess
+
 
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
 from Bio.PDB import PDBList, MMCIFParser
@@ -42,26 +44,44 @@ class Protein:
 
         # Check if cached structure exists
         if os.path.exists(cache_file):
-            with open(cache_file, 'rb') as f:
-                return pickle.load(f)
-
+            try:
+                with open(cache_file, 'rb') as f:
+                    logger.info(f"Loading structure {self._pdb_name} from cache.")
+                    return pickle.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to load cached structure for {self._pdb_name}: {e}")
+        
         # Parse the structure if not cached
-        pdb_list = PDBList(verbose=False)
-        pdb_file_path = pdb_list.retrieve_pdb_file(self._pdb_name, pdir=f"{LIGAND_DIR}/{self._ligand_name}", file_format='mmCif')
-        mmcif_parser = MMCIFParser()
+        mmcif_file_path = f"{LIGAND_DIR}/{self._ligand_name}/{self._pdb_name}.cif"
+        url = f"https://files.rcsb.org/download/{self._pdb_name}.cif"
 
+        # Run wget command to download the file
         try:
-            structure: Structure = mmcif_parser.get_structure(self._pdb_name, pdb_file_path)
-        except FileNotFoundError:
-            logger.info(f"Could not find the structure of {self._pdb_name}. Please remove this query.")
-            structure = Structure(self._pdb_name)
+            subprocess.run(["wget", url, "-O", mmcif_file_path], check=True)
+            logger.info(f"Successfully downloaded {self._pdb_name}.cif")
+        except subprocess.CalledProcessError:
+            logger.error(f"Failed to download {self._pdb_name}.cif from {url}")
+            structure = Structure(self._pdb_name)  # Return empty structure if download fails
+            return structure
 
+        # Parse the downloaded mmCIF file
+        try:
+            mmcif_parser = MMCIFParser()
+            structure = mmcif_parser.get_structure(self._pdb_name, mmcif_file_path)
+        except Exception as e:
+            logger.error(f"Failed to parse the downloaded structure {self._pdb_name}: {e}")
+            structure = Structure(self._pdb_name)  # Return empty structure on parse failure
+        
         # Save the parsed structure to the cache
-        with open(cache_file, 'wb') as f:
-            pickle.dump(structure, f)
-
+        try:
+            with open(cache_file, 'wb') as f:
+                pickle.dump(structure, f)
+                logger.info(f"Cached structure {self._pdb_name} to {cache_file}.")
+        except Exception as e:
+            logger.warning(f"Failed to cache structure {self._pdb_name}: {e}")
+        
         return structure
-  
+
     def _get_ligand_model(self, save: bool = True) -> int:
         peptide_model = self.get_model(self._model_idx)
         ligand_model, num_of_ligand_atoms = Protein.create_ligand_model(peptide_model, self._ligand_name, self._chain_id)
@@ -81,11 +101,10 @@ class Protein:
         peptide_model = self.get_model(self._model_idx)
         non_ligand_model, num_of_ligand_atoms = Protein.create_non_ligand_model(peptide_model, self._ligand_name, self._chain_id)
 
-        # Save to cache
-        with open(cache_file, 'wb') as f:
-            pickle.dump((non_ligand_model, sum(num_of_ligand_atoms)), f)
+        # # Save to cache
+        # with open(cache_file, 'wb') as f:
+        #     pickle.dump((non_ligand_model, sum(num_of_ligand_atoms)), f)
 
-        # Optionally save as .ent file
         if save:
             save_dir = f"{LIGAND_DIR}/{self._ligand_name}"
             os.makedirs(save_dir, exist_ok=True)
@@ -110,11 +129,8 @@ class Protein:
     def get_ligand_residues(self) -> list[Residue]:
         return list(list(self._ligand_model.get_chains())[0])
     
-    def get_pocket_atoms_within_4A(
-        self, 
-        distance_thresh: float = 4.0, 
-        ligand_res_idx: int = 0
-    ) -> np.ndarray:
+    def get_pocket_atoms_within_4A(self, distance_thresh: float = 4.0, ligand_res_idx: int = 0) -> np.ndarray:
+        
         ligand_residue = self.get_ligand_residues()[ligand_res_idx]  # Handle ligand with more residues if needed
         ligand_coors = np.array([atom.coord for atom in ligand_residue.get_atoms() if atom.element != "H"])
         pocket_atoms = []

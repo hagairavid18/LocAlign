@@ -101,16 +101,16 @@ class ProteinPair:
             except Exception as e:
                 print(e)
     
-    def _get_best_buddy_ratio(self, R, t, mov_ligand_res_idx, ref_ligand_res_idx, bb_ratio: None | float = None) -> float:
+    def _get_best_buddy_ratio(self, R, t, mov_ligand_res_idx, ref_ligand_res_idx, bb_thresh: None | float = None) -> float:
         mov_atoms, _ = self._mov_protein.get_pocket_atoms_within_4A(ligand_res_idx = mov_ligand_res_idx, distance_thresh=4.0)
         ref_atoms, _ = self._ref_protein.get_pocket_atoms_within_4A(ligand_res_idx = ref_ligand_res_idx, distance_thresh=4.0)
         transformed_mov_pocket = np.dot(mov_atoms, R) + t[:3]
-        bbc = best_buddy_count(transformed_mov_pocket, ref_atoms, bb_ratio)
-        bb_ratio = bbc/ min(mov_atoms.shape[0], ref_atoms.shape[0])
+        bbc = best_buddy_count(transformed_mov_pocket, ref_atoms, bb_thresh)
+        bb_ratio = bbc / min(mov_atoms.shape[0], ref_atoms.shape[0])
         logging.info(f"4 ang n bb: {bbc} bbc ratio {bb_ratio}")
         return bb_ratio, bbc
     
-    def _get_best_buddy_around_ref_center(self, R, t, bb_ratio: None | float = None, distance_thresh: float = 4.0) -> float:
+    def _get_best_buddy_around_ref_center(self, R, t, bb_thresh: None | float = None, distance_thresh: float = 4.0) -> float:
         
         all_atoms_ref = np.array([atom.coord for atom in self._ref_protein._get_atoms(all_atoms=True) if atom.element != "H"])
         ref_close_atoms = Protein.get_atoms_within_distance(all_atoms_ref ,center=all_atoms_ref.mean(0), distance_thresh=distance_thresh)
@@ -118,12 +118,12 @@ class ProteinPair:
         copy_model = self._mov_protein.get_model(self._mov_model_idx).copy()
         for atom in copy_model.get_atoms():
             atom.transform(R[:3, :3], t[:3])
-        transformed_mov_coord = [atom.coord for atom in copy_model.get_atoms()]
+        transformed_mov_coord = [atom.coord for atom in copy_model.get_atoms() if atom.element != "H"]
         
         mov_close_atoms = Protein.get_atoms_within_distance(transformed_mov_coord, center=all_atoms_ref.mean(0), distance_thresh=distance_thresh)
         
         # Compute best buddy count and ratio
-        bbc = best_buddy_count(mov_close_atoms, ref_close_atoms, bb_ratio)
+        bbc = best_buddy_count(mov_close_atoms, ref_close_atoms, bb_thresh)
         bbr = bbc / min(mov_close_atoms.shape[0], ref_close_atoms.shape[0])
         logging.info(f"{distance_thresh}A n bb: {bbc} bb ratio {bbr}")
         
@@ -164,7 +164,7 @@ class ProteinPair:
                 all_coverage[curr_pair_idx] = coverage
                 try:
                     for k in range(len(R)):
-                        bbr, bbc = self._get_best_buddy_ratio(R[k], t[k], j , i, 2.0)
+                        bbr, bbc = self._get_best_buddy_ratio(R[k], t[k], j , i, bb_thresh=2.0)
                         all_bbr[curr_pair_idx].append(bbr)
                         all_bbc[curr_pair_idx].append(bbc)
                 except Exception as e:
@@ -202,26 +202,26 @@ class ProteinPair:
         
         if len(R) > 0:
             ligand_rmsd =  self._compute_ligand_rmsd(R[0], t[0])
-            try:
+        #     try:
 
-                ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_residues()
-                mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_residues()
-                n_ligand_pairs = len(ref_ligand) * len(mov_ligand)
-                all_bbr, all_bbc = ([[] for _ in range(n_ligand_pairs)] for _ in range(2))
-                curr_pair_idx = 0
-                for i, ref_residue in enumerate(ref_ligand):
-                    for j, mov_residue in enumerate(mov_ligand):
-                            error_message: str = ProteinPair.validate_ligand_pair(ref_residue, mov_residue)
-                            if len(error_message) > 1:
-                                continue
-                            for k in range(len(R)):
-                                bbr, bbc = self._get_best_buddy_around_ref_center(R[k], t[k], bb_ratio=2.0, distance_thresh=7.0)
-                                all_bbr[curr_pair_idx].append(bbr)
-                                all_bbc[curr_pair_idx].append(bbc)
-                            curr_pair_idx +=1
-            except Exception as e:
-                logging.info(e)
-                holder.failure_message = "Failed to compute in bbr"
+        #         ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_residues()
+        #         mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_residues()
+        #         n_ligand_pairs = len(ref_ligand) * len(mov_ligand)
+        #         all_bbr, all_bbc = ([[] for _ in range(n_ligand_pairs)] for _ in range(2))
+        #         curr_pair_idx = 0
+        #         for i, ref_residue in enumerate(ref_ligand):
+        #             for j, mov_residue in enumerate(mov_ligand):
+        #                     error_message: str = ProteinPair.validate_ligand_pair(ref_residue, mov_residue)
+        #                     if len(error_message) > 1:
+        #                         continue
+        #                     for k in range(len(R)):
+        #                         bbr, bbc = self._get_best_buddy_ratio(R[k], t[k],j, i, bb_thresh=2.0)
+        #                         all_bbr[curr_pair_idx].append(bbr)
+        #                         all_bbc[curr_pair_idx].append(bbc)
+        #                     curr_pair_idx +=1
+        #     except Exception as e:
+        #         logging.info(e)
+        #         holder.failure_message = "Failed to compute in bbr"
         else:
             ligand_rmsd = None
         
@@ -229,8 +229,8 @@ class ProteinPair:
         holder.__setattr__(f"{aligner.name}_translations", t)
         holder.__setattr__(f"{aligner.name}_protein_rmsd", rmsd)
         holder.__setattr__(f"{aligner.name}_rmsd", ligand_rmsd)
-        holder.__setattr__(f"{aligner.name}_bbr", all_bbr)
-        holder.__setattr__(f"{aligner.name}_bbc", all_bbc)
+        # holder.__setattr__(f"{aligner.name}_bbr", all_bbr)
+        # holder.__setattr__(f"{aligner.name}_bbc", all_bbc)
 
     def _compute_ligand_rmsd(self, R, t):
         try:

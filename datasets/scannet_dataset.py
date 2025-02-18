@@ -27,7 +27,6 @@ class ScannetDataset(BasePairDataset):
         self._mmcif_parser = PDBParser()
         original_num_pairs = len(self._df)        
         self._infer_baseline = infer_baseline      
-        self._df = self._df[self._df['has_scannet_embedding'] == True]  
         num_lost_pairs = original_num_pairs - len(self._df)
         assert level in ['residue', 'atom', 'pocket'], "level must be one of ['residue', 'atom', 'pocket']"
         self._level = level
@@ -53,6 +52,7 @@ class ScannetDataset(BasePairDataset):
                 "src": self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
             }
             src_ligand_coordinates = self._read_ligand(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+            tar_ligand_coordinates = self._read_ligand(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
         except Exception as e:
             print(f"Error reading embeddings for {row['Ligand_ID']} {row['mov_protein']} {row['ref_protein']}: {e}")
             idx = torch.randint(0, len(self), (1,)).item()
@@ -72,7 +72,7 @@ class ScannetDataset(BasePairDataset):
         ret = {}
         for key in ["src", "tar"]:
             embedding_dict = embedding_dicts[key]
-            pocket_atoms, pocket_residue_indices = pocket_data[key]
+            pocket_residue_indices = pocket_data[key]
 
             indices_for_pocket = torch.isin(embedding_dict["sequence_indices_atom"], pocket_residue_indices)
             if indices_for_pocket.sum() < 10:
@@ -99,9 +99,12 @@ class ScannetDataset(BasePairDataset):
         
         ret['metadata'] = row.to_dict()
         ret['metadata']['idx'] = idx
-        ret['sample_weight'] = torch.tensor(row['coverage'][0][0])
+        ret['sample_weight'] = torch.tensor(row['sample_weight'])
         ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self.MAX_LENGTH_DICT['residue'] - len(src_ligand_coordinates)))
+        ret['tar_ligand_coordinates'] = F.pad(tar_ligand_coordinates, (0, 0, 0, self.MAX_LENGTH_DICT['residue'] - len(tar_ligand_coordinates)))
+
         ret['src_ligand_mask'] = F.pad(torch.ones(len(src_ligand_coordinates)), (0, self.MAX_LENGTH_DICT['residue'] - len(src_ligand_coordinates)), value=0).bool()
+        ret['tar_ligand_mask'] = F.pad(torch.ones(len(tar_ligand_coordinates)), (0, self.MAX_LENGTH_DICT['residue'] - len(tar_ligand_coordinates)), value=0).bool()
         for key, tensor in ret.items():
             if isinstance(tensor, torch.Tensor):
                 if torch.isnan(tensor).any():  # Checks if there are any NaNs in the tensor
@@ -189,17 +192,17 @@ class ScannetDataset(BasePairDataset):
                 data = pickle.load(f)
 
             # Ensure the loaded data contains the expected keys
-            if not isinstance(data, dict) or 'pocket_ca_coords' not in data or 'residue_indices' not in data:
+            if not isinstance(data, dict)  or 'residue_indices' not in data:
                 raise ValueError("Invalid pickle format. Expected a dictionary with 'pocket_coords' and 'residue_indices' keys.")
 
             # Extract coordinates and residue indices
-            pocket_coords = torch.tensor(data['pocket_ca_coords'], dtype=torch.float32)
+            # pocket_coords = torch.tensor(data['pocket_ca_coords'], dtype=torch.float32)
             residue_indices = torch.tensor(data['residue_indices'], dtype=torch.int64)
 
-            if pocket_coords.numel() == 0:
-                raise ValueError(f"src_pocket is empty for {p_name}. Ensure the dataset entry is valid.")
+            # if pocket_coords.numel() == 0:
+            #     raise ValueError(f"src_pocket is empty for {p_name}. Ensure the dataset entry is valid.")
 
-            return pocket_coords, residue_indices
+            return residue_indices
 
         except Exception as e:
             logging.error(f"Error loading pocket data from {pickle_path}: {e}")

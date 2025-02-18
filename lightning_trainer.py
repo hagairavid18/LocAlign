@@ -95,7 +95,7 @@ def main():
         trainer.logger.log_hyperparams(flatten_dict(config))
 
     # Train or validate
-    if args.validate_only:
+    if config['trainer']['validate_only']:
         trainer.validate(model, val_loader, ckpt_path=config['trainer']['ckpt_path'])
     else:
         trainer.fit(model, train_loader, val_dataloaders=val_loader, ckpt_path=config['trainer']['ckpt_path'])

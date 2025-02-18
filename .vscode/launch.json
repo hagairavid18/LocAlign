@@ -46,7 +46,7 @@
             "justMyCode": false, 
             "args": [
                 "--config" ,
-                "rmsd_config.json",
+                "configs/save_pockets_config.json",
                 "--debug",
             ]
         },

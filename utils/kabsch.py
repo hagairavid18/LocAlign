@@ -65,10 +65,6 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     p = P - weighted_centroids_P[:, None, :]
     q = Q - weighted_centroids_Q[:, None, :]
     # diagonal_w = torch.diag(weights.squeeze(1))
-
-    U, S, V = [], [], []
-    R = []
-
     # Compute the covariance matrix
     H = torch.bmm(torch.bmm(q.transpose(1, 2), weights), p)
 
@@ -79,7 +75,6 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     Vt = raw_Vt.clone()
     for i, value in  enumerate(torch.det(torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2)))):
         if value < 0.0:
-        # Vt[0, :, -1] = -Vt[0, :, -1] # change 0 to batch idx
             Vt[i, -1, :] = -raw_Vt[i, -1, :] # change 0 to batch idx
 
     # Optimal rotation

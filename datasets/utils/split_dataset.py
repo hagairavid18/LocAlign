@@ -40,10 +40,10 @@ def split_csv(input_csv, output_dir, test_size=0.2, val_size=0.1, group_by_ligan
     df = df[df['bbr'] > 0.3]
     df = df[df['bbc'] > 10]
     print(f"Filtered Best BBR and BBC, {len(df)} rows remaining")
-    df = df.groupby('ref_protein').head(25)
-    df = df.groupby('mov_protein').head(25)
+    df = df.groupby('ref_protein').head(50)
+    df = df.groupby('mov_protein').head(50)
     print(f"Grouped by ref_protein and mov_protein, {len(df)} rows remaining")
-    df = df.groupby('Ligand_ID').head(500)
+    df = df.groupby('Ligand_ID').head(1000)
     print(f"Grouped by Ligand_ID, {len(df)} rows remaining")
 
     # Ensure the "Ligand_ID" column exists if group_by_ligand is True
@@ -70,7 +70,7 @@ def split_csv(input_csv, output_dir, test_size=0.2, val_size=0.1, group_by_ligan
         # Create datasets for each split based on Ligand_ID
         train_df = df[df['Ligand_ID'].isin(train_ligands)]
         val_df = df[df['Ligand_ID'].isin(val_ligands)]
-        val_df = val_df.groupby('Ligand_ID').head(100)  # Ensure each ligand is present in the validation set
+        val_df = val_df.groupby('Ligand_ID').head(300)  # Ensure each ligand is present in the validation set
         test_df = df[df['Ligand_ID'].isin(test_ligands)]
 
         # Plot histograms for each dataset

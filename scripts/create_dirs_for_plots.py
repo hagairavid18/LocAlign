@@ -1,12 +1,14 @@
+import sys
 import pandas as pd
 import os
 import shutil
+sys.path.append("/home/iscb/wolfson/hagairavid/ligand_alligner")
 
 from utils.constants import LIGAND_DIR
 from scripts.chimera_pocket_viz  import process_alignment  # Import the function from the first script
 
 # Load CSV data
-csv_file = "results/validation_results/log-tables-save-local/Protein_RMSD_Results_35.csv"  # Replace with your CSV file path
+csv_file = "results/validation_results/viz-grouping-train-for-viz-corr-offsets-upto2-scalarmatrix-005dp-50epoch-ligandloss-sqrt/Protein_RMSD_Results_31.csv"  # Replace with your CSV file path
 data = pd.read_csv(csv_file)
 
 # Filter rows (if needed)
@@ -22,7 +24,7 @@ sampled_data = filtered_data.groupby('CATH Degree', group_keys=False).apply(sele
 
 # Base directory structure
 ligands_base_path = LIGAND_DIR  # Adjust if necessary
-output_base_path = "example_pairs_from_validation3"  # Replace with the desired output base directory
+output_base_path = "example_pairs_from_validation4"  # Replace with the desired output base directory
 
 # Create output directories and process files
 for _, row in sampled_data.iterrows():

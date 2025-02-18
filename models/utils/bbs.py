@@ -128,7 +128,7 @@ def get_d0(max_length: float) -> torch.Tensor:
 
 
 def compute_transformation_from_corr_and_coord(max_protein_length: int, soft_corr: torch.Tensor, src_coordinates: torch.Tensor,
-                                                tar_coordinates: torch.Tensor, src_mask: torch.Tensor, combined_mask: torch.Tensor, iter_limit: int = 2) -> dict[str, torch.Tensor]:
+                                                tar_coordinates: torch.Tensor, src_orig_coord, tar_orig_coord, src_mask: torch.Tensor, combined_mask: torch.Tensor, iter_limit: int = 2) -> dict[str, torch.Tensor]:
     """
     Compute the transformation matrices from the soft correspondences and the source and target coordinates.
     First iteration uses only soft correspondences, while the rest use also the transformed source coordinates to refine the transformation. 
@@ -147,21 +147,22 @@ def compute_transformation_from_corr_and_coord(max_protein_length: int, soft_cor
     """        
         
     gamma = soft_corr.clone()
-    all_R, all_t = [], []
+    all_R, all_t, all_gamma = [], [], []
     iter_num = 0
-    # src_coordinates = batch['src_all_coordinates'][...,:3] if self._use_atom_level else batch['src_coordinates']
-    # tar_coordinates = batch['src_all_coordinates'][...,:3] if self._use_atom_level else batch['tar_coordinates']
     while iter_num < iter_limit:
+        all_gamma.append(gamma)
         R_gamma, t_gamma, _, _ = weighted_kabsch_torch(src_coordinates, tar_coordinates, gamma.float())
         all_R.append(R_gamma)
         all_t.append(t_gamma)
         src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) * src_mask.unsqueeze(-1).expand_as(tar_coordinates)
-        src_tgt_euc_dist = cdist_torch(tar_coordinates, src_coordinates, 3)
+        src_tgt_euc_dist = cdist_torch(tar_orig_coord, src_orig_coord, 3) * combined_mask
+        src_orig_coord = (torch.matmul(src_orig_coord, R_gamma) + t_gamma.unsqueeze(1)) * src_mask.unsqueeze(-1).expand_as(tar_coordinates)
+        src_tgt_euc_dist = cdist_torch(tar_orig_coord, src_orig_coord, 3)
         gamma = (soft_corr / ((1 + (src_tgt_euc_dist / get_d0(max_protein_length).to(soft_corr.device)[:, None, None])**2)**2)).to(soft_corr.device) * combined_mask
         iter_num += 1
 
-    rotation ,translation = compose_transformations(rotations=all_R, translations=all_t)
-    return {'pred_R': rotation, 'pred_t': translation, 'all_R': all_R, 'all_t': all_t}
+    rotation, translation = compose_transformations(rotations=all_R, translations=all_t)
+    return {'pred_R': rotation, 'pred_t': translation, 'all_R': all_R, 'all_t': all_t, 'all_gamma': all_gamma}
 
 def mask_and_normalize_matrix(distance_matrix: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor, src_embedding: torch.Tensor, tar_embedding) -> list[tuple]:
     """
@@ -181,6 +182,8 @@ def mask_and_normalize_matrix(distance_matrix: torch.Tensor, src_mask: torch.Ten
     device = distance_matrix.device
     combined_mask = create_2d_mask(src_mask, tar_mask)
     distance_matrix = distance_matrix * combined_mask
+    # distance_matrix = distance_matrix / torch.sqrt(torch.tensor(distance_matrix.shape[-1]))
+    distance_matrix = distance_matrix / torch.tensor(distance_matrix.shape[-1])
     distance_matrix = distance_matrix.masked_fill(~combined_mask, float('inf'))
     t = torch.tensor([guess_best_alpha_torch(src_embedding[i,:][src_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)], device=device)
     R = torch.stack([softargmin_rows_torch(distance_matrix[i], t[i]) for i in range(batch_size)], dim=0)

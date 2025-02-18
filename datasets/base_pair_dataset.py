@@ -33,6 +33,17 @@ class BasePairDataset(Dataset):
 
         self._df: pd.DataFrame = self._read_data_path()
 
+    def _calculate_sample_weights(self, df):
+        ligand_counts = df['Ligand_ID'].value_counts()
+        weights = 1 / (ligand_counts ** 0.5)
+
+        weights = weights / weights.sum()
+        weights = np.clip(weights, 0.1, 1)
+
+        df['sample_weight'] = df['Ligand_ID'].apply(lambda x: weights[x])
+        df['sample_weight'] = 1
+        return df
+
     def _read_data_path(self) -> pd.DataFrame:
         assert os.path.exists(self._df_path), f"Can't find path {self._df_path}"
         pairs = pd.read_csv(self._df_path)
@@ -44,19 +55,16 @@ class BasePairDataset(Dataset):
         pairs = pairs[pairs['cath_degree'] <= self._max_cath].reset_index()
 
         if self._n_samples:
-            pairs = pairs.reset_index().sample(n=self._n_samples, random_state=42, replace=True)
+            pairs = pairs.sample(n=self._n_samples, random_state=42, replace=True)
         for col in pairs.columns:
             if pairs[col].apply(lambda x: isinstance(x, str) and x.startswith('[') and x.endswith(']')).any():
                 pairs[col] = pairs[col].fillna('[]')
                 
                 pairs[col] = pairs[col].apply(lambda x: json.loads(x))
                 pairs[col] = pairs[col].apply(lambda x: deserialize_nested_lists(x, col))
-        
-        pairs['bbr'] = pairs['bbr'].apply(lambda x: max([max(y) for y in x if len(y) > 0], default=float('-inf')))
+                
         print(f"Read df with {len(pairs)} pairs")
-        pairs = pairs[pairs['bbr'] > self._bbr_filter_ratio]
-
-        print(f"Read df with {len(pairs)} pairs")
+        pairs = self._calculate_sample_weights(pairs)
 
         return pairs
 
