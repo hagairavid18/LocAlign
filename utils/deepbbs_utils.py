@@ -226,7 +226,7 @@ def representative_neighbor_dist_torch(D):
     assert D.shape[0] == D.shape[1], "Input to representative_neighbor_dist should be a matrix of distances from a point cloud to itself"
     m = min_without_self_per_row_torch(D)
     neighbor_dist = m.median()
-    return neighbor_dist.cpu().detach().numpy()
+    return neighbor_dist.detach()
 
 def guess_best_alpha_torch(A, dim_num=3, transpose=None):
     """

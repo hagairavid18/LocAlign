@@ -9,7 +9,7 @@ from models.utils import move_batch_to_device, build_object, compute_transformat
 
 
 class VirtualSoftBB(SoftBBBase):
-    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer, virtual_layer: dict, max_iter: int = 5, n_iter_train: int = 2, plot_dir: str | None = None) -> None:
+    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer, virtual_layer: dict, scalar_layer: dict, max_iter: int = 5, n_iter_train: int = 2, plot_dir: str | None = None) -> None:
        
         super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir)
         self._input_block = build_object(input_layer, 'models.layers')
@@ -133,7 +133,6 @@ class VirtualSoftBB(SoftBBBase):
             torch.Tensor: virtual points per input, transformed with the frames.
         """        
         offsets = self._virtual_point_block(embedding, mask)
-        offsets = torch.clamp(offsets, min=-5.0, max=5.0)
         transformed_offsets = self._transform_offsets_with_frames(offsets, frames)
         if self._plot:
             self._plot_offsets(transformed_offsets[mask], frames[:, :, 0, :][mask], metadata)
@@ -222,17 +221,28 @@ class VirtualSoftBB(SoftBBBase):
         distance_matrix: torch.Tensor = self._get_distance_matrix(src_embedding=src_embedding, tar_embedding=tar_embedding, src_mask=batch['src_mask'], tar_mask=batch['tar_mask'])
         soft_correspondences, mask_2d = mask_and_normalize_matrix(distance_matrix, batch['src_mask'], batch['tar_mask'], src_embedding, tar_embedding)
         src_coord, tar_coord = batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :]
-        virtual_src_coord, virtual_tar_coord = self._create_virtual_coordinates(src_embedding, batch['src_frames'], batch['src_mask'], metadata=batch['metadata']), self._create_virtual_coordinates(tar_embedding, batch['tar_frames'], batch['tar_mask'], metadata=batch['metadata'])
+        virtual_src_coord, src_offsets= self._create_virtual_coordinates(src_embedding, batch['src_frames'], batch['src_mask'], metadata=batch['metadata'])
+        virtual_tar_coord, tar_offsets, =  self._create_virtual_coordinates(tar_embedding, batch['tar_frames'], batch['tar_mask'], metadata=batch['metadata'])
         optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], soft_correspondences, virtual_src_coord, virtual_tar_coord, src_coord, tar_coord, batch['src_mask'], mask_2d, iter_limit=self._max_iter if not self.training else self._n_iter_train)
-        return optimal_transformation, mask_2d
+        return optimal_transformation, mask_2d, src_offsets, tar_offsets
+
+    def group_lasso_regularization(self, tensor, lambda_gl=1e-2):
+        """
+        Computes Group Lasso regularization for a B x N x 3 tensor.
+        - Sums over B first, then N, then computes sqrt of the sum of squares across 3.
+        """
+        reg_loss = torch.sqrt(torch.sum(tensor ** 2, dim=(0, 1)) + 1e-4)  # Sum over B, then N
+        return lambda_gl * reg_loss.mean()  # Sum over 3 (last dimension)
 
     def training_step(self, batch: dict[torch.Tensor]) -> dict[str, torch.Tensor]:
         batch = move_batch_to_device(batch, self.device)
         # print((batch['metadata'][0]['Ligand_ID'], batch['metadata'][0]['mov_protein'], batch['metadata'][0]['ref_protein'], batch['metadata'][0]['idx']))
-        transformation_dict, _ = self._compute_soft_bb_algorithm(batch)
+        transformation_dict, _, virtual_src_coord, virtual_tar_coord = self._compute_soft_bb_algorithm(batch)
         
         loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
-        
+        loss = loss + self.group_lasso_regularization(virtual_src_coord) + self.group_lasso_regularization(virtual_tar_coord)
+        # if self._plot:
+        #     plot_transformed_point_clouds_interactive2(self.logger, batch, transformation_dict, step=self.global_step)
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict' :transformation_dict}    
         return outputs
 
@@ -247,8 +257,9 @@ class VirtualSoftBB(SoftBBBase):
             dict[str, torch.Tensor]: 
         """        
         batch = move_batch_to_device(batch, self.device)
-        transformation_dict, mask = self._compute_soft_bb_algorithm(batch)
-
+        transformation_dict, mask, virtual_src_coord, virtual_tar_coord = self._compute_soft_bb_algorithm(batch)
+        loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
+        loss = loss + self.group_lasso_regularization(virtual_src_coord) + self.group_lasso_regularization(virtual_tar_coord)
         if self._plot:
             loss_iter1, loss_dict2 = self._compute_loss(batch, transformation_dict['all_R'][0].detach(), transformation_dict['all_t'][0].detach())
             self._plot_correspondences(transformation_dict['all_gamma'], mask, batch['metadata'], [loss_iter1, loss])

@@ -13,7 +13,7 @@ torch.set_float32_matmul_precision('medium')
 
 
 class SoftBBBase(L.LightningModule, ABC):
-    def __init__(self, loss: dict[str, Any] | None, optimizer: dict[str, Any] | None, max_iter: int = 5) -> None:
+    def __init__(self, loss: dict[str, Any] | None, optimizer: dict[str, Any] | None, max_iter: int = 5, n_iter_train: int = 2, plot_dir : str | None = None) -> None:
         """
         Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of embeddings and computes the optimal transformation between them.
         Iterate over the optimal transformation and the correspondence matrix to minimize the pocket RMSD loss function.
@@ -26,6 +26,7 @@ class SoftBBBase(L.LightningModule, ABC):
         super().__init__()
         self._pocket_loss = build_object(loss['pocket'], 'losses') if loss is not None else None
         self._transformation_loss = build_object(loss['transformation'], 'losses') if loss is not None else None
+        self._ligadn_loss = build_object(loss['ligand'], 'losses') if loss is not None else None
         self._use_transformation_loss = loss['use_transformation'] if loss is not None else False
         self._alpha_loss = 0.5
         self._metrics = PocketRMSD()
@@ -42,9 +43,12 @@ class SoftBBBase(L.LightningModule, ABC):
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_embedding'].shape[0]
-        for loss_name, value in outputs['loss_dict'].items():
-            self.log(f'train_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_step=True, on_epoch=True)
-        self.log(f'train_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_step=True, on_epoch=True)
+
+        loss_logs = {f"train_{k}_loss": v for k, v in outputs['loss_dict'].items()}
+        loss_logs["train_loss"] = outputs['loss']
+
+        self.log_dict(loss_logs, batch_size=batch_size, prog_bar=False, on_step=True, on_epoch=True)
+
         current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log('learning_rate', current_lr, on_step=True, on_epoch=True, logger=True)
     
@@ -115,6 +119,8 @@ class SoftBBBase(L.LightningModule, ABC):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
         loss = loss_dict['pocket_rmsd']
         loss_dict.update(self._transformation_loss(batch, R_total, t_total))
+        loss_dict.update(self._ligadn_loss(batch, R_total, t_total))
+        # loss = loss_dict['ligand_rmsd']
         if self._use_transformation_loss:
             loss = self._alpha_loss * loss_dict['pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
         loss_dict['loss'] = loss
@@ -122,14 +128,14 @@ class SoftBBBase(L.LightningModule, ABC):
 
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=self._lr, weight_decay=1e-4)        
+        optimizer = optim.AdamW(self.parameters(), lr=self._lr, weight_decay=1e-4, fused=False)        
         # optimizer = optim.Adam(self.parameters(), lr=self._lr)        
         if self._scheduler_config is not None:
             self._scheduler_config['args']['optimizer'] = optimizer
             interval = self._scheduler_config['args'].pop('interval', 'step')
             scheduler = build_object(self._scheduler_config, "torch.optim.lr_scheduler")
         else:
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
             interval = 'epoch'
         
         return {

@@ -18,7 +18,7 @@ class RTLoss(nn.Module):
         rotation_mse = rotation_loss_frobenius(rotation_ab_pred, batch['gt_R'])
         translation_mse = F.mse_loss(translation_ab_pred, batch['gt_t'][:, :3])
         translation_rmse = torch.sqrt(translation_mse)
-        return {'transformation': rotation_mse + self._translation_weight * translation_mse, 'rotation': rotation_mse, 'translation': translation_rmse}
+        return {'transformation': rotation_mse + self._translation_weight * translation_rmse, 'rotation': rotation_mse, 'translation': translation_rmse}
 
 class PocketLoss(nn.Module):
     def __init__(self, return_non_linear: bool = False, alpha: float = 1.0):
@@ -32,3 +32,22 @@ class PocketLoss(nn.Module):
         if self._return_non_linear:
             non_linear_pocket_rmsd = pocket_rmsd / (pocket_rmsd + self._alpha ** 2)
         return {'non_linear_pocket_rmsd': non_linear_pocket_rmsd, "pocket_rmsd": pocket_rmsd}
+
+class LigandLoss(nn.Module):
+    def __init__(self, return_non_linear: bool = False, alpha: float = 1.0):
+        super(LigandLoss, self).__init__()
+        self._return_non_linear = return_non_linear
+        self._alpha = alpha
+    
+    def forward(self, batch, rotation_ab_pred, translation_ab_pred):
+        src_ligand_coordiantes = batch['src_ligand_coordinates']
+        tar_ligand_coordiantes = batch['tar_ligand_coordinates']
+        mask = batch['src_ligand_mask']
+        src_ligand_coordiantes_transformed = torch.matmul(src_ligand_coordiantes, rotation_ab_pred) + translation_ab_pred[:,:3].unsqueeze(1)
+        
+        squared_diff = torch.sum((tar_ligand_coordiantes - src_ligand_coordiantes_transformed) ** 2, dim=2)  
+        masked_squared_diff = squared_diff * mask.float()  
+        valid_counts = mask.sum(dim=1)  
+
+        rmsd_value = torch.sqrt(masked_squared_diff.sum(dim=1) / valid_counts.clamp(min=1e-10))  
+        return {"ligand_rmsd": rmsd_value.mean()}

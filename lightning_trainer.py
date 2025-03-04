@@ -48,13 +48,16 @@ def main():
         batch_size=config['dataloader']['train_batch_size'], 
         collate_fn=custom_collate_fn, 
         num_workers=config['dataloader']['n_workers'],
-        shuffle=True
+        shuffle=True,
+        pin_memory=True,
+        # sampler=RandomSampler(train_dataset, num_samples=10000, replacement=True)
     )
     val_loader = DataLoader(
         valid_dataset, 
         batch_size=config['dataloader']['valid_batch_size'], 
         collate_fn=custom_collate_fn, 
-        num_workers=config['dataloader']['n_workers']
+        num_workers=config['dataloader']['n_workers'],
+        pin_memory=True
     )
 
     # Build model
@@ -85,9 +88,12 @@ def main():
         max_epochs=config['trainer']['max_epochs'],
         check_val_every_n_epoch=config['trainer']['check_val_every_n_epoch'],
         callbacks=[checkpoint_callback],
-        gradient_clip_val=config['trainer']['gradient_clipping'],
+        gradient_clip_val=config['trainer'].pop('gradient_clipping', None),
         log_every_n_steps=100,
-        accelerator=device
+        accelerator=device,
+        profiler="pytorch" if config['trainer'].get('profiler', False) else None,
+        # detect_anomaly=True,
+        # precision= 'bf16-mixed' if device == 'gpu' else 32,
     )
 
     # Log hyperparameters
@@ -98,7 +104,7 @@ def main():
     if config['trainer']['validate_only']:
         trainer.validate(model, val_loader, ckpt_path=config['trainer']['ckpt_path'])
     else:
-        trainer.fit(model, train_loader, val_dataloaders=val_loader, ckpt_path=config['trainer']['ckpt_path'])
+        trainer.fit(model, train_loader, val_dataloaders=val_loader, ckpt_path=config['trainer'].pop('ckpt_path', None))
 
 if __name__ == "__main__":
     main()
