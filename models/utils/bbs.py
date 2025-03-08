@@ -194,3 +194,81 @@ def mask_and_normalize_matrix(distance_matrix: torch.Tensor, src_mask: torch.Ten
 
     B = B * combined_mask
     return B, combined_mask
+
+
+def _log_sinkhorn_iterations(Z: torch.Tensor, log_mu: torch.Tensor, log_nu: torch.Tensor, iters: int) -> torch.Tensor:
+    """ Perform Sinkhorn Normalization in Log-space for stability"""
+    u, v = torch.zeros_like(log_mu), torch.zeros_like(log_nu)
+    for _ in range(iters):
+        u = log_mu - torch.logsumexp(Z + v.unsqueeze(1), dim=2)
+        v = log_nu - torch.logsumexp(Z + u.unsqueeze(2), dim=1)
+    return Z + u.unsqueeze(2) + v.unsqueeze(1)
+
+
+def log_optimal_transport_mask(scores: torch.Tensor, alpha: torch.Tensor, iters: int,
+        mask_rows: torch.Tensor, mask_cols: torch.Tensor) -> torch.Tensor:
+    """ Perform Differentiable Optimal Transport in Log-space for stability"""
+    b, m, n = scores.shape
+    mask_rows = mask_rows.float()
+    mask_cols = mask_cols.float()
+
+    mask = (1-(mask_cols.unsqueeze(1) * mask_rows.unsqueeze(2))) * -1e9  # log-values for mask: 0 -> -1e9 ~ -inf
+    scores = mask + scores
+    one = torch.tensor([1], dtype=scores.dtype, device=scores.device)
+    ms, ns = (mask_rows.sum(1) * one).to(scores), (mask_cols.sum(1) * one).to(scores)
+
+    bins0 = torch.cat([torch.cat(
+        [alpha.expand(1, ms[i].int(), 1), torch.tensor(-float('Inf')).type_as(alpha).expand(1, (m - ms[i]).int(), 1)], 1) for i in
+                       range(ms.shape[0])], 0)
+    bins1 = torch.cat([torch.cat(
+        [alpha.expand(1, 1, ns[i].int()), torch.tensor(-float('Inf')).type_as(alpha).expand(1, 1, (n - ns[i]).int())], 2) for i in
+                       range(ns.shape[0])], 0)
+    alpha = alpha.expand(b, 1, 1)
+
+    couplings = torch.cat([torch.cat([scores, bins0], -1),
+                           torch.cat([bins1, alpha], -1)], dim=1)
+
+    norm = - (ms + ns).log()
+    log_mu = torch.cat([norm.repeat(m, 1), (ns.log() + norm)[None]]).T
+    log_mu[:, :-1][mask_rows == 0.0] = torch.tensor(-float('Inf')).type_as(scores)
+    log_nu = torch.cat([norm.repeat(n, 1), (ms.log() + norm)[None]]).T
+    log_nu[:, :-1][mask_cols == 0.0] = torch.tensor(-float('Inf')).type_as(scores)
+    Z = _log_sinkhorn_iterations(couplings, log_mu, log_nu, iters)
+    Z = Z - norm.unsqueeze(-1).unsqueeze(-1)  # multiply probabilities by M+N
+    return Z
+
+
+def log_optimal_transport(scores: torch.Tensor, alpha: torch.Tensor, iters: int) -> torch.Tensor:
+    """
+    Perform Differentiable Optimal Transport in Log-space for stability
+    for further reading:
+    https://arxiv.org/pdf/1905.11885.pdf
+    https://proceedings.neurips.cc/paper/2013/file/af21d0c97db2e27e13572cbf59eb343d-Paper.pdf
+    good luck with that
+    Args:
+        scores: (torch.Tensor) [b,M,N] of scoring matrix between M features to N features of image pair
+        alpha: (torch.Tensor) nonlearnable / learnable matrix transport matrix element parameter (defaults to 1)
+        iters: (int) number of sinkhorn iterations
+
+    Returns:
+        torch.Tensor "soft max" of the scoring matrix
+    """
+
+    b, m, n = scores.shape
+    ms = torch.tensor(m, device=scores.device)
+    ns = torch.tensor(n, device=scores.device)
+    bins0 = alpha.expand(b, m, 1)
+    bins1 = alpha.expand(b, 1, n)
+    alpha = alpha.expand(b, 1, 1)
+
+    couplings = torch.cat([torch.cat([scores, bins0], -1),
+                           torch.cat([bins1, alpha], -1)], 1)
+
+    norm = - (ms + ns).log()
+    log_mu = torch.cat([norm.expand(m), ns.log()[None] + norm])
+    log_nu = torch.cat([norm.expand(n), ms.log()[None] + norm])
+    log_mu, log_nu = log_mu[None].expand(b, -1), log_nu[None].expand(b, -1)
+
+    Z = _log_sinkhorn_iterations(couplings, log_mu, log_nu, iters)
+    Z = Z - norm  # multiply probabilities by M+N
+    return Z

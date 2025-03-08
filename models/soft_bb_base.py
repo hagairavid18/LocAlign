@@ -115,6 +115,9 @@ class SoftBBBase(L.LightningModule, ABC):
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
 
+        if batch_idx % 10 == 0 and self._plot:
+            plot_transformed_point_clouds_interactive2(self.logger, batch, outputs['transformation_dict'], epoch=self.current_epoch, step=batch_idx)
+
     def _compute_loss(self, batch, R_total, t_total):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
         loss = loss_dict['pocket_rmsd']

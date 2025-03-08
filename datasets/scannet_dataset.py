@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class ScannetDataset(BasePairDataset):
-    MAX_LENGTH_DICT = {'residue': 1000, 'atom': 2500, 'pocket': 1000}
+    MAX_LENGTH_DICT = {'residue': 1000, 'atom': 1200, 'pocket': 800}
 
     def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, infer_baseline: bool = False, level: str = 'residue', n_samples: int | None = None, min_cath: int = 0, max_cath: int = 8, bbr_filter_ratio: float = 0.0, seed: int| None = None) -> None:
         super().__init__(df_path, base_data_path, n_samples, min_cath, max_cath, seed=seed, bbr_filter_ratio=bbr_filter_ratio)
@@ -51,8 +51,14 @@ class ScannetDataset(BasePairDataset):
                 "tar": self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein']),
                 "src": self._read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
             }
-            src_ligand_coordinates = self._read_ligand(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
-            tar_ligand_coordinates = self._read_ligand(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
+            src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+            tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
+            if not src_atom_ids == tar_atom_ids:
+                shared_atom_ids = set(src_atom_ids).intersection(tar_atom_ids)
+                src_ligand_coordinates = src_ligand_coordinates[torch.tensor([src_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
+                tar_ligand_coordinates = tar_ligand_coordinates[torch.tensor([tar_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
+                assert src_ligand_coordinates.shape == tar_ligand_coordinates.shape
+
         except Exception as e:
             print(f"Error reading embeddings for {row['Ligand_ID']} {row['mov_protein']} {row['ref_protein']}: {e}")
             idx = torch.randint(0, len(self), (1,)).item()
@@ -154,21 +160,22 @@ class ScannetDataset(BasePairDataset):
         }
         return {key: torch.tensor(value) for key, value in ret_dict.items()}
 
-    def _read_ligand(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, torch.Tensor]:
+    def _read_ligand(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, list[str]]:
         ligand_model_path = os.path.join(self._base_data_path, ligand_id,  chain + '_ligand.pdb')
         if not os.path.exists(ligand_model_path):
             print(f"Can't find ligand path for {chain}")
             raise ValueError
         structure: Structure = self._mmcif_parser.get_structure(chain, ligand_model_path)
-        coordinates = []
+        coordinates, ids = [], []
         chain : Chain = list(list(structure)[0])[0]
         if len(list(chain)) > 1: 
             print(f"ligand {ligand_id} found in {chain} more than once")
         for residue in chain:
             for atom in residue:
                 coordinates.append(torch.Tensor(atom.get_coord()))
+                ids.append(atom.id)
 
-        return torch.stack(coordinates)
+        return torch.stack(coordinates), ids
 
     def _read_pocket_coordinates(self, ligand_id: str, p_name: str) -> tuple[torch.Tensor, torch.Tensor]:
         """

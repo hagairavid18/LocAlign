@@ -111,19 +111,8 @@ class FeatureBlock(nn.Module):
 
     def forward(self, x, mask=None):
         B, N, D = x.shape  # Batch size, number of tokens, feature dim
-        # print(f"in block max: {x.max()}, min: {x.min()}")
-        # if x.max() > 100 or x.min() < -100:
-        #     print("Warning: Large values detected in FeatureBlock input")
         x = x + self.mlp(x)  # Apply MLP
-        # print(f"in clock after mlp max: {x.max()}, min: {x.min()}")
-        # if x.max() > 100 or x.min() < -100:
-        #     print("Warning: Large values detected in FeatureBlock input")
-        # x = x.view(B * N, D)
         x = self.norm(x, mask)  # Apply Masked LayerNorm
-        # x = x.view(B, N, D) * mask.unsqueeze(-1) # Reshape back
-        # print(f"in block after norm max: {x.max()}, min: {x.min()}")
-        # if x.max() > 100 or x.min() < -100:
-        #     print("Warning: Large values detected in FeatureBlock input")
 
         return x
 

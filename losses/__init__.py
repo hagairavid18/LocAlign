@@ -1,1 +1,1 @@
-from .soft_bb_loss import RTLoss, PocketLoss
+from .soft_bb_loss import RTLoss, PocketLoss, LigandLoss

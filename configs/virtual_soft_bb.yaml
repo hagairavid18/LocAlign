@@ -1,31 +1,29 @@
 trainer:
-  exp_name: "dp005-3blocks-bn-wd-no-scalar-layer-no-grad-clip-no-guess-no-skips-hd512-vir5"
-  tags: ["virtual", "pocket", "shared", "all_caths", "grouping_1302", "800"]
-  max_epochs: 50
+  exp_name: "sbmaskedln-atom-512-ligandloss-l2-sinkhorn50-learnablea"
+  tags: ["virtual", "atom", "grouping_1302", "1200", "new_block"]
+  max_epochs: 30
   validate_only: false
-  check_val_every_n_epoch: 2
-  gradient_clipping: 15
-  profiler: false
-  # ckpt_path: "checkpoints/viz-grouping-train-for-viz-corr-offsets-upto2-scalarmatrix-005dp-30epoch-ligandloss-fix/epoch=23-step=25440.ckpt"
-  ckpt_path: null
+  check_val_every_n_epoch: 1
+  gradient_clipping: 30
+  # profiler: true
+  # ckpt_path: "checkpoints/dp000-3blocks-1000-vir-no-limit-no-div-dist/epoch=25-step=23712.ckpt"
 model:
   name: VirtualSoftBB
   args:
-    # plot_dir: "plots/viz-grouping-train-for-viz-corr/train"
-    plot_dir: null
+    # plot_dir: "plots/test-plot/val"
     max_iter: 5
     n_iter_train: 2
     input_layer:
       name: 
-        FeatureBlockGPT
+        FeatureBlockGPT2
       args:
-        skip_connection: True
         n_blocks: 3
         input_dim: 256
-        hidden_dim: 256
+        hidden_dim: 512
         output_dim: 256
-        dropout: 0.02
-        normalization: LayerNorm
+        dropout: 0.0
+        norm_in_last_layer: false
+        norm_first_layer: false
     virtual_layer:
       name: 
         FeatureBlockGPT
@@ -35,26 +33,22 @@ model:
         input_dim: 256
         hidden_dim: 256
         output_dim: 3
-        dropout: 0.05
-        normalization: LayerNorm
-        norm_in_last_layer: False
-    # scalar_layer:
-    #   name: 
-    #     FeatureBlockGPT
-    #   args:
-    #     skip_connection: false
-    #     n_blocks: 3
-    #     input_dim: 256
-    #     hidden_dim: 256
-    #     output_dim: 1
-    #     dropout: 0.2
-    #     normalization: BatchNorm
-    #     norm_in_last_layer: False
+    scalar_layer:
+      name: 
+        FeatureBlockGPT2
+      args:
+        n_blocks: 1
+        input_dim: 256
+        output_dim: 1
+        bias: false
     loss:
       use_transformation: false
       pocket:
         name: PocketLoss
         args: {"return_non_linear": True}
+      ligand:
+        name: LigandLoss
+        args: {}
       transformation:
         name: RTLoss
         args: {"translation_weight": 0.1}
@@ -62,38 +56,39 @@ model:
       name: Adam
       args:
         learning_rate: 0.0005
-        scheduler:
-          name: OneCycleLR
-          args:
-            max_lr: 0.0005
-            epochs: 50
-            steps_per_epoch: 1500
-            three_phase: True
-            final_div_factor: 5
-            div_factor: 10
+        # scheduler:
+        #   name: OneCycleLR
+        #   args:
+        #     max_lr: 0.0005
+        #     epochs: 50
+        #     steps_per_epoch: 1500
+        #     three_phase: True
+        #     final_div_factor: 5
+        #     div_factor: 10
 
 dataset:
   train:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/grouping_1302/train.csv
-      # n_samples: 100
+      # n_samples: 10
       seed: 41
       min_cath: 0
-      max_cath: 3
+      max_cath: 4
       bbr_filter_ratio: 0.3
-      level: "pocket"
+      level: "atom"
   validation:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/grouping_1302/val.csv
-      # n_samples: 100
+      # n_samples: 15
       seed: 81
       min_cath: 0
-      max_cath: 3
-      level: "pocket"
+      max_cath: 4
+      bbr_filter_ratio: 0.3
+      level: "atom"
 dataloader:
-  train_batch_size: 12
+  train_batch_size: 8
   valid_batch_size: 1
   test_batch_size: 1
-  n_workers: 20
+  n_workers: 12

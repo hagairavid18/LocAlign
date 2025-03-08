@@ -6,8 +6,7 @@ import torch
 
 from models.soft_bb_base import SoftBBBase
 from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord, mask_and_normalize_matrix
-
-
+from models.utils.plots import plot_transformed_point_clouds_interactive2
 class VirtualSoftBB(SoftBBBase):
     def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer, virtual_layer: dict, scalar_layer: dict, max_iter: int = 5, n_iter_train: int = 2, plot_dir: str | None = None) -> None:
        
@@ -19,7 +18,13 @@ class VirtualSoftBB(SoftBBBase):
     
     def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> dict[str, torch.Tensor]:        
 
-        distance_matrix = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1))
+        distance_matrix = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) + 1e-4) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32))
+        # src_embedding = F.normalize(src_embedding, p=2, dim=-1)
+        # tar_embedding = F.normalize(tar_embedding, p=2, dim=-1)
+
+        # distance_matrix  =- torch.matmul(src_embedding, tar_embedding.transpose(1, 2)) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32))
+        # distance_matrix  =- torch.matmul(src_embedding, tar_embedding.transpose(1, 2)) 
+
         
         tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1) 
         src_scalar = self._linear(src_embedding, mask=src_mask).squeeze(-1)
@@ -134,10 +139,10 @@ class VirtualSoftBB(SoftBBBase):
         """        
         offsets = self._virtual_point_block(embedding, mask)
         transformed_offsets = self._transform_offsets_with_frames(offsets, frames)
-        if self._plot:
-            self._plot_offsets(transformed_offsets[mask], frames[:, :, 0, :][mask], metadata)
+        # if self._plot:
+        #     self._plot_offsets(offsets[mask], frames[:, :, 0, :][mask], metadata)
         transformed_offsets  = transformed_offsets * mask.unsqueeze(-1)
-        return transformed_offsets
+        return transformed_offsets, offsets * mask.unsqueeze(-1)
     
     def _plot_correspondences(self, soft_correspondences_list: list[torch.Tensor], mask: torch.Tensor, metadata: dict[str, Any], losses: dict[str, torch.Tensor]) -> None:
         """
@@ -261,8 +266,8 @@ class VirtualSoftBB(SoftBBBase):
         loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
         loss = loss + self.group_lasso_regularization(virtual_src_coord) + self.group_lasso_regularization(virtual_tar_coord)
         if self._plot:
-            loss_iter1, loss_dict2 = self._compute_loss(batch, transformation_dict['all_R'][0].detach(), transformation_dict['all_t'][0].detach())
-            self._plot_correspondences(transformation_dict['all_gamma'], mask, batch['metadata'], [loss_iter1, loss])
+            # loss_iter1, loss_dict2 = self._compute_loss(batch, transformation_dict['all_R'][0].detach(), transformation_dict['all_t'][0].detach())
+            # self._plot_correspondences(transformation_dict['all_gamma'], mask, batch['metadata'], [loss_iter1, loss])
             print(f"Loss: {loss.item()}")
         
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': transformation_dict}
