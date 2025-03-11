@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from models.utils.math import compute_rmsd_torch
 
+
 def rotation_loss_frobenius(R1, R2):
     # R1 and R2 are the rotation matrices with shape (B, 3, 3)
     loss = torch.norm(R1 - R2, p='fro', dim=(1, 2))
@@ -20,6 +21,7 @@ class RTLoss(nn.Module):
         translation_rmse = torch.sqrt(translation_mse)
         return {'transformation': rotation_mse + self._translation_weight * translation_rmse, 'rotation': rotation_mse, 'translation': translation_rmse}
 
+
 class PocketLoss(nn.Module):
     def __init__(self, return_non_linear: bool = False, alpha: float = 1.0):
         super(PocketLoss, self).__init__()
@@ -32,6 +34,7 @@ class PocketLoss(nn.Module):
         if self._return_non_linear:
             non_linear_pocket_rmsd = pocket_rmsd / (pocket_rmsd + self._alpha ** 2)
         return {'non_linear_pocket_rmsd': non_linear_pocket_rmsd, "pocket_rmsd": pocket_rmsd}
+
 
 class LigandLoss(nn.Module):
     def __init__(self, return_non_linear: bool = False, alpha: float = 1.0):

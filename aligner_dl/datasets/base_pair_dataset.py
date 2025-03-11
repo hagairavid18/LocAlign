@@ -4,7 +4,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from utils.loading import deserialize_nested_lists
+from utils.misc import deserialize_nested_lists
 
 import random
 import numpy as np

@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from utils.loading import serialize_nested_lists
+from utils.misc import serialize_nested_lists
 
 
 def build_object(config: dict, default_module: str|None = None) -> Any:

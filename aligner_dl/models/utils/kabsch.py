@@ -1,5 +1,5 @@
 import torch
-from utils.deepbbs_utils import *
+
 
 def kabsch_torch(P, Q):
     """
@@ -64,7 +64,7 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     # Center the points
     p = P - weighted_centroids_P[:, None, :]
     q = Q - weighted_centroids_Q[:, None, :]
-    # diagonal_w = torch.diag(weights.squeeze(1))
+    
     # Compute the covariance matrix
     H = torch.bmm(torch.bmm(q.transpose(1, 2), weights), p)
 

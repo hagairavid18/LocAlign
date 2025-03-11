@@ -1,19 +1,18 @@
+import warnings
 import logging
 import os
 import torch
 import torch.nn.functional as F
-from datasets import BasePairDataset
 import pickle
-
 import numpy as np
 from Bio.PDB import PDBParser
 from Bio.PDB.Atom import PDBConstructionWarning
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Structure import Structure
 
-import warnings
-
+from datasets import BasePairDataset
 from utils.constants import LIGAND_DIR
+
 warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 logger = logging.getLogger(__name__)

@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 import pandas as pd
 import os
 from typing import Any
@@ -23,6 +23,8 @@ class SoftBBBase(L.LightningModule, ABC):
             loss (dict[str, Any]): loss functions to be used in the model.
             optimizer (dict[str, Any]): optimizer configuration.
             max_iter (int, optional): Since the process is iterative, we define max iterations. Defaults to 5.
+            n_iter_train (int, optional): Number of weighted kabsch iterations to train. Defaults to 2.
+            plot_dir (str | None, optional): Directory to save plots. Defaults to None.
         """        
         super().__init__()
         self._pocket_loss = build_object(loss['pocket'], 'losses') if loss is not None else None
@@ -31,7 +33,6 @@ class SoftBBBase(L.LightningModule, ABC):
         self._use_transformation_loss = loss['use_transformation'] if loss is not None else False
         self._alpha_loss = 0.5
         self._metrics = PocketRMSD()
-        self._min_diff = 0.05
         self._max_iter = max_iter
         self._n_iter_train = n_iter_train
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
@@ -129,7 +130,6 @@ class SoftBBBase(L.LightningModule, ABC):
             loss = self._alpha_loss * loss_dict['pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
         loss_dict['loss'] = loss
         return loss, loss_dict
-
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self._lr, weight_decay=1e-4, fused=False)        

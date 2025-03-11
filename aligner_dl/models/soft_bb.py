@@ -4,6 +4,7 @@ import torch
 from models.soft_bb_base import SoftBBBase
 from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord, mask_and_normalize_matrix
 
+
 class SoftBB(SoftBBBase):
     def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer, scalar_layer: dict | None = None, max_iter: int = 5, compute_pocket_importance: bool = False, plot_alignments: bool = False):
         """

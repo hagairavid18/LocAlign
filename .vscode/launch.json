@@ -54,12 +54,12 @@
             "name": "regular softBBS",
             "type": "debugpy",
             "request": "launch",
-            "program": "lightning_trainer.py",
+            "program": "aligner_dl/trainers/lightning_trainer.py",
             "console": "integratedTerminal",
             "justMyCode": false, 
             "args": [
                 "--config" ,
-                "configs/soft_bb.yaml",
+                "aligner_dl/configs/soft_bb.yaml",
              
             ]
         },
@@ -67,12 +67,12 @@
             "name": "virtual softBBS",
             "type": "debugpy",
             "request": "launch",
-            "program": "lightning_trainer.py",
+            "program": "aligner_dl/trainers/lightning_trainer.py",
             "console": "integratedTerminal",
             "justMyCode": false, 
             "args": [
                 "--config" ,
-                "configs/virtual_soft_bb.yaml",
+                "aligner_dl/configs/virtual_soft_bb.yaml",
              
             ]
         },
@@ -85,7 +85,7 @@
             "justMyCode": false, 
             "args": [
                 "--config" ,
-                "configs/tm_align.yaml",
+                "aligner_dl/configs/tm_align.yaml",
                 "--validate_only",
              
             ]

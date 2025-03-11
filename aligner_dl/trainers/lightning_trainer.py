@@ -1,7 +1,7 @@
 import torch
 import logging
 import yaml
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 from pytorch_lightning.loggers import CometLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 from datetime import datetime
@@ -10,6 +10,7 @@ import argparse
 import lightning as L
 from models.utils.collate import custom_collate_fn
 from models.utils.misc import build_object, flatten_dict
+
 
 # Argument parser setup
 def parse_args():
@@ -93,7 +94,6 @@ def main():
         accelerator=device,
         profiler="pytorch" if config['trainer'].get('profiler', False) else None,
         # detect_anomaly=True,
-        # precision= 'bf16-mixed' if device == 'gpu' else 32,
     )
 
     # Log hyperparameters

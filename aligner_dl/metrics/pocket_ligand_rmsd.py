@@ -1,11 +1,11 @@
 import logging
-import torch
 from torch.nn import Module
 
 from models.utils.math import compute_rmsd_torch
 
 
 logger = logging.getLogger(__name__)
+
 
 class PocketRMSD(Module):
     def __init__(self):

@@ -38,3 +38,12 @@ def compose_transformations(rotations: list[torch.Tensor], translations: list[to
             t_total = torch.bmm(t_total.unsqueeze(1), R).squeeze(1) + t
 
         return R_total, t_total
+
+
+def group_lasso_regularization(tensor: torch.Tensor, lambda_gl: float = 1e-3) -> torch.Tensor:
+        """
+        Computes Group Lasso regularization for a B x N x 3 tensor.
+        - Sums over B first, then N, then computes sqrt of the sum of squares across 3.
+        """
+        reg_loss = torch.sqrt(torch.sum(tensor ** 2, dim=(0, 1)) + 1e-4)  # Sum over B, then N
+        return lambda_gl * reg_loss.mean()

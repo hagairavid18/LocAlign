@@ -4,7 +4,7 @@ import os
 import torch
 from torch.utils.data import DataLoader
 import lightning as L
-from utils.kabsch import kabsch_torch
+from models.utils.kabsch import kabsch_torch
 from models.utils.collate import custom_collate_fn
 
 
