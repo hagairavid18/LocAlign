@@ -79,7 +79,7 @@ class ScannetDataset(BasePairDataset):
             embedding_dict = embedding_dicts[key]
             pocket_residue_indices = pocket_data[key]
 
-            indices_for_pocket = torch.isin(embedding_dict["sequence_indices_atom"], pocket_residue_indices)
+            indices_for_pocket = torch.isin(embedding_dict["atom_residue_indices"], pocket_residue_indices)
             if indices_for_pocket.sum() < 10:
                 print(f"Error: {indices_for_pocket.sum()} indices for pocket")
                 idx = torch.randint(0, len(self), (1,)).item()
@@ -92,8 +92,7 @@ class ScannetDataset(BasePairDataset):
 
             ret[f'{key}_embedding'] = F.pad(embedding_dict[f'{self._level}_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
             ret[f'{key}_frames'] = F.pad(embedding_dict[f'{self._level}_frames'], (0, 0, 0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
-            ret[f'{key}_residue_indices'] = F.pad(embedding_dict['residue_indices'], (0, self.MAX_LENGTH_DICT[self._level] - length))
-            ret[f'{key}_sequence_indices_atom'] = F.pad(embedding_dict['sequence_indices_atom'], (0, self.MAX_LENGTH_DICT[self._level] - length))
+            ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'{self._level}_residue_indices'], (0, self.MAX_LENGTH_DICT[self._level] - length))
             ret[f'{key}_mask'] = F.pad(torch.ones(length), (0, self.MAX_LENGTH_DICT[self._level] - length), value=0).bool()
           
             ret[f'{key}_pocket_embedding'] = F.pad(embedding_dict['pocket_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT['pocket'] - pocket_length))
@@ -156,8 +155,8 @@ class ScannetDataset(BasePairDataset):
             'residue_frames': residue_frames,
             'atom_embeddings': atomic_plus_residue_embedding,
             'residue_embeddings': residue_embeddings,
-            'residue_indices': residue_indices,
-            'sequence_indices_atom': atom_residue_index
+            'residue_residue_indices': residue_indices,
+            'atom_residue_indices': atom_residue_index
         }
         return {key: torch.tensor(value) for key, value in ret_dict.items()}
 

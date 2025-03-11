@@ -8,7 +8,7 @@ import torch.optim as optim
 
 from metrics import PocketRMSD
 from models.utils.misc import build_object
-from models.utils.plots import plot_transformed_point_clouds_interactive
+# from models.utils.plots import plot_transformed_point_clouds_interactive
 
 torch.set_float32_matmul_precision('medium')
 
@@ -117,8 +117,8 @@ class SoftBBBase(L.LightningModule, ABC):
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
 
-        if batch_idx % 10 == 0 and self._plot:
-            plot_transformed_point_clouds_interactive(self.logger, batch, outputs['transformation_dict'], epoch=self.current_epoch, step=batch_idx)
+        # if batch_idx % 10 == 0 and self._plot:
+        #     plot_transformed_point_clouds_interactive(self.logger, batch, outputs['transformation_dict'], epoch=self.current_epoch, step=batch_idx)
 
     def _compute_loss(self, batch, R_total, t_total):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)

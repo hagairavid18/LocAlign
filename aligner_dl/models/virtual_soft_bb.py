@@ -19,9 +19,10 @@ class VirtualSoftBB(SoftBBBase):
     
     def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> dict[str, torch.Tensor]:        
 
-        distance_matrix = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) + 1e-4) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32))
+        # distance_matrix = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) + 1e-4) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32))
+        distance_matrix = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) + 1e-4) 
 
-        tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1) 
+        tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1)
         src_scalar = self._linear(src_embedding, mask=src_mask).squeeze(-1)
             
         tar_matrix = tar_scalar.unsqueeze(-1).expand_as(distance_matrix)  # Shape [B, N_tar, N_src]
@@ -90,7 +91,6 @@ class VirtualSoftBB(SoftBBBase):
         optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], soft_correspondences, virtual_src_coord, virtual_tar_coord, batch['src_mask'], mask_2d, iter_limit=self._max_iter if not self.training else self._n_iter_train)
         return optimal_transformation, mask_2d, src_offsets, tar_offsets
 
-
     def training_step(self, batch: dict[torch.Tensor]) -> dict[str, torch.Tensor]:
         batch = move_batch_to_device(batch, self.device)
         # print((batch['metadata'][0]['Ligand_ID'], batch['metadata'][0]['mov_protein'], batch['metadata'][0]['ref_protein'], batch['metadata'][0]['idx']))
@@ -111,7 +111,7 @@ class VirtualSoftBB(SoftBBBase):
         Returns:
             dict[str, torch.Tensor]: 
         """
-        print(f"tar protein: {batch['metadata'][0]['ref_protein']}{batch['metadata'][0]['ref_chain']} src protein: {batch['metadata'][0]['mov_protein']}{batch['metadata'][0]['mov_chain']}")
+        # print(f"tar protein: {batch['metadata'][0]['ref_protein']}{batch['metadata'][0]['ref_chain']} src protein: {batch['metadata'][0]['mov_protein']}{batch['metadata'][0]['mov_chain']}")
         batch = move_batch_to_device(batch, self.device)
         transformation_dict, mask, virtual_src_coord, virtual_tar_coord = self._compute_soft_bb_algorithm(batch)
         loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])

@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "test-new-foramt-"
+  exp_name: "maskedln-atom-256-dp000-no-div-dist"
   tags: ["virtual", "atom", "grouping_1302", "1200", "new_block"]
   max_epochs: 15
   validate_only: false

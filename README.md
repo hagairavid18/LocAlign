@@ -12,8 +12,7 @@ You can set in the config the level (the trained model was made on atom level)
 during inference, each batch contains, for both target and source:
 {key}_embedding: The Scannet embedding features per atom/residue
 {key}_frames: a 3x4 matrix represents the frame
-{key}_residue_indices: residue index per residue
-{key}_sequence_indices_atom: residue index per atom
+{key}_residue_indices: residue index per atom/residue
 {key}_mask
 
 same for the pocket data:
@@ -24,3 +23,5 @@ same for the pocket data:
 The batch also contains 
 'metadata', which has all protein information including the name, chain etc.
 In addition, the Ground Truth also can be accessed with 'gt_R' and 'gt_T
+
+plots will be dumped to "plots/infer-virtual-bbs/val"

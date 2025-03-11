@@ -3,7 +3,7 @@
 #SBATCH --job-name=softbbs
 #SBATCH --output=/home/iscb/wolfson/hagairavid/awesome.out # redirect stdout
 #SBATCH --error=/home/iscb/wolfson/hagairavid/awesome.err # redirect stderr
-#SBATCH --partition=killable	
+#SBATCH --partition=gpu-h100-killable	
 #SBATCH --time=400 # max time (minutes)
 #SBATCH --signal=USR1@120 # how to end job when time’s up
 #SBATCH --nodes=1 # number of machines
