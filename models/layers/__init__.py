@@ -1,2 +1,2 @@
-from .linear import LinearBlock, IdentityLayer, FeatureBlockGPT2
+from .linear import LinearBlock, IdentityLayer, EmbeddingBlock
 from .cnn import CNNCombiner

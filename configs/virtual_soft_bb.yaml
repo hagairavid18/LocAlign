@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "sbmaskedln-atom-512-ligandloss-l2-sinkhorn50-learnablea"
+  exp_name: "maskedln-atom-256-pocketloss-l2"
   tags: ["virtual", "atom", "grouping_1302", "1200", "new_block"]
   max_epochs: 30
   validate_only: false
@@ -15,27 +15,25 @@ model:
     n_iter_train: 2
     input_layer:
       name: 
-        FeatureBlockGPT2
+        EmbeddingBlock
       args:
         n_blocks: 3
         input_dim: 256
-        hidden_dim: 512
+        hidden_dim: 256
         output_dim: 256
         dropout: 0.0
         norm_in_last_layer: false
         norm_first_layer: false
     virtual_layer:
       name: 
-        FeatureBlockGPT
+        EmbeddingBlock
       args:
-        skip_connection: false
-        n_blocks: 3
+        n_blocks: 1
         input_dim: 256
-        hidden_dim: 256
         output_dim: 3
     scalar_layer:
       name: 
-        FeatureBlockGPT2
+        EmbeddingBlock
       args:
         n_blocks: 1
         input_dim: 256

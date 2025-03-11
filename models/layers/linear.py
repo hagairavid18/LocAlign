@@ -113,13 +113,26 @@ class FeatureBlock(nn.Module):
         B, N, D = x.shape  # Batch size, number of tokens, feature dim
         x = x + self.mlp(x)  # Apply MLP
         x = self.norm(x, mask)  # Apply Masked LayerNorm
-
         return x
 
 
-class FeatureBlockGPT2(nn.Module):
-    def __init__(self, input_dim, output_dim, n_blocks=1, hidden_dim=None, dropout=0.0, bias=True, norm_in_last_layer=False, norm_first_layer=False):
-        super(FeatureBlockGPT2, self).__init__()
+class EmbeddingBlock(nn.Module):
+    def __init__(self, input_dim: int, output_dim: int, n_blocks: int = 1, hidden_dim: int | None = None, dropout: float = 0.0, bias: bool = True,
+                norm_in_last_layer: bool = False, norm_first_layer: bool = False) -> None:
+        """
+        Feature transformation block with multiple layers.
+
+        Args:
+            input_dim (int): 
+            output_dim (int):
+            n_blocks (int, optional):n feature blocks to apply. Defaults to 1.
+            hidden_dim (int | None, optional):. Defaults to None.
+            dropout (float, optional): . Defaults to 0.0.
+            bias (bool, optional): . Defaults to True.
+            norm_in_last_layer (bool, optional): Defaults to False.
+            norm_first_layer (bool, optional):  Defaults to False.
+        """        
+        super(EmbeddingBlock, self).__init__()
         
         # Stack multiple feature transformation blocks
         self.norm_first_layer = norm_first_layer
@@ -133,6 +146,7 @@ class FeatureBlockGPT2(nn.Module):
         self._norm_in_last_layer = norm_in_last_layer
         if norm_in_last_layer:
             self.norm = MaskedLayerNorm(output_dim)
+        
         self.apply(self.init_weights)
 
     @staticmethod
@@ -143,7 +157,10 @@ class FeatureBlockGPT2(nn.Module):
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
     
-    def forward(self, x, mask=None):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+        """
+        Forward pass for the embedding block."
+        """
         
         if self.norm_first_layer:
             x = self._first_norm(x, mask)
