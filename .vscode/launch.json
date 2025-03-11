@@ -77,6 +77,19 @@
             ]
         },
         {
+            "name": "infer virtual softBBS",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "aligner_dl/scripts/inference.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+                "--config" ,
+                "aligner_dl/configs/inference_virtual_soft_bb.yaml",
+             
+            ]
+        },
+        {
             "name": "infer tmalign",
             "type": "debugpy",
             "request": "launch",

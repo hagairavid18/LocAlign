@@ -1,18 +1,13 @@
 trainer:
-  exp_name: "test-new-foramt-"
-  tags: ["virtual", "atom", "grouping_1302", "1200", "new_block"]
-  max_epochs: 15
-  validate_only: false
-  check_val_every_n_epoch: 1
-  gradient_clipping: 30
-  # profiler: true
-  # ckpt_path: "checkpoints/maskedln-atom-256-pocketloss-dp002/epoch=3-step=9668.ckpt"
+  exp_name: "infer-virtual-bbs"
+  ckpt_path: "checkpoints/maskedln-atom-256-pocketloss-dp002/epoch=3-step=9668.ckpt"
 model:
   name: VirtualSoftBB
   args:
     # plot_dir: "plots/maskedln-atom-256-pocketloss-dp002/val"
     max_iter: 5
     n_iter_train: 2
+
     input_layer:
       name: 
         EmbeddingBlock
@@ -22,7 +17,7 @@ model:
         hidden_dim: 256
         output_dim: 256
         dropout: 0.0
-        norm_in_last_layer: false
+
     virtual_layer:
       name: 
         EmbeddingBlock
@@ -30,6 +25,7 @@ model:
         n_blocks: 1
         input_dim: 256
         output_dim: 3
+
     scalar_layer:
       name: 
         EmbeddingBlock
@@ -38,6 +34,7 @@ model:
         input_dim: 256
         output_dim: 1
         bias: false
+        
     loss:
       use_transformation: false
       pocket:
@@ -53,36 +50,17 @@ model:
       name: Adam
       args:
         learning_rate: 0.0005
-        # scheduler:
-        #   name: OneCycleLR
-        #   args:
-        #     max_lr: 0.0005
-        #     epochs: 50
-        #     steps_per_epoch: 1500
-        #     three_phase: True
-        #     final_div_factor: 5
-        #     div_factor: 10
-
+       
 dataset:
-  train:
-    name: ScannetDataset
-    args:
-      df_path: aligner_dl/datasets/csv_files/grouping_1302/train.csv
-      # n_samples: 10
-      seed: 41
-      max_cath: 8
-      bbr_filter_ratio: 0.3
-      level: "atom"
   validation:
     name: ScannetDataset
     args:
       df_path: aligner_dl/datasets/csv_files/grouping_1302/val.csv
-      # n_samples: 15
+      n_samples: 15
       seed: 81
-      max_cath: 4
+      max_cath: 8
       bbr_filter_ratio: 0.3
       level: "atom"
 dataloader:
-  train_batch_size: 8
   valid_batch_size: 1
-  n_workers: 12
+  n_workers: 0

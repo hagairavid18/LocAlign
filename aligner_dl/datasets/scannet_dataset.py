@@ -92,6 +92,8 @@ class ScannetDataset(BasePairDataset):
 
             ret[f'{key}_embedding'] = F.pad(embedding_dict[f'{self._level}_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
             ret[f'{key}_frames'] = F.pad(embedding_dict[f'{self._level}_frames'], (0, 0, 0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
+            ret[f'{key}_residue_indices'] = F.pad(embedding_dict['residue_indices'], (0, self.MAX_LENGTH_DICT[self._level] - length))
+            ret[f'{key}_sequence_indices_atom'] = F.pad(embedding_dict['sequence_indices_atom'], (0, self.MAX_LENGTH_DICT[self._level] - length))
             ret[f'{key}_mask'] = F.pad(torch.ones(length), (0, self.MAX_LENGTH_DICT[self._level] - length), value=0).bool()
           
             ret[f'{key}_pocket_embedding'] = F.pad(embedding_dict['pocket_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT['pocket'] - pocket_length))

@@ -110,7 +110,8 @@ class VirtualSoftBB(SoftBBBase):
 
         Returns:
             dict[str, torch.Tensor]: 
-        """        
+        """
+        print(f"tar protein: {batch['metadata'][0]['ref_protein']}{batch['metadata'][0]['ref_chain']} src protein: {batch['metadata'][0]['mov_protein']}{batch['metadata'][0]['mov_chain']}")
         batch = move_batch_to_device(batch, self.device)
         transformation_dict, mask, virtual_src_coord, virtual_tar_coord = self._compute_soft_bb_algorithm(batch)
         loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
