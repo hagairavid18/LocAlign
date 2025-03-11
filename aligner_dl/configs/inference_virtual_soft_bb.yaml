@@ -1,6 +1,6 @@
 trainer:
   exp_name: "infer-virtual-bbs"
-  ckpt_path: "checkpoints/maskedln-atom-256-pocketloss-dp002/epoch=3-step=9668.ckpt"
+  # ckpt_path: "checkpoints/maskedln-atom-256-pocketloss-dp002/epoch=3-step=9668.ckpt"
 model:
   name: VirtualSoftBB
   args:
