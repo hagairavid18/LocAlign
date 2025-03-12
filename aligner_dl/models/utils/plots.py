@@ -146,6 +146,7 @@ def plot_offsets(offsets, frames, metadata, plot_dir) -> None:
         name = f"{metadata[0]['Ligand_ID']}_{metadata[0]['mov_protein']}_{metadata[0]['ref_protein']}_{metadata[0]['cath_degree']}_histograms"
         plt.savefig(os.path.join(plot_dir, f"{name}.png"), dpi=500)
         plt.show()
+        plt.close()
 
 
 def plot_transformed_point_clouds_interactive(logger, batch, transformations, batch_idx=0, step: int = 0, epoch: int = 0):

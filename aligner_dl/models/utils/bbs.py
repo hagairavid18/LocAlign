@@ -73,9 +73,13 @@ def mask_and_normalize_matrix(distance_matrix: torch.Tensor, src_mask: torch.Ten
     combined_mask = create_2d_mask(src_mask, tar_mask)
     distance_matrix = distance_matrix * combined_mask
     distance_matrix = distance_matrix.masked_fill(~combined_mask, float('inf'))
-    t = torch.tensor([guess_best_alpha_torch(src_embedding[i,:][src_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)], device=device)
+    # t = torch.tensor([guess_best_alpha_torch(src_embedding[i,:][src_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)], device=device)
+    t = torch.tensor([torch.tensor(10) for i in range(batch_size)], device=device)
+    # print(f't1 {t}')
+
     R = torch.stack([softargmin_rows_torch(distance_matrix[i], t[i]) for i in range(batch_size)], dim=0)
-    t = torch.tensor([guess_best_alpha_torch(tar_embedding[i,:][tar_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)] , device=device)
+    # t = torch.tensor([guess_best_alpha_torch(tar_embedding[i,:][tar_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)] , device=device)
+    # print(f't2 {t}')
     C = torch.stack([softargmin_rows_torch(torch.transpose(distance_matrix, dim0=1, dim1=2)[i], t[i]) for i in range(batch_size)], dim=0)
     C = torch.transpose(C, dim0=1, dim1=2)
     B = torch.mul(R, C)
