@@ -19,8 +19,10 @@ class VirtualSoftBB(SoftBBBase):
     
     def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> dict[str, torch.Tensor]:        
 
-        # distance_matrix = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) + 1e-4) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32))
-        distance_matrix = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) + 1e-4) 
+        distance_matrix = torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32))
+        # distance_matrix = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) + 1e-4)
+        # distance_matrix = -  torch.matmul(src_embedding, tar_embedding.transpose(-1, -2)) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32))
+ 
 
         tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1)
         src_scalar = self._linear(src_embedding, mask=src_mask).squeeze(-1)
