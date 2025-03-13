@@ -5,7 +5,7 @@ from models.soft_bb_base import SoftBBBase
 from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord, mask_and_normalize_matrix
 from models.utils.math import group_lasso_regularization
 from models.utils.plots import plot_correspondences, plot_offsets
-
+import pickle,os
 torch.set_float32_matmul_precision('medium')
 
 
@@ -119,7 +119,20 @@ class VirtualSoftBB(SoftBBBase):
         if self._plot:
             loss_iter1, _ = self._compute_loss(batch, transformation_dict['all_R'][0].detach(), transformation_dict['all_t'][0].detach())
             plot_correspondences(transformation_dict['all_gamma'], mask, batch['metadata'], [loss_iter1, loss], self._plot_dir)
-            print(f"Loss: {loss.item()}")
+            print(f"Loss: {loss.item()}")            
+            metadata = batch['metadata']
+            name = f"{metadata[0]['Ligand_ID']}_{metadata[0]['mov_protein']}_{metadata[0]['ref_protein']}_{metadata[0]['cath_degree']}"
+            env = {
+                'name':name,
+                'batch':batch,
+                'transformation_dict':transformation_dict,
+                'mask':mask,
+                'metadata':batch['metadata'],
+                'loss_dict':loss_dict,
+                'virtual_src_coord':virtual_src_coord,
+                'virtual_tar_coord':virtual_tar_coord,
+            }
+            pickle.dump(env, open(os.path.join(self._plot_dir, f'all_info_{name}.pkl'),'wb') )
         
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': transformation_dict}
         self._metrics.update(batch, outputs)
