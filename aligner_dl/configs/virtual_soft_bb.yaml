@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "maskedln-atom-256-dp000-no-div-dist-tis10-b8"
+  exp_name: "maskedln-dp000-l2-up-to-4"
   tags: ["virtual", "atom", "grouping_1302", "1200", "new_block"]
   max_epochs: 15
   validate_only: false
