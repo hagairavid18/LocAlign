@@ -3,6 +3,8 @@ import yaml
 from torch.utils.data import DataLoader
 import argparse
 import lightning as L
+import sys,os
+sys.path.append(os.path.join(os.getcwd(),'aligner_dl'))
 from models.utils.collate import custom_collate_fn
 from models.utils.misc import build_object
 
