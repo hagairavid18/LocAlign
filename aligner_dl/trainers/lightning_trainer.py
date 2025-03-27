@@ -78,7 +78,9 @@ def main():
     checkpoint_callback = ModelCheckpoint(
         dirpath=f"checkpoints/{config['trainer']['exp_name']}",
         save_top_k=-1,
-        every_n_epochs=1
+        every_n_epochs=1,
+        verbose=True,
+        save_on_train_epoch_end=True
     )
 
     device = args.device or ('gpu' if torch.cuda.is_available() else 'cpu')
@@ -92,7 +94,7 @@ def main():
         gradient_clip_val=config['trainer'].pop('gradient_clipping', None),
         log_every_n_steps=100,
         accelerator=device,
-        profiler="pytorch" if config['trainer'].get('profiler', False) else None,
+        profiler="advanced" if config['trainer'].get('profiler', False) else None,
         # detect_anomaly=True,
     )
 

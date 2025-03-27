@@ -5,7 +5,6 @@ from models.soft_bb_base import SoftBBBase
 from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord, mask_and_normalize_matrix
 from models.utils.math import group_lasso_regularization
 from models.utils.plots import plot_correspondences, plot_offsets
-import pickle,os
 torch.set_float32_matmul_precision('medium')
 
 
@@ -17,13 +16,9 @@ class VirtualSoftBB(SoftBBBase):
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
         self._virtual_point_block = build_object(virtual_layer, 'models.layers')
     
-    def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> dict[str, torch.Tensor]:        
+    def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> torch.Tensor:        
 
-        distance_matrix = torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32))
-        # distance_matrix = torch.sqrt(torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) + 1e-4)
-        # distance_matrix = -  torch.matmul(src_embedding, tar_embedding.transpose(-1, -2)) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32))
- 
-
+        distance_matrix = torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32)) 
         tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1)
         src_scalar = self._linear(src_embedding, mask=src_mask).squeeze(-1)
             
@@ -55,16 +50,18 @@ class VirtualSoftBB(SoftBBBase):
         offsets = torch.cat([offsets, torch.ones_like(offsets[:, :, :1])], dim=-1)
         return torch.matmul(transformations, offsets.unsqueeze(-1)).squeeze(-1)[..., :3]
 
-    def _create_virtual_coordinates(self, embedding: torch.Tensor, frames: torch.Tensor, mask: torch.Tensor, metadata: str) -> torch.Tensor:
+    def _create_virtual_coordinates(self, embedding: torch.Tensor, frames: torch.Tensor, mask: torch.Tensor, metadata: str) -> tuple[torch.Tensor, torch.Tensor]:
         """
 
         Args:
             embedding (torch.Tensor): embedding.
             frames (torch.Tensor): Frames of the residues.
             mask (torch.Tensor): Mask of the residues.
+            metadata (str): Metadata of the residues.
 
         Returns:
             torch.Tensor: virtual points per input, transformed with the frames.
+            torch.Tensor: the predicted offsets.
         """        
         offsets = self._virtual_point_block(embedding, mask)
         transformed_offsets = self._transform_offsets_with_frames(offsets, frames)
@@ -84,7 +81,7 @@ class VirtualSoftBB(SoftBBBase):
             tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]: A tuple containing the transformation dictionary and the embeddings dictionary.
         """
         tar_embedding, src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']), self._input_block(batch['src_embedding'], mask =batch['src_mask'])
-        tar_embedding, src_embedding  = batch['tar_embedding'], batch['src_embedding']
+        # tar_embedding, src_embedding  = batch['tar_embedding'], batch['src_embedding']
         distance_matrix: torch.Tensor = self._get_distance_matrix(src_embedding=src_embedding, tar_embedding=tar_embedding, src_mask=batch['src_mask'], tar_mask=batch['tar_mask'])
         soft_correspondences, mask_2d = mask_and_normalize_matrix(distance_matrix, batch['src_mask'], batch['tar_mask'], src_embedding, tar_embedding)
         # src_coord, tar_coord = batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :]
