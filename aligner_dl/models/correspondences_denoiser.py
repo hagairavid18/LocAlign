@@ -11,7 +11,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         self.k = k  # Number of top correspondences to keep
 
         self.gnn_layer = GraphConv(1, 1, aggr='sum')
-        self.edge_learner = EdgeWeightLearner()
+        self.edge_learner = EdgeWeightLearner(input_dim=3)
         
 
         self.apply(self.init_weights)
@@ -33,10 +33,9 @@ class CorrespondenceDenoisingModule(nn.Module):
         B, N, _ = soft_correspondences.shape  # B: batch size, N: number of points
 
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
-        graph_data = self.build_correspondence_graph(top_k_values[...,:-1], top_k_indices[:,:-1], src_coords, tgt_coords)
-        top_k_1_values = top_k_values[:,-1]
+        graph_data = self.build_correspondence_graph(top_k_values, top_k_indices, src_coords, tgt_coords)
         
-        for i in range(3):
+        for i in range(1):
             graph_data.x = self.gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr)
         
 
@@ -44,16 +43,15 @@ class CorrespondenceDenoisingModule(nn.Module):
 
         # Step 4: Update soft correspondences
         updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences) # Shape: [B, K]
-        updated_soft_correspondences = soft_correspondences  # No clone() to preserve gradients
+        updated_correspondences_flat = updated_correspondences.view(B, -1)  # Shape: [B, K]
 
-        print(f"mean {top_k_values[0].mean()} top update before: {top_k_values[0,:10]}")
-        print(f"mean {updated_correspondences[:50].mean()} top update after: {updated_correspondences[:10]}")
-        for b in range(B):
-            for k in range(self.k):
-                src_idx, tgt_idx = top_k_indices[b, k]  # (src_idx, tgt_idx) pair from the top K
-                updated_soft_correspondences[b, src_idx, tgt_idx] = torch.max(updated_correspondences[b * self.k +  k], top_k_1_values[b])
+        soft_correspondences_flat = soft_correspondences.clone().view(B, -1)  # Shape: [B, N * N]
+        flat_indices = top_k_indices[..., 0] * N + top_k_indices[..., 1]  # Flattened indices in B X K
 
-        return updated_soft_correspondences
+        soft_correspondences_flat.scatter_add_(1, flat_indices, updated_correspondences_flat)
+
+        updated_soft_correspondences2 = soft_correspondences_flat.view(B, N, N)
+        return updated_soft_correspondences2
 
     def extract_top_k_correspondences(self, soft_correspondences: torch.Tensor) -> torch.Tensor:
         """
@@ -65,7 +63,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         flat_correspondences = soft_correspondences.view(B, -1)  # Flatten each batch
         
         # Find the top K values and their indices across the entire matrix
-        top_k_values, top_k_indices_flat = torch.topk(flat_correspondences, self.k + 1, dim=-1, largest=True)
+        top_k_values, top_k_indices_flat = torch.topk(flat_correspondences, self.k, dim=-1, largest=True)
         
         # Convert the flattened indices back to (i, j) pairs in the original 2D matrix
         top_k_indices = torch.stack(
@@ -73,8 +71,8 @@ class CorrespondenceDenoisingModule(nn.Module):
         )  # Convert to (i, j) index pairs
 
         # Reshape the top_k_values to the correct shape
-        top_k_values = top_k_values.view(B, self.k + 1)
-        top_k_indices = top_k_indices.view(B, self.k + 1, 2)  # Shape: (B, K, 2) -> (source, target) pairs
+        top_k_values = top_k_values.view(B, self.k)
+        top_k_indices = top_k_indices.view(B, self.k, 2)  # Shape: (B, K, 2) -> (source, target) pairs
 
         top_k_values = top_k_values.float()
         
@@ -82,70 +80,70 @@ class CorrespondenceDenoisingModule(nn.Module):
 
     def build_correspondence_graph(self, top_k_values: torch.Tensor, top_k_indices: torch.Tensor, src_coords: torch.Tensor, tgt_coords: torch.Tensor):
         """
-        Efficiently build a batch-aware graph based on geometric relations.
-        Each node represents a correspondence (Ai, Bj), and edges represent geometric relations.
+        Build a batch-aware graph using richer edge features.
         """
         B, K, _ = top_k_indices.shape  # Batch size, Number of top correspondences
-        
-        # Expand batch indices for node assignment
+
         batch_idx = torch.arange(B, device=top_k_indices.device).repeat_interleave(K)
-        
-        # Compute coordinate differences in batch mode
+
+        # Gather selected points
         tgt_selected = tgt_coords.gather(1, top_k_indices[..., 0].unsqueeze(-1).expand(-1, -1, tgt_coords.size(-1)))
         src_selected = src_coords.gather(1, top_k_indices[..., 1].unsqueeze(-1).expand(-1, -1, src_coords.size(-1)))
-        
-        # Compute distances in an efficient vectorized way
+
+        # Compute pairwise differences
         src_diff = src_selected.unsqueeze(2) - src_selected.unsqueeze(1)  # (B, K, K, 3)
         tgt_diff = tgt_selected.unsqueeze(2) - tgt_selected.unsqueeze(1)  # (B, K, K, 3)
-        
+
+        # Compute distances
         dist_A = torch.norm(src_diff, dim=-1)  # (B, K, K)
         dist_B = torch.norm(tgt_diff, dim=-1)  # (B, K, K)
-        
-        # Construct edge index (excluding self-loops)
-        # i_idx_upper, j_idx_upper = torch.triu_indices(K, K, offset=1, device=top_k_indices.device)  # Upper triangle indices
+
+        # Compute angles via cosine similarity
+        src_norm = torch.nn.functional.normalize(src_diff, dim=-1, eps=1e-6)
+        tgt_norm = torch.nn.functional.normalize(tgt_diff, dim=-1, eps=1e-6)
+        cosine_similarity = (src_norm * tgt_norm).sum(dim=-1)  # (B, K, K)
+
+        # create edge indices
+        i_idx_upper, j_idx_upper = torch.triu_indices(K, K, offset=1, device=top_k_indices.device)  # Upper triangle indices
         i_idx_lower, j_idx_lower = torch.tril_indices(K, K, offset=-1, device=top_k_indices.device)  # Lower triangle indices
-        i_idx = i_idx_lower
-        j_idx = j_idx_lower
+        i_idx = torch.cat([i_idx_upper, i_idx_lower], dim=0)
+        j_idx = torch.cat([j_idx_upper, j_idx_lower], dim=0)
 
-        # Concatenate upper and lower triangle indices
-        # i_idx = torch.cat([i_idx_upper, i_idx_lower], dim=0)
-        # j_idx = torch.cat([j_idx_upper, j_idx_lower], dim=0)
-        # edge_index_per_batch = torch.stack([i_idx, j_idx], dim=0)  # (2, num_edges_per_batch)
-        edge_index_per_batch = torch.stack([i_idx, j_idx], dim=0)  # (2, num_edges_per_batch)
-        
-        batch_offset = torch.arange(B, device=top_k_values.device).view(B, 1, 1).repeat(1, 2, edge_index_per_batch.size(1)) * K  # (B, 2, n_edges)
-        edge_index = edge_index_per_batch.unsqueeze(0).expand(B, -1, -1) + batch_offset  # (B, 2, num_edges_per_batch)
-        edge_index =  edge_index.permute(0, 2, 1).reshape(-1, 2).T # Final shape: (2, total_edges)
+        # Fix batching
+        edge_index_per_batch = torch.stack([i_idx, j_idx], dim=0)
+        batch_offset = torch.arange(B, device=top_k_values.device).view(B, 1, 1) * K
+        edge_index = edge_index_per_batch.unsqueeze(0).expand(B, -1, -1) + batch_offset
+        edge_index = edge_index.permute(0, 2, 1).reshape(-1, 2).T  # (2, total_edges)
 
-        # Collect edge features efficiently
-        # edge_attr = torch.stack([dist_A[:, i_idx, j_idx], dist_B[:, i_idx, j_idx]], dim=-1)  # (B, num_edges_per_batch, 2)
-        edge_attr = torch.abs(dist_A[:, i_idx, j_idx]-  dist_B[:, i_idx, j_idx])
-        
-        # edge_weight = 1/ (1 + edge_attr**2)
-        edge_weight = self.edge_learner(edge_attr)
-        # edge_weight = torch.exp(-edge_attr * 0.2)  # Exponential decay
-        edge_weight = edge_weight.view(-1, 1)  # Flatten across batches
+        # Compute enhanced edge features
+        angle_feature = cosine_similarity[:, i_idx, j_idx]
+
+        # Stack features together
+        edge_features = torch.stack([dist_A[:, i_idx, j_idx], dist_B[:, i_idx, j_idx], angle_feature], dim=-1)
+
+        # Pass through the edge learner
+        edge_weight = self.edge_learner(edge_features).view(-1, 1)
+        print(f"mean edge weight {edge_weight.mean()} max {edge_weight.max()} min: {edge_weight.min()}")
 
         # Create PyG Data object
         data = Data(
-            x=top_k_values.reshape(-1,1),  # Node features (e.g., correspondence scores)
+            x=top_k_values.reshape(-1, 1),  # Node features (correspondence scores)
             edge_index=edge_index,  # Edge connectivity
-            edge_attr=edge_weight,  # Edge attributes (distances)
+            edge_attr=edge_weight,  # Enhanced edge attributes
             batch=batch_idx  # Batch assignment for each node
         )
-
         return data
     
 
 class EdgeWeightLearner(nn.Module):
-    def __init__(self, hidden_dim=16):
+    def __init__(self, input_dim: int = 1, hidden_dim=16):
         super().__init__()
         self.mlp = nn.Sequential(
-            nn.Linear(1, hidden_dim),  # Input: edge_attr
+            nn.Linear(input_dim, hidden_dim),  # Input: edge_attr
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, 1),  # Output: edge_weight
+            nn.Linear(hidden_dim, 1), # Output: edge_weight
             nn.Sigmoid()  # Ensures output is between 0 and 1
         )
 
@@ -157,8 +155,8 @@ class EdgeWeightLearner(nn.Module):
         Returns:
             edge_weight: Tensor of shape (B, num_edges_per_batch)
         """
-        B, num_edges = edge_attr.shape  # Get batch size and number of edges
-        edge_attr = edge_attr.unsqueeze(-1)  # (B, num_edges, 1) for MLP
+        if len(edge_attr.shape) == 2:
+            edge_attr = edge_attr.unsqueeze(-1)  # (B, num_edges, 1) for MLP
         edge_weight = self.mlp(edge_attr)  # Pass through MLP
         return edge_weight.squeeze(-1)  # Return shape (B, num_edges)
     

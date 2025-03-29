@@ -9,12 +9,13 @@ torch.set_float32_matmul_precision('medium')
 
 
 class VirtualSoftBB(SoftBBBase):
-    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer: dict[str, Any], virtual_layer: dict, scalar_layer: dict, max_iter: int = 5, n_iter_train: int = 2, plot_dir: str | None = None) -> None:
+    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer: dict[str, Any], virtual_layer: dict, scalar_layer: dict, denoiser: dict, max_iter: int = 5, n_iter_train: int = 2, plot_dir: str | None = None) -> None:
        
         super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir)
         self._input_block = build_object(input_layer, 'models.layers')
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
         self._virtual_point_block = build_object(virtual_layer, 'models.layers')
+        self._denoiser = build_object(denoiser, 'models')
     
     def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> torch.Tensor:        
 
@@ -84,20 +85,22 @@ class VirtualSoftBB(SoftBBBase):
         # tar_embedding, src_embedding  = batch['tar_embedding'], batch['src_embedding']
         distance_matrix: torch.Tensor = self._get_distance_matrix(src_embedding=src_embedding, tar_embedding=tar_embedding, src_mask=batch['src_mask'], tar_mask=batch['tar_mask'])
         soft_correspondences, mask_2d = mask_and_normalize_matrix(distance_matrix, batch['src_mask'], batch['tar_mask'], src_embedding, tar_embedding)
-        # src_coord, tar_coord = batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :]
-        virtual_src_coord, src_offsets= self._create_virtual_coordinates(src_embedding, batch['src_frames'], batch['src_mask'], metadata=batch['metadata'])
-        virtual_tar_coord, tar_offsets, =  self._create_virtual_coordinates(tar_embedding, batch['tar_frames'], batch['tar_mask'], metadata=batch['metadata'])
+
+        soft_correspondences: torch.Tensor = self._denoiser._force_consistency(soft_correspondences, batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :])        
+        # virtual_src_coord, virtual_tar_coord = batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :]
+        virtual_src_coord, src_offsets = self._create_virtual_coordinates(src_embedding, batch['src_frames'], batch['src_mask'], metadata=batch['metadata'])
+        virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(tar_embedding, batch['tar_frames'], batch['tar_mask'], metadata=batch['metadata'])
         optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], soft_correspondences, virtual_src_coord, virtual_tar_coord, batch['src_mask'], mask_2d, iter_limit=self._max_iter if not self.training else self._n_iter_train)
         optimal_transformation['distance_matrix'] = distance_matrix
         return optimal_transformation, mask_2d, src_offsets, tar_offsets
 
-    def training_step(self, batch: dict[torch.Tensor]) -> dict[str, torch.Tensor]:
+    def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         batch = move_batch_to_device(batch, self.device)
         # print((batch['metadata'][0]['Ligand_ID'], batch['metadata'][0]['mov_protein'], batch['metadata'][0]['ref_protein'], batch['metadata'][0]['idx']))
-        transformation_dict, _, virtual_src_coord, virtual_tar_coord = self._compute_soft_bb_algorithm(batch)
+        transformation_dict, _, src_offsets, tar_offsets = self._compute_soft_bb_algorithm(batch)
         
         loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
-        loss = loss + group_lasso_regularization(virtual_src_coord) + group_lasso_regularization(virtual_tar_coord)
+        loss = loss + group_lasso_regularization(src_offsets) + group_lasso_regularization(tar_offsets)
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict' :transformation_dict}    
         return outputs
 
@@ -113,9 +116,9 @@ class VirtualSoftBB(SoftBBBase):
         """
         # print(f"tar protein: {batch['metadata'][0]['ref_protein']}{batch['metadata'][0]['ref_chain']} src protein: {batch['metadata'][0]['mov_protein']}{batch['metadata'][0]['mov_chain']}")
         batch = move_batch_to_device(batch, self.device)
-        transformation_dict, mask, virtual_src_coord, virtual_tar_coord = self._compute_soft_bb_algorithm(batch)
+        transformation_dict, mask, src_offsets, tar_offsets = self._compute_soft_bb_algorithm(batch)
         loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
-        loss = loss + group_lasso_regularization(virtual_src_coord) + group_lasso_regularization(virtual_tar_coord)
+        loss = loss + group_lasso_regularization(src_offsets) + group_lasso_regularization(tar_offsets)
         if self._plot:
             loss_iter1, _ = self._compute_loss(batch, transformation_dict['all_R'][0].detach(), transformation_dict['all_t'][0].detach())
             plot_correspondences(transformation_dict['all_gamma'], mask, batch['metadata'], [loss_iter1, loss], self._plot_dir)
