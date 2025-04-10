@@ -36,8 +36,9 @@ class CorrespondenceDenoisingModule(nn.Module):
 
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
         graph_data, dist_A, dist_B, edge_weight = self.build_correspondence_graph(top_k_values, top_k_indices, src_coords, tgt_coords)
-        
+
         for i in range(3):
+            graph_data.x = (graph_data.x.reshape(B,self.k) / graph_data.x.reshape(B,self.k).sum(1, keepdim=True)).reshape(B *self.k,1)
             graph_data.x = self.gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr)
         # graph_data.x = graph_data.x.relu()
         
@@ -67,7 +68,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         
         # Find the top K values and their indices across the entire matrix
         top_k_plus_one_values, top_k_plus_one_indices_flat = torch.topk(flat_correspondences, self.k + 1, dim=-1, largest=True)
-        top_k_values = top_k_plus_one_values[:, :self.k] - top_k_plus_one_values[:, self.k]
+        top_k_values = top_k_plus_one_values[:, :self.k] - top_k_plus_one_values[:, self.k:]
         top_k_indices_flat = top_k_plus_one_indices_flat[:,:self.k] 
         
 
@@ -168,7 +169,7 @@ class EdgeWeightLearner(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, 1),  # Output: edge_weight
-            nn.Tanh()  # Ensures output is between 0 and 1
+            # nn.Tanh()  # Ensures output is between 0 and 1
         )
 
     def forward(self, edge_attr):

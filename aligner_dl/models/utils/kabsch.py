@@ -58,9 +58,9 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     # rows_normalized_weights = normalize_rows(weights)
     P_weights = torch.sum(weights, axis=1)
     Q_weights = torch.sum(weights, axis=2)
-    weighted_centroids_P = torch.sum(P * P_weights.unsqueeze(2), axis = 1) / torch.sum(P_weights, axis=1).unsqueeze(dim=1)
-    weighted_centroids_Q = torch.sum(Q * Q_weights.unsqueeze(2), axis = 1) / torch.sum(Q_weights, axis=1).unsqueeze(dim=1)
-
+    weighted_centroids_P = (torch.sum(P * P_weights.unsqueeze(2), axis = 1)  + torch.tensor(1.0))/ (torch.sum(P_weights, axis=1).unsqueeze(dim=1) + torch.tensor(1.0))
+    weighted_centroids_Q = (torch.sum(Q * Q_weights.unsqueeze(2), axis = 1)  + torch.tensor(1.0)) / (torch.sum(Q_weights, axis=1).unsqueeze(dim=1) + torch.tensor(1.0))
+    
     # Center the points
     p = P - weighted_centroids_P[:, None, :]
     q = Q - weighted_centroids_Q[:, None, :]
