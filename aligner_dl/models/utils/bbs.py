@@ -39,16 +39,18 @@ def compute_transformation_from_corr_and_coord(max_protein_length: int, soft_cor
     """        
         
     gamma = soft_corr.clone()
+    dtype = gamma.dtype
     all_R, all_t, all_gamma = [], [], []
 
     for iter_num in range(iter_limit):
         all_gamma.append(gamma)
-        R_gamma, t_gamma, _, _ = weighted_kabsch_torch(src_coordinates, tar_coordinates, gamma.float())
+        R_gamma, t_gamma, _, _ = weighted_kabsch_torch(src_coordinates.float(), tar_coordinates.float(), gamma.float())
+        # print(f"R device: {R_gamma.dtype} t dtype: {t_gamma.dtype}")
         all_R.append(R_gamma)
         all_t.append(t_gamma)
         src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) * src_mask.unsqueeze(-1).expand_as(tar_coordinates)
         src_tgt_euc_dist = cdist_torch(tar_coordinates, src_coordinates, 3)
-        gamma = (soft_corr / ((1 + (src_tgt_euc_dist / get_d0(max_protein_length).to(soft_corr.device)[:, None, None])**2)**2)).to(soft_corr.device) * combined_mask
+        gamma = ((soft_corr / ((1 + (src_tgt_euc_dist / get_d0(max_protein_length).to(soft_corr.device)[:, None, None])**2)**2)).to(soft_corr.device) * combined_mask).to(dtype)
 
     rotation, translation = compose_transformations(rotations=all_R, translations=all_t)
     return {'pred_R': rotation, 'pred_t': translation, 'all_R': all_R, 'all_t': all_t, 'all_gamma': all_gamma}
@@ -84,5 +86,6 @@ def mask_and_normalize_matrix(distance_matrix: torch.Tensor, src_mask: torch.Ten
     C = torch.transpose(C, dim0=1, dim1=2)
     B = torch.mul(R, C)
 
+    combined_mask = combined_mask.to(dtype=distance_matrix.dtype)
     B = B * combined_mask
     return B, combined_mask

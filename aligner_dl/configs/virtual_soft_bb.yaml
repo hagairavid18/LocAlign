@@ -43,7 +43,7 @@ model:
       name: 
         CorrespondenceDenoisingModule
       args:
-        k: 30
+        k: 1000
     loss:
       use_transformation: false
       pocket:
@@ -70,6 +70,7 @@ dataset:
       max_cath: 8
       bbr_filter_ratio: 0.3
       level: "atom"
+      max_length: 1800
   validation:
     name: ScannetDataset
     args:
@@ -79,7 +80,8 @@ dataset:
       max_cath: 4
       bbr_filter_ratio: 0.3
       level: "atom"
+      max_length: 5000
 dataloader:
-  train_batch_size: 8
+  train_batch_size: 4
   valid_batch_size: 1
   n_workers: 12

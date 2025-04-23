@@ -19,14 +19,18 @@ logger = logging.getLogger(__name__)
 
 
 class ScannetDataset(BasePairDataset):
-    MAX_LENGTH_DICT = {'residue': 1000, 'atom': 1200, 'pocket': 800}
 
-    def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, infer_baseline: bool = False, level: str = 'residue', n_samples: int | None = None, min_cath: int = 0, max_cath: int = 8, bbr_filter_ratio: float = 0.0, seed: int| None = None) -> None:
+    def __init__(self, df_path: str, base_data_path: str = LIGAND_DIR, infer_baseline: bool = False, level: str = 'residue', n_samples: int | None = None, min_cath: int = 0, max_cath: int = 8, bbr_filter_ratio: float = 0.0, seed: int| None = None, max_length: int = None) -> None:
         super().__init__(df_path, base_data_path, n_samples, min_cath, max_cath, seed=seed, bbr_filter_ratio=bbr_filter_ratio)
+        self.MAX_LENGTH_DICT = {'residue': 1000, 'atom': 2700, 'pocket': 800}
         self._mmcif_parser = PDBParser()
         original_num_pairs = len(self._df)        
         self._infer_baseline = infer_baseline      
         num_lost_pairs = original_num_pairs - len(self._df)
+        if max_length is not None:
+            # self.MAX_LENGTH_DICT['residue'] = max_length
+            self.MAX_LENGTH_DICT[level] = max_length
+            # self.MAX_LENGTH_DICT['pocket'] = max_length
         assert level in ['residue', 'atom', 'pocket'], "level must be one of ['residue', 'atom', 'pocket']"
         self._level = level
         print(f"Number of pairs lost due to missing embeddings: {num_lost_pairs}")

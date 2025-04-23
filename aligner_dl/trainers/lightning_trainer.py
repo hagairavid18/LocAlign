@@ -94,6 +94,7 @@ def main():
         gradient_clip_val=config['trainer'].pop('gradient_clipping', None),
         log_every_n_steps=100,
         accelerator=device,
+        precision="bf16-mixed" if device == "gpu" else 32,
         profiler="advanced" if config['trainer'].get('profiler', False) else None,
         # detect_anomaly=True,
     )

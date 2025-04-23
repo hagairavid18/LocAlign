@@ -69,19 +69,21 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     H = torch.bmm(torch.bmm(q.transpose(1, 2), weights), p)
 
     # SVD
-    U, S, raw_Vt = torch.linalg.svd(H)
-    
-    # Validate right-handed coordinate system
-    Vt = raw_Vt.clone()
-    for i, value in  enumerate(torch.det(torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2)))):
-        if value < 0.0:
-            Vt[i, -1, :] = -raw_Vt[i, -1, :] # change 0 to batch idx
+    dtype = H.dtype
+    with torch.autocast(device_type="cuda", enabled=False):
+        U, S, raw_Vt = torch.linalg.svd(H.float(), full_matrices=False)
+        
+        # Validate right-handed coordinate system
+        Vt = raw_Vt.clone()
+        for i, value in  enumerate(torch.det(torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2)))):
+            if value < 0.0:
+                Vt[i, -1, :] = -raw_Vt[i, -1, :] # change 0 to batch idx
 
-    # Optimal rotation
-    R = torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2))
-    t =  weighted_centroids_Q - torch.bmm(R.transpose(1,2), weighted_centroids_P[:, :, None]).squeeze(2)
-    diff = (torch.bmm(P, R.transpose(1,2)) + t[:, None, :]) - Q
-    rmsd_per_bb = torch.sqrt(torch.sum(torch.square(diff), axis=1))
-    rmsd = torch.sqrt(torch.mean(torch.sum(torch.square(diff), axis=1)))
+        # Optimal rotation
+        R = torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2))
+        t =  weighted_centroids_Q - torch.bmm(R.transpose(1,2), weighted_centroids_P[:, :, None]).squeeze(2)
+        diff = (torch.bmm(P, R.transpose(1,2)) + t[:, None, :]) - Q
+        rmsd_per_bb = torch.sqrt(torch.sum(torch.square(diff), axis=1))
+        rmsd = torch.sqrt(torch.mean(torch.sum(torch.square(diff), axis=1)))
 
-    return R, t, rmsd, rmsd_per_bb
+    return R.to(dtype), t.to(dtype), rmsd, rmsd_per_bb

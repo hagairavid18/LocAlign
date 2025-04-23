@@ -280,7 +280,7 @@ def my_softmax(x, eps=1e-12, dim=0):
     return x_exp/(x_exp_sum + eps)
 
 def softargmin_rows_torch(X, t, eps=1e-12):
-    t = t.double()
-    X = X.double()
+    # t = t.double()
+    # X = X.double()
     weights = my_softmax(-X/t, eps=eps, dim=1)
     return weights

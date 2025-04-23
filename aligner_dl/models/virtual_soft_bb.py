@@ -17,11 +17,15 @@ class VirtualSoftBB(SoftBBBase):
         self._virtual_point_block = build_object(virtual_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
     
-    def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> torch.Tensor:        
+    def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> torch.Tensor: 
+        dtype = src_embedding.dtype
+        dim = src_embedding.shape[-1]
+        scale = torch.sqrt(torch.tensor(dim, device=src_embedding.device, dtype=src_embedding.dtype))
+        diff = src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)
+        distance_matrix = torch.sum(torch.mul(diff, diff), dim=-1) / scale
 
-        distance_matrix = torch.sum((src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)) ** 2, dim=-1) / torch.sqrt(torch.tensor(src_embedding.shape[-1], dtype=torch.float32)) 
-        tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1)
-        src_scalar = self._linear(src_embedding, mask=src_mask).squeeze(-1)
+        tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1).to(dtype)
+        src_scalar = self._linear(src_embedding, mask=src_mask).squeeze(-1).to(dtype)
             
         tar_matrix = tar_scalar.unsqueeze(-1).expand_as(distance_matrix)  # Shape [B, N_tar, N_src]
         src_matrix = src_scalar.unsqueeze(1).expand_as(distance_matrix)  # Shape [B, N_tar, N_src]
