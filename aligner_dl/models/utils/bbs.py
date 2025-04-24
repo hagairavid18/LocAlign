@@ -20,7 +20,7 @@ def get_d0(max_length: float) -> torch.Tensor:
 
 
 def compute_transformation_from_corr_and_coord(max_protein_length: int, soft_corr: torch.Tensor, src_coordinates: torch.Tensor,
-                                                tar_coordinates: torch.Tensor, src_mask: torch.Tensor, combined_mask: torch.Tensor, iter_limit: int = 2) -> dict[str, torch.Tensor]:
+                                                tar_coordinates: torch.Tensor,  iter_limit: int = 2) -> dict[str, torch.Tensor]:
     """
     Compute the transformation matrices from the soft correspondences and the source and target coordinates.
     First iteration uses only soft correspondences, while the rest use also the transformed source coordinates to refine the transformation. 
@@ -30,8 +30,6 @@ def compute_transformation_from_corr_and_coord(max_protein_length: int, soft_cor
         soft_corr (torch.Tensor): soft correspondences matrix.
         src_coordinates (torch.Tensor): source coordinates.
         tar_coordinates (torch.Tensor): target coordinates.
-        src_mask (torch.Tensor): source mask.
-        combined_mask (torch.Tensor): combined mask.
         iter_limit (int, optional): Maximum number of refinement iteration. Defaults to 2.
 
     Returns:
@@ -45,12 +43,13 @@ def compute_transformation_from_corr_and_coord(max_protein_length: int, soft_cor
     for iter_num in range(iter_limit):
         all_gamma.append(gamma)
         R_gamma, t_gamma, _, _ = weighted_kabsch_torch(src_coordinates.float(), tar_coordinates.float(), gamma.float())
-        # print(f"R device: {R_gamma.dtype} t dtype: {t_gamma.dtype}")
+        # print(f"R: {R_gamma} t : {t_gamma}")
         all_R.append(R_gamma)
         all_t.append(t_gamma)
-        src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) * src_mask.unsqueeze(-1).expand_as(tar_coordinates)
-        src_tgt_euc_dist = cdist_torch(tar_coordinates, src_coordinates, 3)
-        gamma = ((soft_corr / ((1 + (src_tgt_euc_dist / get_d0(max_protein_length).to(soft_corr.device)[:, None, None])**2)**2)).to(soft_corr.device) * combined_mask).to(dtype)
+        src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) 
+        src_tgt_euc_dist = torch.sqrt(torch.sum((tar_coordinates - src_coordinates) ** 2, dim=2))
+        # print(f"max sum: {torch.sum((tar_coordinates - src_coordinates) ** 2, dim=2).max()}")
+        gamma = ((soft_corr / ((1 + (src_tgt_euc_dist / get_d0(max_protein_length).to(soft_corr.device)[:, None])**2)**2)).to(soft_corr.device)).to(dtype)
 
     rotation, translation = compose_transformations(rotations=all_R, translations=all_t)
     return {'pred_R': rotation, 'pred_t': translation, 'all_R': all_R, 'all_t': all_t, 'all_gamma': all_gamma}

@@ -46,16 +46,9 @@ class CorrespondenceDenoisingModule(nn.Module):
         # print(f"lin_rel: {self.gnn_layer.lin_rel.weight} . lin_ root: {self.gnn_layer.lin_root.weight}")
 
         # Step 4: Update soft correspondences
-        updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences) # Shape: [B, K]
-        updated_correspondences_flat = updated_correspondences.view(B, -1)  # Shape: [B, K]
+        updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
 
-        soft_correspondences_flat = soft_correspondences.clone().view(B, -1) * 0 # Shape: [B, N * N]
-        flat_indices = top_k_indices[..., 0] * N + top_k_indices[..., 1]  # Flattened indices in B X K
-
-        soft_correspondences_flat.scatter_add_(1, flat_indices, updated_correspondences_flat)
-
-        updated_soft_correspondences2 = soft_correspondences_flat.view(B, N, N)
-        return updated_soft_correspondences2
+        return updated_correspondences, top_k_indices
 
     def extract_top_k_correspondences(self, soft_correspondences: torch.Tensor) -> torch.Tensor:
         """
