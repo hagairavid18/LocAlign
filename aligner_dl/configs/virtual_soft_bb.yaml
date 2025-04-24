@@ -1,7 +1,7 @@
 trainer:
-  exp_name: "maskedln-dp000-l2-up-to-4"
+  exp_name: "delete-denoiser-b4-k1000-1800-upto4cath-upto5dist-fix-eps-lr0005"
   tags: ["virtual", "atom", "grouping_1302", "1200", "new_block"]
-  max_epochs: 15
+  max_epochs: 30
   validate_only: false
   check_val_every_n_epoch: 5
   gradient_clipping: 15

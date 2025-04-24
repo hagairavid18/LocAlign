@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 import torch
-import plotly.graph_objects as go
 
 from models.utils.collate import move_batch_to_device
 from models.utils.math import compute_rmsd_torch

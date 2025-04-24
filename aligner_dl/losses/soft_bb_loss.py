@@ -33,6 +33,7 @@ class PocketLoss(nn.Module):
         pocket_rmsd = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], rotation_ab_pred, translation_ab_pred, batch['src_pocket_mask']).mean()
         if self._return_non_linear:
             non_linear_pocket_rmsd = pocket_rmsd / (pocket_rmsd + self._alpha ** 2)
+        print(f"Pocket RMSD: {pocket_rmsd.item()}")
         return {'non_linear_pocket_rmsd': non_linear_pocket_rmsd, "pocket_rmsd": pocket_rmsd}
 
 

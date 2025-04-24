@@ -16,6 +16,7 @@ class VirtualSoftBB(SoftBBBase):
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
         self._virtual_point_block = build_object(virtual_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
+        # self._automatic_optimization = False
     
     def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> torch.Tensor: 
         dtype = src_embedding.dtype
@@ -85,15 +86,18 @@ class VirtualSoftBB(SoftBBBase):
         Returns:
             tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]: A tuple containing the transformation dictionary and the embeddings dictionary.
         """
-        tar_embedding, src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']), self._input_block(batch['src_embedding'], mask =batch['src_mask'])
+        input_dtype = batch['tar_embedding'].dtype
+        tar_embedding, src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
         # tar_embedding, src_embedding  = batch['tar_embedding'], batch['src_embedding']
         distance_matrix: torch.Tensor = self._get_distance_matrix(src_embedding=src_embedding, tar_embedding=tar_embedding, src_mask=batch['src_mask'], tar_mask=batch['tar_mask'])
+        distance_matrix = distance_matrix.to(input_dtype)
         soft_correspondences, mask_2d = mask_and_normalize_matrix(distance_matrix, batch['src_mask'], batch['tar_mask'], src_embedding, tar_embedding)
 
         soft_correspondences: torch.Tensor = self._denoiser._force_consistency(soft_correspondences, batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :])        
         # virtual_src_coord, virtual_tar_coord = batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :]
         virtual_src_coord, src_offsets = self._create_virtual_coordinates(src_embedding, batch['src_frames'], batch['src_mask'], metadata=batch['metadata'])
         virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(tar_embedding, batch['tar_frames'], batch['tar_mask'], metadata=batch['metadata'])
+        # virtual_src_coord, virtual_tar_coord = batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :]
         optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], soft_correspondences, virtual_src_coord, virtual_tar_coord, batch['src_mask'], mask_2d, iter_limit=self._max_iter if not self.training else self._n_iter_train)
         optimal_transformation['distance_matrix'] = distance_matrix
         return optimal_transformation, mask_2d, src_offsets, tar_offsets

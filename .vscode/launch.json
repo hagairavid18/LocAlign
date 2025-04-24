@@ -93,7 +93,7 @@
             "name": "infer tmalign",
             "type": "debugpy",
             "request": "launch",
-            "program": "lightning_trainer.py",
+            "program": "aligner_dl/trainers/lightning_trainer.py",
             "console": "integratedTerminal",
             "justMyCode": false, 
             "args": [
