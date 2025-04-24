@@ -43,7 +43,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         # graph_data.x = graph_data.x.relu()
         
 
-        print(f"lin_rel: {self.gnn_layer.lin_rel.weight} . lin_ root: {self.gnn_layer.lin_root.weight}")
+        # print(f"lin_rel: {self.gnn_layer.lin_rel.weight} . lin_ root: {self.gnn_layer.lin_root.weight}")
 
         # Step 4: Update soft correspondences
         updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences) # Shape: [B, K]
@@ -146,7 +146,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         # Pass through the edge learner
         edge_weight = self.edge_learner(edge_features)
         edge_weight = edge_weight.view(-1, 1)
-        print(f"mean edge weight {edge_weight.mean()} max {edge_weight.max()} min: {edge_weight.min()}")
+        # print(f"mean edge weight {edge_weight.mean()} max {edge_weight.max()} min: {edge_weight.min()}")
 
         # Create PyG Data object
         data = Data(

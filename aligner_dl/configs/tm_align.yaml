@@ -1,5 +1,6 @@
 trainer:
-  exp_name: "TM-align-atoms"
+  exp_name: "infer-TM-align"
+  tags: ["grouping_1302"]
   max_epochs: 30
   validate_only: true
   check_val_every_n_epoch: 2
@@ -14,19 +15,19 @@ dataset:
   train:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/no_grouping/train.csv
+      df_path: aligner_dl/datasets/csv_files/grouping_1302/train.csv
       # n_samples: 100
       seed: 81
-      level: "atom"
-      min_cath: 1
+      level: "residue"
+      min_cath: 0
   validation:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/no_grouping/val.csv
+      df_path: aligner_dl/datasets/csv_files/grouping_1302/val.csv
       seed: 81
-      level: "atom"
+      level: "residue"
       # n_samples: 100
-      min_cath: 1
+      min_cath: 0
   test:
     name: ScannetDataset
     args:

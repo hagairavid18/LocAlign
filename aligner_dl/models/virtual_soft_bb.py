@@ -101,7 +101,7 @@ class VirtualSoftBB(SoftBBBase):
     def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         batch = move_batch_to_device(batch, self.device)
         # print((batch['metadata'][0]['Ligand_ID'], batch['metadata'][0]['mov_protein'], batch['metadata'][0]['ref_protein'], batch['metadata'][0]['idx']))
-        transformation_dict, _, src_offsets, tar_offsets = self._compute_soft_bb_algorithm(batch)
+        transformation_dict, _, src_offsets, tar_offsets, soft_correspondences = self._compute_soft_bb_algorithm(batch)
         
         loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
         loss = loss + group_lasso_regularization(src_offsets) + group_lasso_regularization(tar_offsets)

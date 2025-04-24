@@ -18,9 +18,9 @@ class TMaligner(SoftBBBase):
     def validation_step(self, batch, batch_idx):
         batch = move_batch_to_device(batch, self.device)
         assert len(batch['metadata']) == 1
-        R = torch.Tensor(batch['metadata'][0]['TMaligner_rotations'])
-        t = torch.Tensor(batch['metadata'][0]['TMaligner_translations'])        
-        outputs = { 'transformation_dict': {'pred_R': R, 'pred_t': t}}
+        R = torch.Tensor(batch['metadata'][0]['TMAligner_rotations'])
+        t = torch.Tensor(batch['metadata'][0]['TMAligner_translations'])        
+        outputs = { 'transformation_dict': {'pred_R': R, 'pred_t': t, 'all_R': [R], 'all_t': [t]} }
         self._metrics.update(batch, outputs)
         return outputs
     

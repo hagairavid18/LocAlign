@@ -3,10 +3,10 @@ trainer:
   tags: ["virtual", "atom", "grouping_1302", "1200", "new_block"]
   max_epochs: 15
   validate_only: false
-  check_val_every_n_epoch: 1
-  gradient_clipping: 30
-  # profiler: true
-  # ckpt_path: "checkpoints/maskedln-atom-256-pocketloss-dp002/epoch=3-step=9668.ckpt"
+  check_val_every_n_epoch: 5
+  gradient_clipping: 15
+  # profiler: false
+  # ckpt_path: "checkpoints/denoiser-b4-k1000-1800-upto4cath-upto5dist-fix-eps-lr0005/epoch=19-step=96680.ckpt"
 model:
   name: VirtualSoftBB
   args:
@@ -67,7 +67,7 @@ dataset:
       df_path: aligner_dl/datasets/csv_files/grouping_1302/train.csv
       # n_samples: 10
       seed: 41
-      max_cath: 8
+      max_cath: 4
       bbr_filter_ratio: 0.3
       level: "atom"
       max_length: 1800
