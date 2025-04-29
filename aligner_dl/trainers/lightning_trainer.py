@@ -1,8 +1,10 @@
+import glob
 import torch
 import logging
 import yaml
 from torch.utils.data import DataLoader, RandomSampler
 from pytorch_lightning.loggers import CometLogger
+from comet_ml import API, ExistingExperiment
 from lightning.pytorch.callbacks import ModelCheckpoint
 from datetime import datetime
 import os
@@ -66,14 +68,60 @@ def main():
 
     # Setup logging with Comet
     log_exp = "delete" not in config['trainer']['exp_name']
-    comet_logger = None
     if log_exp:
-        comet_logger = CometLogger(
-            api_key="9ydBzigeK75Z6RhAiX63xGdsg",
-            workspace="hagairavid18",
-            project_name="pocket_aligner",
-            experiment_name=config['trainer']['exp_name']
-        )
+        api = API(api_key="9ydBzigeK75Z6RhAiX63xGdsg")  # Or omit if using env var
+
+        workspace = "hagairavid18"
+        project = "pocket-aligner"
+        experiment_name = config['trainer']['exp_name']
+
+        # Search for existing experiment by name
+        experiment_id = None
+        for exp in api.get_experiments(workspace, project):
+            if exp.name == experiment_name:
+                experiment_id = exp.id
+                print(f"Resuming existing experiment: {experiment_name} (ID: {experiment_id})")
+                break
+
+        if experiment_id and  not config['trainer'].get('ckpt_path'):
+            # Create a dummy logger and replace its experiment with ExistingExperiment
+            comet_logger = CometLogger(
+                api_key="9ydBzigeK75Z6RhAiX63xGdsg",
+                workspace=workspace,
+                project_name=project,
+                experiment_name=experiment_name,
+            )
+            # Manually replace internal experiment object
+            comet_logger._experiment = ExistingExperiment(
+                api_key="9ydBzigeK75Z6RhAiX63xGdsg",
+                previous_experiment=experiment_id,
+                workspace=workspace,
+                project_name=project,
+            )
+            ckpt_dir = os.path.join("checkpoints", experiment_name)
+            if os.path.isdir(ckpt_dir):
+                ckpts = glob.glob(os.path.join(ckpt_dir, "*.ckpt"))
+                if ckpts:
+                    # Get latest by modification time
+                    resume_ckpt = max(ckpts, key=os.path.getmtime)
+                    config['trainer']['ckpt_path'] = resume_ckpt
+                    print(f"✅ Resuming from checkpoint: {resume_ckpt}")
+                else:
+                    print(f"⚠️ No .ckpt files found in {ckpt_dir}")
+            else:
+                print(f"⚠️ Checkpoint directory not found: {ckpt_dir}")
+
+        else:
+            # Create a new experiment via CometLogger
+            comet_logger = CometLogger(
+                api_key="9ydBzigeK75Z6RhAiX63xGdsg",
+                workspace=workspace,
+                project_name=project,
+                experiment_name=experiment_name,
+            )
+            
+
+    # Add tags
         comet_logger.experiment.add_tags(config['trainer'].get('tags', []))
     checkpoint_callback = ModelCheckpoint(
         dirpath=f"checkpoints/{config['trainer']['exp_name']}",
@@ -94,7 +142,7 @@ def main():
         gradient_clip_val=config['trainer'].pop('gradient_clipping', None),
         log_every_n_steps=100,
         accelerator=device,
-        precision="bf16-mixed" if device == "gpu" else 32,
+        # precision="bf16-mixed" if device == "gpu" else 32,
         profiler="advanced" if config['trainer'].get('profiler', False) else None,
         # detect_anomaly=True,
     )

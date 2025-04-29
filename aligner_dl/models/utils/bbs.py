@@ -72,7 +72,6 @@ def mask_and_normalize_matrix(distance_matrix: torch.Tensor, src_mask: torch.Ten
     batch_size = distance_matrix.shape[0]
     device = distance_matrix.device
     combined_mask = create_2d_mask(src_mask, tar_mask)
-    distance_matrix = distance_matrix * combined_mask
     distance_matrix = distance_matrix.masked_fill(~combined_mask, float('inf'))
     t = torch.tensor([guess_best_alpha_torch(tar_embedding[i,:][tar_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)] , device=device)
     # t = torch.tensor([torch.tensor(1) for i in range(batch_size)], device=device)
@@ -85,6 +84,5 @@ def mask_and_normalize_matrix(distance_matrix: torch.Tensor, src_mask: torch.Ten
     C = torch.transpose(C, dim0=1, dim1=2)
     B = torch.mul(R, C)
 
-    combined_mask = combined_mask.to(dtype=distance_matrix.dtype)
     B = B * combined_mask
-    return B, combined_mask
+    return B

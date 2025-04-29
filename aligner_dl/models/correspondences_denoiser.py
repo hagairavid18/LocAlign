@@ -57,7 +57,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         B, N, _ = soft_correspondences.shape
         
         # Flatten the distance matrix to a 1D vector
-        flat_correspondences = soft_correspondences.view(B, -1)  # Flatten each batch
+        flat_correspondences = soft_correspondences.reshape(B, -1)  # Flatten each batch
         
         # Find the top K values and their indices across the entire matrix
         top_k_plus_one_values, top_k_plus_one_indices_flat = torch.topk(flat_correspondences, self.k + 1, dim=-1, largest=True)
