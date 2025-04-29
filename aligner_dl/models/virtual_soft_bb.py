@@ -28,8 +28,8 @@ class VirtualSoftBB(SoftBBBase):
                 
         top_k_plus_one_scalar, top_k_plus_one_indices = torch.topk(scalar, self._top_k + 1, dim=-1, largest=True) # I removed the train/eval condition for now...
         
-        top_k_plus_one_mask = mask.gather(1, top_k_plus_one_indices) ## 
-        top_k_plus_one_scalar.masked_fill(top_k_plus_one_mask,0) # These two lines are to deal with the edge case where num_atoms < _top_k. We don't want to have any infinities.
+        top_k_plus_one_mask = mask.gather(1, top_k_plus_one_indices) #
+        top_k_plus_one_scalar.masked_fill(top_k_plus_one_mask,0) # These two lines are to deal with the edge case where num_real_atoms < _top_k. In this case and without the fix, top_k_plus_one_scalar[:,:,_top_k] = -infty.
         
         top_k_scalar = top_k_plus_one_scalar[:, :self._top_k] - top_k_plus_one_scalar[:, self._top_k:]
         top_k_indices = top_k_plus_one_indices[:,:self.k]        
