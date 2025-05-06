@@ -3,6 +3,23 @@ import torch.nn as nn
 from torch_geometric.data import Data
 from torch_geometric.nn import GraphConv
 
+def triplet_softmax_update(
+    current,
+    scores,
+    eps=1e-8,axis=-1):
+    '''
+    eps=1 <=> regular softmax.
+    eps=0 <=> softmax over triplets of points.
+    Note that eps = 0 => can be a bit numerically unstable if one score is much larger than the others; use small epsilon instead.
+    '''   
+    exp_scores = current * torch.exp(scores - scores.max(axis,keepdims=True)[0] )
+    square_exp_scores = exp_scores ** 2
+    sum_exp_scores = exp_scores.sum(axis,keepdims=True)
+    sum_square_exp_scores = square_exp_scores.sum(axis,keepdims=True)
+    output = exp_scores * ( eps + (1-eps) *  (sum_exp_scores - exp_scores)**2 - (sum_square_exp_scores - square_exp_scores) )
+    output /= output.sum(axis,keepdims=True)
+    return output
+
 
 class CorrespondenceDenoisingModule(nn.Module):
 
@@ -10,7 +27,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         super(CorrespondenceDenoisingModule, self).__init__()
         self.k = k  # Number of top correspondences to keep
 
-        self.gnn_layer = GraphConv(1, 1, aggr='sum')
+        self.gnn_layer = GraphConv(1, 1, aggr='sum') # SUGGESTED CHANGE: ADD bias = False here.
         self.edge_learner = EdgeWeightLearner(input_dim=4)
         
 
@@ -23,6 +40,11 @@ class CorrespondenceDenoisingModule(nn.Module):
         self.gnn_layer.lin_root.weight.requires_grad = False
         self.gnn_layer.lin_rel.bias.requires_grad = False
 
+        ''' # SUGGESTED CHANGE: No bias (it gets cancelled out after softmax); add back the root update.
+        with torch.no_grad():
+            self.gnn_layer.lin_rel.weight.fill_(0.05)
+            self.gnn_layer.lin_root.weight.fill_(0.05)         
+        '''
     @staticmethod
     def init_weights(m):
         """Custom weight initialization for stability"""
@@ -35,13 +57,15 @@ class CorrespondenceDenoisingModule(nn.Module):
         B, N, _ = soft_correspondences.shape  # B: batch size, N: number of points
 
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
+        # top_k_values = top_k_values / top_k_values.sum(-1,keepdims=True) # ADD THIS LINE: normalize only once at the beginning.
         graph_data, dist_A, dist_B, edge_weight = self.build_correspondence_graph(top_k_values, top_k_indices, src_coords, tgt_coords)
 
-        for i in range(3):
-            graph_data.x = (graph_data.x.reshape(B,self.k) / graph_data.x.reshape(B,self.k).sum(1, keepdim=True)).reshape(B *self.k,1)
-            graph_data.x = self.gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr)
+        for i in range(3): # I recommend playing with the number of updates.
+            graph_data.x = (graph_data.x.reshape(B,self.k) / graph_data.x.reshape(B,self.k).sum(1, keepdim=True)).reshape(B *self.k,1) # THESE TWO LINES CAN BE COMMENTED OUT
+            graph_data.x = self.gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) # THESE TWO LINES CAN BE COMMENTED OUT
         # graph_data.x = graph_data.x.relu()
-        
+                
+            # graph_data.x = triplet_softmax_update(graph_data.x, self.gnn_layer(graph_data.x, graph_data.edge_index,graph_data.edge_attr),axis=-2) #ADD THIS LINE
 
         # print(f"lin_rel: {self.gnn_layer.lin_rel.weight} . lin_ root: {self.gnn_layer.lin_root.weight}")
 
