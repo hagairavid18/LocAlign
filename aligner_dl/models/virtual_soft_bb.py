@@ -22,18 +22,18 @@ class VirtualSoftBB(SoftBBBase):
     def _get_scalar(self, embedding: torch.Tensor, mask:torch.Tensor) -> torch.Tensor:
         return self._linear(embedding, mask=mask).squeeze(-1)
     
-    def _get_rectified_top_k(self,scalar:torch.Tensor, mask:torch.Tensor) -> tuple[torch.Tensor,torch.Tensor]:
+    def _get_rectified_top_k(self, scalar: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor,torch.Tensor]:
         
-        scalar = scalar.masked_fill(mask, -float('inf'))
+        scalar = scalar.masked_fill(~mask, -float('inf'))
                 
         top_k_plus_one_scalar, top_k_plus_one_indices = torch.topk(scalar, self._top_k + 1, dim=-1, largest=True) # I removed the train/eval condition for now...
         
         top_k_plus_one_mask = mask.gather(1, top_k_plus_one_indices) #
-        top_k_plus_one_scalar.masked_fill(top_k_plus_one_mask,0) # These two lines are to deal with the edge case where num_real_atoms < _top_k. In this case and without the fix, top_k_plus_one_scalar[:,:,_top_k] = -infty.
+        top_k_plus_one_scalar.masked_fill_(~top_k_plus_one_mask, 0) # These two lines are to deal with the edge case where num_real_atoms < _top_k. In this case and without the fix, top_k_plus_one_scalar[:,:,_top_k] = -infty.
         
         top_k_scalar = top_k_plus_one_scalar[:, :self._top_k] - top_k_plus_one_scalar[:, self._top_k:]
-        top_k_indices = top_k_plus_one_indices[:,:self.k]        
-        return top_k_indices,top_k_scalar
+        top_k_indices = top_k_plus_one_indices[:, :self._top_k]        
+        return top_k_indices, top_k_scalar
     
     def _get_soft_correspondences(self,
                                     src_embedding: torch.Tensor,
@@ -56,14 +56,14 @@ class VirtualSoftBB(SoftBBBase):
         # exp_dot_products = torch.exp( dot_products - dot_products.max() )  ## This is what you used, but I did it separately for each dim to guarantee that there are no underflows.
         
         # first softmax over src
-        exp_dot_products = torch.exp( dot_products - dot_products.max(2,keepdims=True) )        
+        exp_dot_products = torch.exp(dot_products - dot_products.max(2,keepdims=True)[0])        
         softmax_over_src = exp_dot_products * (src_scalar * src_mask).unsqueeze(1)
         softmax_over_src /= torch.sum(softmax_over_src, dim=2, keepdim=True)
         
         # second softmax over tar
-        exp_dot_products = torch.exp( dot_products - dot_products.max(1,keepdims=True) )
+        exp_dot_products = torch.exp(dot_products - dot_products.max(1,keepdims=True)[0])
         softmax_over_tar = exp_dot_products * (tar_scalar * tar_mask).unsqueeze(2)
-        softmax_over_tar /= torch.sum(softmax_over_src, dim=1, keepdim=True)
+        softmax_over_tar /= torch.sum(softmax_over_tar, dim=1, keepdim=True)
         
         soft_correspondences = softmax_over_src * softmax_over_tar
         return soft_correspondences
@@ -151,34 +151,18 @@ class VirtualSoftBB(SoftBBBase):
         """
         input_dtype = batch['tar_embedding'].dtype
 
-        #### Top K on atoms version #1
-        tar_embedding, src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
-        # tar_embedding, src_embedding  = batch['tar_embedding'], batch['src_embedding']                
-        top_src_indices, top_tar_indices = self._get_top_k_indices(src_embedding=batch['src_embedding'], tar_embedding=batch['tar_embedding'], src_mask=batch['src_mask'], tar_mask=batch['tar_mask'])
-        src_embedding = src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
-        tar_embedding = tar_embedding.gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
-        distance_matrix = self._get_distance_matrix(src_embedding=src_embedding, tar_embedding=tar_embedding).to(input_dtype)
-
-        # Now gather
-        src_frames = batch['src_frames'].gather(1, top_src_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
-        tar_frames = batch['tar_frames'].gather(1, top_tar_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
-        src_mask = batch['src_mask'].gather(1, top_src_indices)
-        tar_mask = batch['tar_mask'].gather(1, top_tar_indices)
-        soft_correspondences = mask_and_normalize_matrix(distance_matrix, src_mask, tar_mask, src_embedding, tar_embedding).to(input_dtype)
-        ### End of version #1
-
-        '''
-        #### Top K on atoms version #2
+        # #### Top K on atoms version #1
         tar_embedding, src_embedding = batch['tar_embedding'], batch['src_embedding']
+        tar_embedding, src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
+        tar_scalar = self._get_scalar(tar_embedding, batch['tar_mask'])
+        src_scalar = self._get_scalar(src_embedding, batch['src_mask'])
+        # distance_matrix = self._get_distance_matrix(src_embedding=src_embedding, tar_embedding=tar_embedding).to(input_dtype)
+
         tar_mask, src_mask = batch['tar_mask'], batch['src_mask']
         tar_frames, src_frames = batch['tar_frames'], batch['src_frames']        
-        tar_embedding = self._input_block(tar_embedding, mask=tar_mask).to(input_dtype)
-        src_embedding = self._input_block(src_embedding, mask =src_mask).to(input_dtype)        
-        tar_scalar = self._get_scalar(tar_embedding)
-        src_scalar = self._get_scalar(src_embedding)
         
-        top_tar_indices, top_tar_scalar = self._get_rectified_top_k( tar_scalar,tar_mask )
-        top_src_indices, top_src_scalar = self._get_rectified_top_k( src_scalar,src_mask )
+        top_tar_indices, top_tar_scalar = self._get_rectified_top_k(tar_scalar, tar_mask)
+        top_src_indices, top_src_scalar = self._get_rectified_top_k(src_scalar, src_mask)
 
         # Now gather        
         top_src_embedding = src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
@@ -191,22 +175,15 @@ class VirtualSoftBB(SoftBBBase):
         top_tar_mask = tar_mask.gather(1, top_tar_indices)
         
                         
-        soft_correspondences = self._get_soft_correspondences(
-                                                     top_src_embedding,  top_tar_embedding,
-                                                     top_src_scalar, top_tar_scalar,
-                                                     top_src_mask, top_tar_mask, 
-                                                     ).to(input_dtype)  
+        soft_correspondences = self._get_soft_correspondences(top_src_embedding, top_tar_embedding, top_src_scalar, top_tar_scalar, top_src_mask, top_tar_mask).to(input_dtype)  
+        src_frames, tar_frames = top_src_frames, top_tar_frames 
         
-        
-        src_frames,tar_frames = top_src_frames,top_tar_frames # Rename to keep consistency...
-        ### End of version #2        
-        '''
         top_corr_values, top_corr_indices = self._denoiser._force_consistency(soft_correspondences, src_frames[:, :, 0, :], tar_frames[:, :, 0, :])        
 
         orig_src_embedding = batch['src_embedding'].gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
         orig_tar_embedding = batch['tar_embedding'].gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
-        virtual_src_coord, src_offsets = self._create_virtual_coordinates(orig_src_embedding, src_frames, src_mask, metadata=batch['metadata'])
-        virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(orig_tar_embedding, tar_frames, tar_mask, metadata=batch['metadata'])
+        virtual_src_coord, src_offsets = self._create_virtual_coordinates(orig_src_embedding, src_frames, top_src_mask, metadata=batch['metadata'])
+        virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(orig_tar_embedding, tar_frames, top_tar_mask, metadata=batch['metadata'])
         B, K, _ = top_corr_indices.shape
 
         # Batch index helper: [B, K]

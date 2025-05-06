@@ -1,6 +1,6 @@
 trainer:
-  exp_name: "delete-denoiser-b4-k1000-1800-upto4cath-upto5dist-fix-eps-lr0005"
-  tags: ["virtual", "atom", "grouping_1302", "1200", "new_block"]
+  exp_name: "delete-denoiser-b8-k2000-5000-top1200-jerome-version-dp02-1block"
+  tags: ["virtual", "atom", "grouping_1302", "1800", "new_block"]
   max_epochs: 30
   validate_only: false
   check_val_every_n_epoch: 5
@@ -18,11 +18,11 @@ model:
       name: 
         EmbeddingBlock
       args:
-        n_blocks: 3
+        n_blocks: 1
         input_dim: 256
         hidden_dim: 256
         output_dim: 256
-        dropout: 0.0
+        dropout: 0.2
         norm_in_last_layer: false
     virtual_layer:
       name: 
@@ -31,11 +31,12 @@ model:
         n_blocks: 1
         input_dim: 256
         output_dim: 3
+        dropout: 0.2
     scalar_layer:
       name: 
         EmbeddingBlock
       args:
-        n_blocks: 3
+        n_blocks: 1
         input_dim: 256
         output_dim: 1
         bias: false
@@ -71,7 +72,7 @@ dataset:
       max_cath: 4
       bbr_filter_ratio: 0.3
       level: "atom"
-      max_length: 1800
+      max_length: 5000
   validation:
     name: ScannetDataset
     args:
@@ -83,6 +84,6 @@ dataset:
       level: "atom"
       max_length: 5000
 dataloader:
-  train_batch_size: 4
+  train_batch_size: 8
   valid_batch_size: 1
   n_workers: 12
