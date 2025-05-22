@@ -1,6 +1,6 @@
 trainer:
-  exp_name: "infer-TM-align"
-  tags: ["grouping_1302"]
+  exp_name: "TM-align-1305"
+  tags: ["grouping_1305"]
   max_epochs: 30
   validate_only: true
   check_val_every_n_epoch: 2
@@ -15,7 +15,7 @@ dataset:
   train:
     name: ScannetDataset
     args:
-      df_path: aligner_dl/datasets/csv_files/grouping_1302/train.csv
+      df_path: aligner_dl/datasets/csv_files/grouping_1305/train.csv
       # n_samples: 100
       seed: 81
       level: "residue"
@@ -23,7 +23,7 @@ dataset:
   validation:
     name: ScannetDataset
     args:
-      df_path: aligner_dl/datasets/csv_files/grouping_1302/val.csv
+      df_path: aligner_dl/datasets/csv_files/grouping_1305/val.csv
       seed: 81
       level: "residue"
       # n_samples: 100

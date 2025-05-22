@@ -83,7 +83,21 @@ def main():
                 print(f"Resuming existing experiment: {experiment_name} (ID: {experiment_id})")
                 break
 
-        if experiment_id and  not config['trainer'].get('ckpt_path'):
+        found_checkpoint = False
+        ckpt_dir = os.path.join("checkpoints", experiment_name)
+        if os.path.isdir(ckpt_dir):
+            ckpts = glob.glob(os.path.join(ckpt_dir, "*.ckpt"))
+            if ckpts:
+                # Get latest by modification time
+                resume_ckpt = max(ckpts, key=os.path.getmtime)
+                config['trainer']['ckpt_path'] = resume_ckpt
+                print(f"✅ Resuming from checkpoint: {resume_ckpt}")
+                found_checkpoint = True
+            else:
+                print(f"⚠️ No .ckpt files found in {ckpt_dir}")
+        else:
+            print(f"⚠️ Checkpoint directory not found: {ckpt_dir}")
+        if experiment_id  and found_checkpoint:
             # Create a dummy logger and replace its experiment with ExistingExperiment
             comet_logger = CometLogger(
                 api_key="9ydBzigeK75Z6RhAiX63xGdsg",
@@ -98,18 +112,6 @@ def main():
                 workspace=workspace,
                 project_name=project,
             )
-            ckpt_dir = os.path.join("checkpoints", experiment_name)
-            if os.path.isdir(ckpt_dir):
-                ckpts = glob.glob(os.path.join(ckpt_dir, "*.ckpt"))
-                if ckpts:
-                    # Get latest by modification time
-                    resume_ckpt = max(ckpts, key=os.path.getmtime)
-                    config['trainer']['ckpt_path'] = resume_ckpt
-                    print(f"✅ Resuming from checkpoint: {resume_ckpt}")
-                else:
-                    print(f"⚠️ No .ckpt files found in {ckpt_dir}")
-            else:
-                print(f"⚠️ Checkpoint directory not found: {ckpt_dir}")
 
         else:
             # Create a new experiment via CometLogger
@@ -142,6 +144,7 @@ def main():
         gradient_clip_val=config['trainer'].pop('gradient_clipping', None),
         log_every_n_steps=100,
         accelerator=device,
+        
         # precision="bf16-mixed" if device == "gpu" else 32,
         profiler="advanced" if config['trainer'].get('profiler', False) else None,
         # detect_anomaly=True,
@@ -153,7 +156,7 @@ def main():
 
     # Train or validate
     if config['trainer']['validate_only']:
-        trainer.validate(model, val_loader, ckpt_path=config['trainer']['ckpt_path'])
+        trainer.validate(model, val_loader, ckpt_path=config['trainer'].get('ckpt_path', None))
     else:
         trainer.fit(model, train_loader, val_dataloaders=val_loader, ckpt_path=config['trainer'].pop('ckpt_path', None))
 

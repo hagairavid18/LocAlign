@@ -295,3 +295,50 @@ def generate_and_log_scatter_plot(metrics):
         plt.savefig(temp_file.name, format='png', bbox_inches='tight')
         plt.close()
     return temp_file.name
+
+
+def plot_correspondences(batch, src_coordinates, tar_coordinates, soft_correspondences,top_corr_indices, plot_dir=None ):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    gt_R, gt_t = batch['gt_R'], batch['gt_t']
+    src_coordinates_moved_gt = torch.matmul(src_coordinates, gt_R) + gt_t[:, :3].unsqueeze(1)
+    gt_distance = torch.sqrt(torch.sum((src_coordinates_moved_gt.unsqueeze(1) - tar_coordinates.unsqueeze(2)) ** 2, dim=-1) + 1e-4)
+    gt_vals_np = gt_distance[0].cpu().numpy()
+    gt_vals_np = gt_vals_np[top_corr_indices[0,:,0], top_corr_indices[0,:,1]]
+    soft_correspondences = soft_correspondences[0].cpu().numpy()
+    mask = soft_correspondences > 0
+    soft_correspondences = soft_correspondences[mask]
+    gt_vals_np = gt_vals_np[mask]
+
+    # Log x values
+    # log_orig_vals = np.log(orig_vals_np)
+    log_new_vals = np.log(soft_correspondences)
+
+    # Fit linear trend lines (on log-x)
+    # coeffs_orig = np.polyfit(log_orig_vals, gt_vals_np, deg=1)
+    coeffs_new = np.polyfit(log_new_vals, gt_vals_np, deg=1)
+
+    # Generate smooth x range
+    x_range = np.logspace(np.log10(min(soft_correspondences)), np.log10(max(soft_correspondences)), 500)
+    log_x_range = np.log(x_range)
+
+    # Evaluate trend lines
+    # trend_orig = np.polyval(coeffs_orig, log_x_range)
+    trend_new = np.polyval(coeffs_new, log_x_range)
+
+    # Plot
+    plt.figure(figsize=(8, 6))
+    # plt.scatter(orig_vals_np, gt_vals_np, color='blue', label='Original', alpha=0.4, s=10)
+    plt.scatter(soft_correspondences, gt_vals_np, color='red', label='After Consistency', alpha=0.4, s=10)
+    # plt.plot(x_range, trend_orig, color='blue', linestyle='--', label='Original Trend')
+    plt.plot(x_range, trend_new, color='red', linestyle='--', label='Refined Trend')
+    plt.xscale('log')
+    plt.xlabel("Soft Correspondence Value (log scale)")
+    plt.ylabel("Ground Truth Distance")
+    plt.title("Trend Comparison (Log X-axis, New Mask Only)")
+    plt.legend()
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+    plt.savefig("soft_corr_trendlines_manualfit_.png", dpi=300)
+    plt.close()
+
