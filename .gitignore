@@ -28,3 +28,4 @@ events*
 .DS_Store
 aligner_dl/.DS_Store
 aligner_dl/models/.DS_Store
+checkpoints

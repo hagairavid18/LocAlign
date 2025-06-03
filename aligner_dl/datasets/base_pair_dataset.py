@@ -27,7 +27,7 @@ class BasePairDataset(Dataset):
         self._min_cath = min_cath
         self._max_cath = max_cath
         assert max_cath >= min_cath, f"max_cath ({max_cath}) must be greater than min_cath ({min_cath})"
-        self._bbr_filter_ratio = bbr_filter_ratio
+        self._bbc_filter_ratio = bbc_filter_ratio
         if seed:
             set_seed(seed)
 

@@ -132,6 +132,15 @@ def main():
         verbose=True,
         save_on_train_epoch_end=True
     )
+    # Ensure checkpoint directory exists
+    os.makedirs(f"checkpoints/{config['trainer']['exp_name']}", exist_ok=True)
+
+    # Save model config alongside checkpoints as YAML
+    model_config_path = os.path.join(f"checkpoints/{config['trainer']['exp_name']}", "model_config.yaml")
+    with open(model_config_path, 'w') as f:
+        yaml.dump(config['model'], f)
+
+    print(f"Saved model config to {model_config_path}")
 
     device = args.device or ('gpu' if torch.cuda.is_available() else 'cpu')
 

@@ -14,7 +14,7 @@ class VirtualSoftBB(SoftBBBase):
         super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir)
         self._input_block = build_object(input_layer, 'models.layers')
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
-        self._virtual_point_block = build_object(virtual_layer, 'models.layers')
+        # self._virtual_point_block = build_object(virtual_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
         self._top_k = top_k
         # self._automatic_optimization = False
@@ -179,11 +179,13 @@ class VirtualSoftBB(SoftBBBase):
         src_frames, tar_frames = top_src_frames, top_tar_frames 
         
         top_corr_values, top_corr_indices = self._denoiser._force_consistency(soft_correspondences, src_frames[:, :, 0, :], tar_frames[:, :, 0, :])        
-
-        orig_src_embedding = batch['src_embedding'].gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
-        orig_tar_embedding = batch['tar_embedding'].gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
-        virtual_src_coord, src_offsets = self._create_virtual_coordinates(orig_src_embedding, src_frames, top_src_mask, metadata=batch['metadata'])
-        virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(orig_tar_embedding, tar_frames, top_tar_mask, metadata=batch['metadata'])
+        # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices)
+        # orig_src_embedding = batch['src_embedding'].gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
+        # orig_tar_embedding = batch['tar_embedding'].gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
+        # virtual_src_coord, src_offsets = self._create_virtual_coordinates(orig_src_embedding, src_frames, top_src_mask, metadata=batch['metadata'])
+        # virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(orig_tar_embedding, tar_frames, top_tar_mask, metadata=batch['metadata'])
+        virtual_src_coord, src_offsets = src_frames[:, :, 0, :], torch.zeros_like(src_frames[:, :, 0, :], dtype=torch.float16)
+        virtual_tar_coord, tar_offsets =  tar_frames[:, :, 0, :], torch.zeros_like(src_frames[:, :, 0, :], dtype=torch.float16)
         B, K, _ = top_corr_indices.shape
 
         # Batch index helper: [B, K]
