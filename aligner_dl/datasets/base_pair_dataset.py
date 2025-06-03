@@ -18,7 +18,7 @@ def set_seed(seed: int):
 
 
 class BasePairDataset(Dataset):
-    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0, max_cath: int = 8, only_one_transformation:bool = True, bbr_filter_ratio = 0.0, seed: int | None = None):
+    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0, max_cath: int = 8, only_one_transformation:bool = True, bbc_filter_ratio = 0.0, seed: int | None = None):
         self._df_path = df_path
         self._base_data_path = base_data_path
         self._base_embedding_path = '/home/iscb/wolfson/hagairavid/scannet_outputs'
