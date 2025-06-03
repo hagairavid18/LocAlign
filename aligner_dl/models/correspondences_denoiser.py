@@ -95,6 +95,30 @@ class CorrespondenceDenoisingModule(nn.Module):
         tgt_selected = tgt_coords.gather(1, top_k_indices[..., 0].unsqueeze(-1).expand(-1, -1, tgt_coords.size(-1)))
         src_selected = src_coords.gather(1, top_k_indices[..., 1].unsqueeze(-1).expand(-1, -1, src_coords.size(-1)))
 
+        '''
+        tgt_selected_frame = ... Same gather formula with extra expand
+        src_selection_frame = ....  Same gather formula with extra expand
+        
+        tgt_diff = tgt_selected_frame[:,:,0,:].unsqueeze(2) - tgt_selected_frame[:,:,0,:].unsqueeze(1) # (B,K,K,3)
+        src_diff -> same
+        
+        tgt_diff_invariant = einsum( 'bklm,bknm->bkln' tgt_diff,  tgt_selected_frame[:,:,1:,:]) # (B,K,K,3)
+        
+        tgt_diff_r_theta_phi = euclidean_to_spherical(tgt_diff_invariant)
+        
+        --> RBF embeddings for r, cosine/sine for theta/phi
+                
+        def euclidian_to_spherical(x,return_r=True,cut='2pi',eps=1e-8):
+            r = ops.sqrt( ops.sum(x**2,axis=-1) )
+            theta = ops.arccos(x[...,-1]/(r+eps) )
+            phi = ops.atan2( x[...,1],x[...,0]+eps)
+            if cut == '2pi':
+                phi = phi + ops.cast(ops.greater(0.,phi), 'float32') * (2 * np.pi)
+            if return_r:
+                return ops.stack([r,theta,phi],axis=-1)
+            else:
+                return ops.stack([theta, phi], axis=-1)
+        '''
         # Compute pairwise differences for source and target
         src_diff = src_selected.unsqueeze(2) - src_selected.unsqueeze(1)  # (B, K, K, 3)
         tgt_diff = tgt_selected.unsqueeze(2) - tgt_selected.unsqueeze(1)  # (B, K, K, 3)
