@@ -1,4 +1,5 @@
 from abc import ABC
+from models.utils.plots import generate_and_log_scatter_plot
 import pandas as pd
 import os
 from typing import Any
@@ -106,6 +107,7 @@ class SoftBBBase(L.LightningModule, ABC):
             df = pd.DataFrame(protein_rmsd_data)
             df.to_csv(os.path.join(dir_path, f"Protein_RMSD_Results_{self.current_epoch}.csv"))
             self.logger.experiment.log_table(f"Protein_RMSD_Results_{self.current_epoch}.csv", df)
+            self.logger.experiment.log_image(generate_and_log_scatter_plot(metrics))
       
         self._metrics.reset()
     

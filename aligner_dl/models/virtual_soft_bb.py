@@ -9,30 +9,93 @@ torch.set_float32_matmul_precision('medium')
 
 
 class VirtualSoftBB(SoftBBBase):
-    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer: dict[str, Any], virtual_layer: dict, scalar_layer: dict, denoiser: dict, max_iter: int = 5, n_iter_train: int = 2, plot_dir: str | None = None) -> None:
+    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer: dict[str, Any], virtual_layer: dict, scalar_layer: dict, denoiser: dict, max_iter: int = 5, n_iter_train: int = 2, top_k: int = 1200, plot_dir: str | None = None) -> None:
        
         super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir)
         self._input_block = build_object(input_layer, 'models.layers')
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
-        self._virtual_point_block = build_object(virtual_layer, 'models.layers')
+        # self._virtual_point_block = build_object(virtual_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
+        self._top_k = top_k
         # self._automatic_optimization = False
     
-    def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> torch.Tensor: 
-        dtype = src_embedding.dtype
+    def _get_scalar(self, embedding: torch.Tensor, mask:torch.Tensor) -> torch.Tensor:
+        return self._linear(embedding, mask=mask).squeeze(-1)
+    
+    def _get_rectified_top_k(self, scalar: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor,torch.Tensor]:
+        
+        scalar = scalar.masked_fill(~mask, -float('inf'))
+                
+        top_k_plus_one_scalar, top_k_plus_one_indices = torch.topk(scalar, self._top_k + 1, dim=-1, largest=True) # I removed the train/eval condition for now...
+        
+        top_k_plus_one_mask = mask.gather(1, top_k_plus_one_indices) #
+        top_k_plus_one_scalar.masked_fill_(~top_k_plus_one_mask, 0) # These two lines are to deal with the edge case where num_real_atoms < _top_k. In this case and without the fix, top_k_plus_one_scalar[:,:,_top_k] = -infty.
+        
+        top_k_scalar = top_k_plus_one_scalar[:, :self._top_k] - top_k_plus_one_scalar[:, self._top_k:]
+        top_k_indices = top_k_plus_one_indices[:, :self._top_k]        
+        return top_k_indices, top_k_scalar
+    
+    def _get_soft_correspondences(self,
+                                    src_embedding: torch.Tensor,
+                                    tar_embedding: torch.Tensor,
+                                    src_scalar: torch.Tensor,
+                                    tar_scalar: torch.Tensor,                                                      
+                                    src_mask: torch.Tensor,
+                                    tar_mask: torch.Tensor) -> torch.Tensor: 
+        '''
+        These are the differences compared to your version:
+        1/ Most importantly, we want that if an atom has scalar=0 or close to 0, it should not contribute at all. This guarantees differentiability when combined with the top-K.
+        2/ I used dot products and softmax instead of the distance and softmin. Since there was a layernorm before, it should be exactly identical. dot product might also be faster.
+        3/ There is a tiny fix that might help with numerical underflows...   
+        4/ I did not use adaptive temperature... Maybe you will need to put it back.     
+        '''
+        
+        dim = src_embedding.shape[-1]
+        scale = torch.sqrt(torch.tensor(dim, device=src_embedding.device, dtype=src_embedding.dtype))        
+        dot_products = torch.bmm(tar_embedding, src_embedding.transpose(1, 2)) / scale # [Batch Size , tar_size , src_size] Hopefully it's the right ordering...
+        # exp_dot_products = torch.exp( dot_products - dot_products.max() )  ## This is what you used, but I did it separately for each dim to guarantee that there are no underflows.
+        
+        # first softmax over src
+        exp_dot_products = torch.exp(dot_products - dot_products.max(2,keepdims=True)[0])        
+        softmax_over_src = exp_dot_products * (src_scalar * src_mask).unsqueeze(1)
+        softmax_over_src /= torch.sum(softmax_over_src, dim=2, keepdim=True)
+        
+        # second softmax over tar
+        exp_dot_products = torch.exp(dot_products - dot_products.max(1,keepdims=True)[0])
+        softmax_over_tar = exp_dot_products * (tar_scalar * tar_mask).unsqueeze(2)
+        softmax_over_tar /= torch.sum(softmax_over_tar, dim=1, keepdim=True)
+        
+        soft_correspondences = softmax_over_src * softmax_over_tar
+        return soft_correspondences
+                                                     
+                
+    def _get_top_k_indices(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Get the top k indices of the source and target embeddings based on the distance matrix.
+
+        Args:
+            src_embedding (torch.Tensor): Source embedding.
+            tar_embedding (torch.Tensor): Target embedding.
+            src_mask (torch.Tensor): Source mask.
+            tar_mask (torch.Tensor): Target mask.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: Top k indices for source and target embeddings.
+        """
+        src_scalar = self._linear(src_embedding, mask=src_mask).squeeze(-1)
+        tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1)
+        src_scalar = src_scalar.masked_fill(~src_mask, -float('inf'))
+        tar_scalar = tar_scalar.masked_fill(~tar_mask, -float('inf'))
+        top_src_indices = torch.topk(src_scalar, k=self._top_k if self.training else src_scalar.shape[1], dim=-1).indices
+        top_tar_indices = torch.topk(tar_scalar, k=self._top_k if self.training else src_scalar.shape[1], dim=-1).indices
+        return top_src_indices, top_tar_indices
+    
+    def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor) -> torch.Tensor: 
         dim = src_embedding.shape[-1]
         scale = torch.sqrt(torch.tensor(dim, device=src_embedding.device, dtype=src_embedding.dtype))
         diff = src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)
         distance_matrix = torch.sum(torch.mul(diff, diff), dim=-1) / scale
 
-        tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1).to(dtype)
-        src_scalar = self._linear(src_embedding, mask=src_mask).squeeze(-1).to(dtype)
-            
-        tar_matrix = tar_scalar.unsqueeze(-1).expand_as(distance_matrix)  # Shape [B, N_tar, N_src]
-        src_matrix = src_scalar.unsqueeze(1).expand_as(distance_matrix)  # Shape [B, N_tar, N_src]
-
-        distance_matrix = distance_matrix + tar_matrix + src_matrix
-            
         return distance_matrix
     
     def _transform_offsets_with_frames(self, offsets: torch.Tensor, frames: torch.Tensor) -> torch.Tensor:
@@ -87,25 +150,58 @@ class VirtualSoftBB(SoftBBBase):
             tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]: A tuple containing the transformation dictionary and the embeddings dictionary.
         """
         input_dtype = batch['tar_embedding'].dtype
-        tar_embedding, src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
-        # tar_embedding, src_embedding  = batch['tar_embedding'], batch['src_embedding']
-        distance_matrix: torch.Tensor = self._get_distance_matrix(src_embedding=src_embedding, tar_embedding=tar_embedding, src_mask=batch['src_mask'], tar_mask=batch['tar_mask'])
-        distance_matrix = distance_matrix.to(input_dtype)
-        soft_correspondences, mask_2d = mask_and_normalize_matrix(distance_matrix, batch['src_mask'], batch['tar_mask'], src_embedding, tar_embedding)
 
-        soft_correspondences: torch.Tensor = self._denoiser._force_consistency(soft_correspondences, batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :])        
-        # virtual_src_coord, virtual_tar_coord = batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :]
-        virtual_src_coord, src_offsets = self._create_virtual_coordinates(src_embedding, batch['src_frames'], batch['src_mask'], metadata=batch['metadata'])
-        virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(tar_embedding, batch['tar_frames'], batch['tar_mask'], metadata=batch['metadata'])
-        # virtual_src_coord, virtual_tar_coord = batch['src_frames'][:, :, 0, :], batch['tar_frames'][:, :, 0, :]
-        optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], soft_correspondences, virtual_src_coord, virtual_tar_coord, batch['src_mask'], mask_2d, iter_limit=self._max_iter if not self.training else self._n_iter_train)
-        optimal_transformation['distance_matrix'] = distance_matrix
-        return optimal_transformation, mask_2d, src_offsets, tar_offsets
+        # #### Top K on atoms version #1
+        tar_embedding, src_embedding = batch['tar_embedding'], batch['src_embedding']
+        tar_embedding, src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
+        tar_scalar = self._get_scalar(tar_embedding, batch['tar_mask'])
+        src_scalar = self._get_scalar(src_embedding, batch['src_mask'])
+        # distance_matrix = self._get_distance_matrix(src_embedding=src_embedding, tar_embedding=tar_embedding).to(input_dtype)
+
+        tar_mask, src_mask = batch['tar_mask'], batch['src_mask']
+        tar_frames, src_frames = batch['tar_frames'], batch['src_frames']        
+        
+        top_tar_indices, top_tar_scalar = self._get_rectified_top_k(tar_scalar, tar_mask)
+        top_src_indices, top_src_scalar = self._get_rectified_top_k(src_scalar, src_mask)
+
+        # Now gather        
+        top_src_embedding = src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
+        top_tar_embedding = tar_embedding.gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
+        
+        top_src_frames = src_frames.gather(1, top_src_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
+        top_tar_frames = tar_frames.gather(1, top_tar_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
+        
+        top_src_mask = src_mask.gather(1, top_src_indices)
+        top_tar_mask = tar_mask.gather(1, top_tar_indices)
+        
+                        
+        soft_correspondences = self._get_soft_correspondences(top_src_embedding, top_tar_embedding, top_src_scalar, top_tar_scalar, top_src_mask, top_tar_mask).to(input_dtype)  
+        src_frames, tar_frames = top_src_frames, top_tar_frames 
+        
+        top_corr_values, top_corr_indices = self._denoiser._force_consistency(soft_correspondences, src_frames[:, :, 0, :], tar_frames[:, :, 0, :])        
+        # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices)
+        # orig_src_embedding = batch['src_embedding'].gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
+        # orig_tar_embedding = batch['tar_embedding'].gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
+        # virtual_src_coord, src_offsets = self._create_virtual_coordinates(orig_src_embedding, src_frames, top_src_mask, metadata=batch['metadata'])
+        # virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(orig_tar_embedding, tar_frames, top_tar_mask, metadata=batch['metadata'])
+        virtual_src_coord, src_offsets = src_frames[:, :, 0, :], torch.zeros_like(src_frames[:, :, 0, :], dtype=torch.float16)
+        virtual_tar_coord, tar_offsets =  tar_frames[:, :, 0, :], torch.zeros_like(src_frames[:, :, 0, :], dtype=torch.float16)
+        B, K, _ = top_corr_indices.shape
+
+        # Batch index helper: [B, K]
+        batch_indices = torch.arange(B, device=top_corr_indices.device).unsqueeze(-1).expand(-1, K)
+
+        # Gather coordinates
+        gathered_virtual_tar = virtual_tar_coord[batch_indices, top_corr_indices[:, :, 0]]  # [B, K, 3]
+        gathered_virtual_src = virtual_src_coord[batch_indices, top_corr_indices[:, :, 1]]  # [B, K, 3]
+        
+        optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], top_corr_values, gathered_virtual_src, gathered_virtual_tar, iter_limit=self._max_iter if not self.training else self._n_iter_train)
+        return optimal_transformation, src_offsets, tar_offsets
 
     def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         batch = move_batch_to_device(batch, self.device)
         # print((batch['metadata'][0]['Ligand_ID'], batch['metadata'][0]['mov_protein'], batch['metadata'][0]['ref_protein'], batch['metadata'][0]['idx']))
-        transformation_dict, _, src_offsets, tar_offsets, soft_correspondences = self._compute_soft_bb_algorithm(batch)
+        transformation_dict, src_offsets, tar_offsets = self._compute_soft_bb_algorithm(batch)
         
         loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
         loss = loss + group_lasso_regularization(src_offsets) + group_lasso_regularization(tar_offsets)
@@ -124,7 +220,7 @@ class VirtualSoftBB(SoftBBBase):
         """
         # print(f"tar protein: {batch['metadata'][0]['ref_protein']}{batch['metadata'][0]['ref_chain']} src protein: {batch['metadata'][0]['mov_protein']}{batch['metadata'][0]['mov_chain']}")
         batch = move_batch_to_device(batch, self.device)
-        transformation_dict, mask, src_offsets, tar_offsets = self._compute_soft_bb_algorithm(batch)
+        transformation_dict, src_offsets, tar_offsets = self._compute_soft_bb_algorithm(batch)
         loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
         loss = loss + group_lasso_regularization(src_offsets) + group_lasso_regularization(tar_offsets)
         if self._plot:

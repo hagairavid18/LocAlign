@@ -53,23 +53,30 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     :return: A tuple containing the optimal rotation matrix, the optimal
              translation vector, and the RMSD.
     """
-    assert P.shape == Q.shape, "Matrix dimensions must match"
-    zero_mask = (weights.sum(dim=(1, 2), keepdim=True) == 0)  # Shape: (B, 1, 1)
+    assert P.shape == Q.shape, "P and Q must be the same shape"
+    assert weights.shape == P.shape[:2], "Weights must be [B, K]"
 
-    # Add small noise to the entire batch if it's all zeros
-    weights = weights + zero_mask * 1e-6
-    # rows_normalized_weights = normalize_rows(weights)
-    P_weights = torch.sum(weights, axis=1)
-    Q_weights = torch.sum(weights, axis=2)
-    weighted_centroids_P = (torch.sum(P * P_weights.unsqueeze(2), axis = 1))/ (torch.sum(P_weights, axis=1).unsqueeze(dim=1) )
-    weighted_centroids_Q = (torch.sum(Q * Q_weights.unsqueeze(2), axis = 1)) / (torch.sum(Q_weights, axis=1).unsqueeze(dim=1) )
-    
-    # Center the points
-    p = P - weighted_centroids_P[:, None, :]
-    q = Q - weighted_centroids_Q[:, None, :]
-    
-    # Compute the covariance matrix
-    H = torch.bmm(torch.bmm(q.transpose(1, 2), weights), p)
+    B, K, _ = P.shape
+
+    zero_mask = (weights.sum(dim=(1), keepdim=True) == 0)  # Shape: (B, 1, 1)
+    weights = weights + zero_mask * 1e-6  # Avoid zero weights
+    # Normalize weights per batch (optional but stable)
+    weights_sum = weights.sum(dim=1, keepdim=True) + 1e-8
+    # print(f"weights_sum: {weights_sum}")
+    norm_weights = weights / weights_sum  # [B, K]
+    # print(f"norm_weights max: {norm_weights.max()}")
+
+    # Compute weighted centroids
+    centroid_P = torch.sum(P * norm_weights.unsqueeze(-1), dim=1)  # [B, 3]
+    centroid_Q = torch.sum(Q * norm_weights.unsqueeze(-1), dim=1)  # [B, 3]
+    # print(f"centroid_P: {centroid_P}, centroid_Q: {centroid_Q}")
+
+    # Center the point clouds
+    P_centered = P - centroid_P.unsqueeze(1)  # [B, K, 3]
+    Q_centered = Q - centroid_Q.unsqueeze(1)  # [B, K, 3]
+
+    # Compute covariance matrix: H = Q^T * W * P
+    H = torch.bmm(Q_centered.transpose(1, 2), P_centered * norm_weights.unsqueeze(-1))  # [B, 3, 3]
 
     # SVD
     dtype = H.dtype
@@ -84,7 +91,7 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
 
         # Optimal rotation
         R = torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2))
-        t =  weighted_centroids_Q - torch.bmm(R.transpose(1,2), weighted_centroids_P[:, :, None]).squeeze(2)
+        t =  centroid_Q - torch.bmm(R.transpose(1,2), centroid_P[:, :, None]).squeeze(2)
         diff = (torch.bmm(P, R.transpose(1,2)) + t[:, None, :]) - Q
         rmsd_per_bb = torch.sqrt(torch.sum(torch.square(diff), axis=1))
         rmsd = torch.sqrt(torch.mean(torch.sum(torch.square(diff), axis=1)))

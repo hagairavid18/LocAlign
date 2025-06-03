@@ -4,25 +4,32 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GraphConv
 
 
+
 class CorrespondenceDenoisingModule(nn.Module):
 
-    def __init__(self, k: int):
+    def __init__(self, k: int, n_gnn_layers: int = 3, n_rbf_functions: int = 16):
         super(CorrespondenceDenoisingModule, self).__init__()
         self.k = k  # Number of top correspondences to keep
-
-        self.gnn_layer = GraphConv(1, 1, aggr='sum')
-        self.edge_learner = EdgeWeightLearner(input_dim=4)
+        self._k_training = k
+        self._k_inference = 2000
+        self.n_gnn_layers = n_gnn_layers  # Number of GNN layers
+        self.gnn_layers = nn.ModuleList([GraphConv(1, 1, aggr='sum') for _ in range(n_gnn_layers)])
+        self.n_rbf_functions = n_rbf_functions  # Number of RBF functions
+            
+        self.edge_learner = EdgeWeightLearner(input_dim=2 * n_rbf_functions, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
+        self.rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 50.0), learn_gamma=True)  # RBF encoding for distances
         
 
         self.apply(self.init_weights)
        
-        with torch.no_grad():
-            self.gnn_layer.lin_rel.weight.fill_(0.05)
-            self.gnn_layer.lin_rel.bias.fill_(1.0)
-            self.gnn_layer.lin_root.weight.fill_(0.0)
-        self.gnn_layer.lin_root.weight.requires_grad = False
-        self.gnn_layer.lin_rel.bias.requires_grad = False
-
+        for gnn_layer in self.gnn_layers:
+            with torch.no_grad():
+                gnn_layer.lin_rel.weight.fill_(0.05)
+                gnn_layer.lin_rel.bias.fill_(1.0)
+                gnn_layer.lin_root.weight.fill_(0.0)
+            gnn_layer.lin_root.weight.requires_grad = False
+            gnn_layer.lin_rel.bias.requires_grad = False
+         
     @staticmethod
     def init_weights(m):
         """Custom weight initialization for stability"""
@@ -32,30 +39,21 @@ class CorrespondenceDenoisingModule(nn.Module):
                 nn.init.zeros_(m.bias)
         
     def _force_consistency(self, soft_correspondences: torch.Tensor, src_coords: torch.Tensor, tgt_coords: torch.Tensor) -> torch.Tensor:
+        self.k = self._k_training if self.training else self._k_inference
         B, N, _ = soft_correspondences.shape  # B: batch size, N: number of points
 
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
-        graph_data, dist_A, dist_B, edge_weight = self.build_correspondence_graph(top_k_values, top_k_indices, src_coords, tgt_coords)
+        graph_data, edge_consistency = self.build_correspondence_graph(top_k_values, top_k_indices, src_coords, tgt_coords)
 
-        for i in range(3):
-            graph_data.x = (graph_data.x.reshape(B,self.k) / graph_data.x.reshape(B,self.k).sum(1, keepdim=True)).reshape(B *self.k,1)
-            graph_data.x = self.gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr)
-        # graph_data.x = graph_data.x.relu()
-        
+        for i in range(self.n_gnn_layers):
+            graph_data.x = (graph_data.x.reshape(B,self.k) / graph_data.x.reshape(B,self.k).sum(1, keepdim=True)).reshape(B *self.k,1) # THESE TWO LINES CAN BE COMMENTED OUT
+            graph_data.x = self.gnn_layers[i](graph_data.x, graph_data.edge_index, graph_data.edge_attr) # THESE TWO LINES CAN BE COMMENTED OUT
 
-        # print(f"lin_rel: {self.gnn_layer.lin_rel.weight} . lin_ root: {self.gnn_layer.lin_root.weight}")
-
+        graph_data.x = graph_data.x.relu()  # Apply ReLU activation to the node features
         # Step 4: Update soft correspondences
-        updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences) # Shape: [B, K]
-        updated_correspondences_flat = updated_correspondences.view(B, -1)  # Shape: [B, K]
+        updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
 
-        soft_correspondences_flat = soft_correspondences.clone().view(B, -1) * 0 # Shape: [B, N * N]
-        flat_indices = top_k_indices[..., 0] * N + top_k_indices[..., 1]  # Flattened indices in B X K
-
-        soft_correspondences_flat.scatter_add_(1, flat_indices, updated_correspondences_flat)
-
-        updated_soft_correspondences2 = soft_correspondences_flat.view(B, N, N)
-        return updated_soft_correspondences2
+        return updated_correspondences, top_k_indices
 
     def extract_top_k_correspondences(self, soft_correspondences: torch.Tensor) -> torch.Tensor:
         """
@@ -64,7 +62,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         B, N, _ = soft_correspondences.shape
         
         # Flatten the distance matrix to a 1D vector
-        flat_correspondences = soft_correspondences.view(B, -1)  # Flatten each batch
+        flat_correspondences = soft_correspondences.reshape(B, -1)  # Flatten each batch
         
         # Find the top K values and their indices across the entire matrix
         top_k_plus_one_values, top_k_plus_one_indices_flat = torch.topk(flat_correspondences, self.k + 1, dim=-1, largest=True)
@@ -84,22 +82,6 @@ class CorrespondenceDenoisingModule(nn.Module):
         top_k_values = top_k_values.float()
         
         return top_k_values, top_k_indices
-
-    @staticmethod
-    def compute_cosine_similarity(v1: torch.Tensor, v2: torch.Tensor) -> torch.Tensor:
-        """
-        Compute the cosine similarity between two sets of vectors.
-        Assumes the input tensors are of shape (B, K, K, 3), representing 3D vectors.
-        """
-        # Normalize the vectors to unit vectors
-        v1_normalized = torch.nn.functional.normalize(v1, p=2, dim=-1)
-        v2_normalized = torch.nn.functional.normalize(v2, p=2, dim=-1)
-        
-        # Compute the cosine similarity by taking the dot product
-        cosine_similarity = torch.sum(v1_normalized * v2_normalized, dim=-1)
-
-        return cosine_similarity
-
 
     def build_correspondence_graph(self, top_k_values: torch.Tensor, top_k_indices: torch.Tensor, src_coords: torch.Tensor, tgt_coords: torch.Tensor):
         """
@@ -121,9 +103,6 @@ class CorrespondenceDenoisingModule(nn.Module):
         dist_A = torch.norm(src_diff, dim=-1)  # (B, K, K)
         dist_B = torch.norm(tgt_diff, dim=-1)  # (B, K, K)
 
-        # Compute angles for source and target
-        cosine_similarity_A = CorrespondenceDenoisingModule.compute_cosine_similarity(src_selected.unsqueeze(2), src_selected.unsqueeze(1))  # (B, K, K)
-        cosine_similarity_B = CorrespondenceDenoisingModule.compute_cosine_similarity(tgt_selected.unsqueeze(2), tgt_selected.unsqueeze(1))  # (B, K, K)
         # Create edge indices
         i_idx_upper, j_idx_upper = torch.triu_indices(K, K, offset=1, device=top_k_indices.device)  # Upper triangle indices
         i_idx_lower, j_idx_lower = torch.tril_indices(K, K, offset=-1, device=top_k_indices.device)  # Lower triangle indices
@@ -136,17 +115,15 @@ class CorrespondenceDenoisingModule(nn.Module):
         edge_index = edge_index_per_batch.unsqueeze(0).expand(B, -1, -1) + batch_offset
         edge_index = edge_index.permute(0, 2, 1).reshape(-1, 2).T  # (2, total_edges)
 
-        # Compute enhanced edge features: dist_A, dist_B, angle_A, angle_B
-        cosine_similarity_A_feature = cosine_similarity_A[:, i_idx, j_idx]
-        cosine_similarity_B_feature = cosine_similarity_B[:, i_idx, j_idx]
-
         # Stack all edge features together
-        edge_features = torch.stack([dist_A[:, i_idx, j_idx], dist_B[:, i_idx, j_idx], cosine_similarity_A_feature, cosine_similarity_B_feature], dim=-1)
+        edge_features = torch.stack([dist_A[:, i_idx, j_idx], dist_B[:, i_idx, j_idx]], dim=-1)
+        edge_consistency = torch.abs(edge_features[..., 0] - edge_features[..., 1])
         
+        edge_features = self.rbf_encoder(edge_features).view(B, edge_features.shape[1], -1)
         # Pass through the edge learner
         edge_weight = self.edge_learner(edge_features)
         edge_weight = edge_weight.view(-1, 1)
-        # print(f"mean edge weight {edge_weight.mean()} max {edge_weight.max()} min: {edge_weight.min()}")
+        edge_consistency = edge_consistency.view(-1, 1)
 
         # Create PyG Data object
         data = Data(
@@ -156,20 +133,20 @@ class CorrespondenceDenoisingModule(nn.Module):
             batch=batch_idx  # Batch assignment for each node
         )
         
-        return data, dist_A, dist_B, edge_weight
+        return data, edge_consistency
 
         
 class EdgeWeightLearner(nn.Module):
     def __init__(self, input_dim: int = 1, hidden_dim=16):
         super().__init__()
         self.bn = nn.BatchNorm1d(input_dim)
+        self.norm = nn.LayerNorm(input_dim)
         self.mlp = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),  # Input: edge_attr
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, 1),  # Output: edge_weight
-            # nn.Tanh()  # Ensures output is between 0 and 1
+            nn.Linear(hidden_dim, 1)
         )
 
     def forward(self, edge_attr):
@@ -181,18 +158,35 @@ class EdgeWeightLearner(nn.Module):
             edge_weight: Tensor of shape (B * num_edges,)
         """
         if len(edge_attr.shape) == 3:
-            # If shape is (B, num_edges, input_dim), we flatten it to (B * num_edges, input_dim)
-            edge_attr = edge_attr.view(-1, edge_attr.size(-1))  # Flatten to (B * num_edges, input_dim)
+            # (B, num_edges, input_dim)
+            edge_attr = self.norm(edge_attr)
+            edge_attr = edge_attr.view(-1, edge_attr.size(-1))  # (B * num_edges, input_dim)
         elif len(edge_attr.shape) == 2:
-            # If shape is already (B * num_edges, input_dim), no need to reshape
-            pass
+            raise ValueError("Edge attribute is 2D, expected 3D for per-batch normalization.")
         else:
             raise ValueError(f"Unexpected edge_attr shape: {edge_attr.shape}")
 
-        # Pass edge attributes through MLP
-        edge_attr = self.bn(edge_attr)
-        edge_weight = self.mlp(edge_attr)  # Pass through MLP
-        return edge_weight.view(-1)  # Return shape (B * num_edges,)
+        return self.mlp(edge_attr).view(-1)
+    
+
+class LearnableRBFEncoding(nn.Module):
+    def __init__(self, num_basis=16, rbf_range=(0.0, 20.0), learn_gamma=True):
+        super().__init__()
+        centers = torch.linspace(rbf_range[0], rbf_range[1], num_basis)
+        self.centers = nn.Parameter(centers)  # learnable centers
+
+        if learn_gamma:
+            self.gamma = nn.Parameter(torch.full((num_basis,), 1.0))  # learnable per-basis gamma
+        else:
+            delta = (rbf_range[1] - rbf_range[0]) / num_basis
+            gamma = 1.0 / (delta ** 2)
+            self.register_buffer('gamma', torch.full((num_basis,), gamma))  # fixed gamma
+
+    def forward(self, distances):
+        # distances: (...,) shape
+        diff = distances.unsqueeze(-1) - self.centers  # (..., num_basis)
+        return torch.exp(-self.gamma * diff ** 2)      # (..., num_basis)
+
 
 
 if __name__ == "__main__":

@@ -4,9 +4,9 @@ import argparse
 import os
 import random
 import matplotlib.pyplot as plt
-import seaborn as sns
+# import seaborn as sns
 
-from utils.loading import deserialize_nested_lists
+from utils.misc import deserialize_nested_lists
 
 def plot_histogram(data, title, output_dir, filename):
     plt.figure(figsize=(12, 6))
@@ -37,13 +37,15 @@ def split_csv(input_csv, output_dir, test_size=0.2, val_size=0.1, group_by_ligan
     
     df['bbr'] = df['bbr'].apply(lambda x: max([max(y) for y in x if len(y) > 0], default=float('-inf')))
     df['bbc'] = df['bbc'].apply(lambda x: max([max(y) for y in x if len(y) > 0], default=float('-inf')))
-    df = df[df['bbr'] > 0.3]
+    # df = df[df['bbr'] > 0.3]
     df = df[df['bbc'] > 10]
     print(f"Filtered Best BBR and BBC, {len(df)} rows remaining")
-    df = df.groupby('ref_protein').head(50)
-    df = df.groupby('mov_protein').head(50)
+    # df = df.groupby('ref_protein').head(50)
+    # df = df.groupby('mov_protein').head(50)
+    high_cath_degree = df[df['cath_degree'] > 3]
     print(f"Grouped by ref_protein and mov_protein, {len(df)} rows remaining")
-    df = df.groupby('Ligand_ID').head(1000)
+    high_cath_degree = high_cath_degree.groupby('Ligand_ID').head(1000)
+    df = pd.concat([df[df['cath_degree'] < 4], high_cath_degree])
     print(f"Grouped by Ligand_ID, {len(df)} rows remaining")
 
     # Ensure the "Ligand_ID" column exists if group_by_ligand is True
@@ -74,9 +76,9 @@ def split_csv(input_csv, output_dir, test_size=0.2, val_size=0.1, group_by_ligan
         test_df = df[df['Ligand_ID'].isin(test_ligands)]
 
         # Plot histograms for each dataset
-        plot_histogram(train_df['Ligand_ID'].value_counts(), 'Train Set: Pairs per Ligand', output_dir, 'train_histogram.png')
-        plot_histogram(val_df['Ligand_ID'].value_counts(), 'Validation Set: Pairs per Ligand', output_dir, 'val_histogram.png')
-        plot_histogram(test_df['Ligand_ID'].value_counts(), 'Test Set: Pairs per Ligand', output_dir, 'test_histogram.png')
+        # plot_histogram(train_df['Ligand_ID'].value_counts(), 'Train Set: Pairs per Ligand', output_dir, 'train_histogram.png')
+        # plot_histogram(val_df['Ligand_ID'].value_counts(), 'Validation Set: Pairs per Ligand', output_dir, 'val_histogram.png')
+        # plot_histogram(test_df['Ligand_ID'].value_counts(), 'Test Set: Pairs per Ligand', output_dir, 'test_histogram.png')
         # plot_histogram(train_df['ref_protein'].value_counts(), 'Train Set: ref protein', output_dir, 'train_histogram_ref_protein.png')
         # plot_histogram(val_df['ref_protein'].value_counts(), 'Validation Set: ref protein', output_dir, 'val_histogram_ref_protein.png')
         # plot_histogram(test_df['ref_protein'].value_counts(), 'Test Set: ref protein', output_dir, 'test_histogram.png')
