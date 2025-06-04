@@ -88,15 +88,6 @@ def rescale_and_concat( keys1, keys2):
     return torch.cat( (scaling1 * keys1, scaling2 * keys2) ,axis=-1)
 
 
-'''
-Note: 
-
-keys1 = torch.random.randn()
-
-
-
-'''
-
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt    
