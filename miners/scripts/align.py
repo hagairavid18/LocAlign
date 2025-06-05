@@ -8,7 +8,6 @@ from typing import Any
 import pandas as pd
 
 from utils.misc import build_object, save_results_to_csv
-from utils.constants import LIGAND_DIR
 from aligners import *
 from utils.process_pair import align_pair
 from parsers.pair import parse_protein_pairs

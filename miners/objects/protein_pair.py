@@ -7,7 +7,6 @@ from Bio.PDB.Model import Model
 from Bio.PDB.Atom import Atom
 from Bio.PDB.PDBIO import PDBIO
 from scipy.spatial import distance_matrix
-import torch
 
 
 from utils.constants import LIGAND_DIR
@@ -56,16 +55,17 @@ def best_buddy_count(P, Q, dist_thresh=None):
 
 class ProteinPair:
     def __init__(self, ref_proein: Protein, mov_protein: Protein, ligand_name: str, ref_model_idx: int = 0,
-                  mov_model_idx: int = 0, save_transformed_models: bool = False) -> None:
+                  mov_model_idx: int = 0, save_transformed_models: bool = False, ligand_dir: str = LIGAND_DIR) -> None:
   
         self._ref_protein: Protein = ref_proein
         self._mov_protein: Protein = mov_protein
         self._ligand_name = ligand_name
+        self._ligand_dir = ligand_dir
         self._ref_model_idx = ref_model_idx
         self._mov_model_idx = mov_model_idx
         self._save_transformed_models = save_transformed_models
         
-        self._base_dir = f'{LIGAND_DIR}/{ligand_name}/{self._mov_protein._pdb_name}_to_{self._ref_protein._pdb_name}'
+        self._base_dir = f'{ligand_dir}/{ligand_name}/{self._mov_protein._pdb_name}_to_{self._ref_protein._pdb_name}'
         os.makedirs(self._base_dir, exist_ok=True)
         
         self._ref_model, self._mov_model = self._init_models()
@@ -193,7 +193,7 @@ class ProteinPair:
         mov_coord, seq2, _ = Protein.get_residue_data(mov_chain)
     
         if aligner.name ==  "DaliAligner":
-            R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, f'{LIGAND_DIR}/{self._ligand_name}')
+            R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, f'{self._ligand_dir}/{self._ligand_name}')
         else:
             R, t, rmsd, _ = aligner.impose_structure(ref_coord, mov_coord, seq1, seq2, self._base_dir)
 

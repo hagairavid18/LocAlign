@@ -27,18 +27,19 @@ warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 
 class Protein:
-    def __init__(self, pdb_name: str, chain_id: str, ligand_name: str, model_idx: int = 0, save_models: bool = True) -> None:
+    def __init__(self, pdb_name: str, chain_id: str, ligand_name: str, model_idx: int = 0, save_models: bool = True, ligand_dir: str = LIGAND_DIR) -> None:
   
         self._pdb_name = pdb_name
         self._chain_id = chain_id
         self._model_idx = model_idx
         self._ligand_name = ligand_name
+        self._ligand_dir = ligand_dir
         self._structure: Structure = self._init_structure()
         self._ligand_model, self._num_of_ligand_atoms = self._get_ligand_model(save_models)
         self.__non_ligand_model, self._num_of_non_ligand_atoms = self._get_non_ligand_model(save_models)
     
     def _init_structure(self) -> Structure:
-        cache_dir = f"{LIGAND_DIR}/{self._ligand_name}/cache"
+        cache_dir = f"{self._ligand_dir}/{self._ligand_name}/cache"
         os.makedirs(cache_dir, exist_ok=True)
         cache_file = os.path.join(cache_dir, f"{self._pdb_name}.pkl")
 
@@ -52,7 +53,7 @@ class Protein:
                 logger.warning(f"Failed to load cached structure for {self._pdb_name}: {e}")
         
         # Parse the structure if not cached
-        mmcif_file_path = f"{LIGAND_DIR}/{self._ligand_name}/{self._pdb_name}.cif"
+        mmcif_file_path = f"{self._ligand_dir}/{self._ligand_name}/{self._pdb_name}.cif"
         url = f"https://files.rcsb.org/download/{self._pdb_name}.cif"
 
         # Run wget command to download the file
@@ -86,7 +87,7 @@ class Protein:
         peptide_model = self.get_model(self._model_idx)
         ligand_model, num_of_ligand_atoms = Protein.create_ligand_model(peptide_model, self._ligand_name, self._chain_id)
         if save:
-            save_dir = f'{LIGAND_DIR}/{self._ligand_name}'
+            save_dir = f'{self._ligand_dir}/{self._ligand_name}'
             io = PDBIO()
             io.set_structure(ligand_model)
             io.save(os.path.join(save_dir, f"{self._pdb_name}_ligand.pdb"))
@@ -94,7 +95,7 @@ class Protein:
     
     def _get_non_ligand_model(self, save: bool = True) -> tuple[Model, int]:
         # Define cache directory and file
-        cache_dir = f"{LIGAND_DIR}/{self._ligand_name}/cache"
+        cache_dir = f"{self._ligand_dir}/{self._ligand_name}/cache"
         os.makedirs(cache_dir, exist_ok=True)
         cache_file = os.path.join(cache_dir, f"{self._pdb_name}_non_ligand_model.pkl")
 
@@ -106,7 +107,7 @@ class Protein:
         #     pickle.dump((non_ligand_model, sum(num_of_ligand_atoms)), f)
 
         if save:
-            save_dir = f"{LIGAND_DIR}/{self._ligand_name}"
+            save_dir = f"{self._ligand_dir}/{self._ligand_name}"
             os.makedirs(save_dir, exist_ok=True)
             io = PDBIO()
             io.set_structure(non_ligand_model)

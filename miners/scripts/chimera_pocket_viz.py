@@ -168,66 +168,16 @@ def make_pseudo_bond_files(
     
     
     
-    
-    
-    
-# cath_degree = '6'
-# template = '1fdj_A'
-# template_ligand = '2FP'
-# query = '4ald_A'
-# query_ligand = template_ligand
-
-# cath_degree = '6'
-# template = '1q78_A'
-# template_ligand = '3AT'
-# query = '4lt6_A'
-# query_ligand = template_ligand
-
-# cath_degree = '3'
-# template = '1suw_A'
-# template_ligand = 'NAP'
-# query = '2jl1_A'
-# query_ligand = template_ligand
-
-# cath_degree = '3'
-# template = '2gn4_A'
-# template_ligand = 'UD1'
-# query = '4wad_A'
-# query_ligand = template_ligand
-
-# cath_degree = '3'
-# template = '1vpe_A'
-# template_ligand = 'ANP'
-# query = '3b7g_A'
-# query_ligand = template_ligand
-
-# cath_degree = '3'
-# template = '3l92_A'
-# template_ligand = 'COA'
-# query = '5frd_A'
-# query_ligand = template_ligand
-
-# cath_degree = '3'
-# template = '1ry2_A'
-# template_ligand = 'AMP'
-# query = '3uk2_A'
-# query_ligand = template_ligand
-
-# cath_degree = '3'
-# template = '1qf6_A'
-# template_ligand = 'AMP'
-# query = '3iuy_A'
-# query_ligand = template_ligand
 def process_alignment(base_folder: str, template, template_ligand, query, query_transformation = None):
     query_ligand = template_ligand
 
     folder = base_folder
-    query = os.path.join(folder, f'RANSACAlligner_0_protein_0_0.pdb')
+    # query = os.path.join(folder, f'RANSACAlligner_0_protein_0_0.pdb')
     output_folder = folder
     os.makedirs(output_folder, exist_ok = True)
 
-    template_file,template_chain_id = PDBio.getPDB(template,biounit=False)
-    query_file,query_chain_id = PDBio.getPDB(query,biounit=False)
+    template_file, template_chain_id = PDBio.getPDB(template, biounit=False)
+    query_file,query_chain_id = PDBio.getPDB(query, biounit=False)
 
     extract_chains_andor_ligand_and_apply_transform(template_file, template_chain_id, template_ligand,
                                 os.path.join(output_folder, 'template_receptor.pdb')
@@ -246,77 +196,113 @@ def process_alignment(base_folder: str, template, template_ligand, query, query_
                                 ,mode='only_ligand',transformation=query_transformation)
 
 
-    template_pocket_residues = get_pocket( os.path.join(output_folder, 'template_receptor.pdb'),
-                        os.path.join(output_folder, 'template_ligand.pdb') )
+    try:
+        template_pocket_residues = get_pocket( os.path.join(output_folder, 'template_receptor.pdb'),
+                            os.path.join(output_folder, 'template_ligand.pdb') )
 
-    query_pocket_residues = get_pocket( os.path.join(output_folder, 'transformed_query_receptor.pdb'),
-                        os.path.join(output_folder, 'transformed_query_ligand.pdb') )
+        query_pocket_residues = get_pocket( os.path.join(output_folder, 'transformed_query_receptor.pdb'),
+                            os.path.join(output_folder, 'transformed_query_ligand.pdb') )
 
 
-    make_pseudo_bond_files(
-        os.path.join(output_folder, 'correspondences.pb'),    
-        os.path.join(output_folder, 'template_receptor.pdb'),
-        os.path.join(output_folder, 'template_ligand.pdb'),
-        os.path.join(output_folder, 'transformed_query_receptor.pdb'),
-        os.path.join(output_folder, 'transformed_query_ligand.pdb'),                         
+        make_pseudo_bond_files(
+            os.path.join(output_folder, 'correspondences.pb'),    
+            os.path.join(output_folder, 'template_receptor.pdb'),
+            os.path.join(output_folder, 'template_ligand.pdb'),
+            os.path.join(output_folder, 'transformed_query_receptor.pdb'),
+            os.path.join(output_folder, 'transformed_query_ligand.pdb'),                         
+        )
+
+
+        list_commands = []
+        for file in ['template_receptor','template_ligand','transformed_query_receptor','transformed_query_ligand']:
+            list_commands.append( f'open {file}.pdb' )
+        list_commands.append(f'dssp')
+        list_commands.append(f'sel #1')
+        list_commands.append(f'hide sel atoms')
+        list_commands.append(f'color sel cornflower blue transparency 90')
+
+        template_pocket_residues_chimera_formatted = []
+        for chain in np.unique(template_pocket_residues[:,0]):
+            subset = (template_pocket_residues[:,0] == chain)
+            indices = template_pocket_residues[subset,1]
+            template_pocket_residues_chimera_formatted.append(f'#1/{chain}:' + ','.join(indices))
+        list_commands.append(f'sel ' + '| '.join(template_pocket_residues_chimera_formatted))
+        list_commands.append(f'show sel atoms')
+        list_commands.append(f'style sel stick')
+        list_commands.append(f'color sel blue transparency 0')
+        # list_commands.append(f'color sel byhetero')
+
+        list_commands.append(f'sel #2')
+
+        list_commands.append(f'show sel atoms')
+        list_commands.append(f'style sel stick')
+        list_commands.append(f'color sel cyan transparency 0')
+        # list_commands.append(f'color sel byhetero')
+
+
+        list_commands.append(f'sel #3')
+        list_commands.append(f'hide sel atoms')
+        list_commands.append(f'color sel orange red transparency 90')
+
+        query_pocket_residues_chimera_formatted = []
+        for chain in np.unique(query_pocket_residues[:,0]):
+            subset = (query_pocket_residues[:,0] == chain)
+            indices = query_pocket_residues[subset,1]
+            query_pocket_residues_chimera_formatted.append(f'#3/{chain}:' + ','.join(indices))
+        list_commands.append(f'sel ' + '| '.join(query_pocket_residues_chimera_formatted))
+        list_commands.append(f'show sel atoms')
+        list_commands.append(f'style sel stick')
+        list_commands.append(f'color sel red transparency 0')
+        # list_commands.append(f'color sel byhetero')
+
+
+        list_commands.append(f'sel #4')
+        list_commands.append(f'show sel atoms')
+        list_commands.append(f'style sel stick')
+        list_commands.append(f'color sel orange transparency 0')
+        # list_commands.append(f'color sel byhetero')
+        list_commands.append('sel clear')
+        list_commands.append('hide solvent')
+        list_commands.append('lighting soft')
+        list_commands.append('set bgColor white')
+        list_commands.append('open correspondences.pb')
+
+        chimera_file = os.path.join(output_folder,'chimera_script.cxc')
+        with open(chimera_file,'w') as f:
+            for command in list_commands:
+                f.write(command + '\n')
+    except Exception as e:
+        print(f"Error extracting pockets: {e}")
+        template_pocket_residues = np.array([['A', '1']])
+        query_pocket_residues = np.array([['A', '1']])
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Process protein alignment and visualize pockets.")
+    parser.add_argument("--base_folder", type=str, required=True, help="Base folder for output files.")
+    parser.add_argument("--template", type=str, required=True, help="Template protein identifier.")
+    parser.add_argument("--template_ligand", type=str, required=True, help="Ligand identifier for the template.")
+    parser.add_argument("--query", type=str, required=True, help="Query protein identifier.")
+    parser.add_argument(
+        "--query_transformation",
+        nargs=12,
+        type=float,
+        default=None,
+        help="Query transformation: 9 rotation values (row-major) followed by 3 translation values"
     )
+    
+    args = parser.parse_args()
+    if args.query_transformation:
+        R_flat = args.query_transformation[:9]
+        t = args.query_transformation[9:]
+        R = np.array(R_flat).reshape((3, 3))
+        t = np.array(t)
+        print(f"R: {R}, t: {t}")
+        process_alignment(args.base_folder, args.template, args.template_ligand, args.query,
+                        query_transformation=(R, t))
+    else:
+        process_alignment(args.base_folder, args.template, args.template_ligand, args.query)
 
-
-    list_commands = []
-    for file in ['template_receptor','template_ligand','transformed_query_receptor','transformed_query_ligand']:
-        list_commands.append( f'open {file}.pdb' )
-    list_commands.append(f'dssp')
-    list_commands.append(f'sel #1')
-    list_commands.append(f'hide sel atoms')
-    list_commands.append(f'color sel cornflower blue transparency 90')
-
-    template_pocket_residues_chimera_formatted = []
-    for chain in np.unique(template_pocket_residues[:,0]):
-        subset = (template_pocket_residues[:,0] == chain)
-        indices = template_pocket_residues[subset,1]
-        template_pocket_residues_chimera_formatted.append(f'#1/{chain}:' + ','.join(indices))
-    list_commands.append(f'sel ' + '| '.join(template_pocket_residues_chimera_formatted))
-    list_commands.append(f'show sel atoms')
-    list_commands.append(f'style sel stick')
-    list_commands.append(f'color sel blue transparency 0')
-    # list_commands.append(f'color sel byhetero')
-
-    list_commands.append(f'sel #2')
-
-    list_commands.append(f'show sel atoms')
-    list_commands.append(f'style sel stick')
-    list_commands.append(f'color sel cyan transparency 0')
-    # list_commands.append(f'color sel byhetero')
-
-
-    list_commands.append(f'sel #3')
-    list_commands.append(f'hide sel atoms')
-    list_commands.append(f'color sel orange red transparency 90')
-
-    query_pocket_residues_chimera_formatted = []
-    for chain in np.unique(query_pocket_residues[:,0]):
-        subset = (query_pocket_residues[:,0] == chain)
-        indices = query_pocket_residues[subset,1]
-        query_pocket_residues_chimera_formatted.append(f'#3/{chain}:' + ','.join(indices))
-    list_commands.append(f'sel ' + '| '.join(query_pocket_residues_chimera_formatted))
-    list_commands.append(f'show sel atoms')
-    list_commands.append(f'style sel stick')
-    list_commands.append(f'color sel red transparency 0')
-    # list_commands.append(f'color sel byhetero')
-
-
-    list_commands.append(f'sel #4')
-    list_commands.append(f'show sel atoms')
-    list_commands.append(f'style sel stick')
-    list_commands.append(f'color sel orange transparency 0')
-    # list_commands.append(f'color sel byhetero')
-    list_commands.append('sel clear')
-    list_commands.append('hide solvent')
-    list_commands.append('lighting soft')
-    list_commands.append('set bgColor white')
-    list_commands.append('open correspondences.pb')
-
-    chimera_file = os.path.join(output_folder,'chimera_script.cxc')
-    with open(chimera_file,'w') as f:
-        for command in list_commands:
-            f.write(command + '\n')
+    
+    # process_alignment(args.base_folder, args.template, args.template_ligand, args.query,
+    #                   query_transformation=args.query_transformation)

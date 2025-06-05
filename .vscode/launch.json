@@ -107,25 +107,55 @@
             "name": "Inference Script",
             "type": "debugpy",
             "request": "launch",
-            "program": "inference.py",
+            "program": "aligner_dl/scripts/inference.py",
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--config", 
-                "config.yaml",
+                // "--csv", 
+                // "validation_pairs_to_plot.csv",
+                "--protein_pair",
+                // "1TRN", "1H4W",
+                // "1TRN", "1AF4",
+                // "1TRN", "1TYF",
+                // "1TRN", "1SBT",
+                // "1TRN", "1ELA",
+                // "1A0B", "12CA",
+                "1A4l", "12CA",
+                // "2yv5", "1jwy",
+                // "1TRN", "1TRN",
                 "--checkpoint", 
-                "path/to/your/model.ckpt",
-                "--output_dir", 
-                "results",
+                "checkpoints/dp01-10gnn-3blocks-k500-cath4-8-32rbf-lr0002-ln-OneCycleLR/epoch=13-step=21560.ckpt",
                 "--experiment_name",
-                "inference_run"
+                "dp01-10gnn-3blocks-k500-cath4-8-32rbf-lr0002-ln-OneCycleLR",
+                "--output_dir", 
+                "results/triads",
+                "--scannet_dir",
+                "/home/iscb/wolfson/hagairavid/scannet_outputs",
+                "--device",
+                "cpu"
             ]
         },
+       {
+            "name": "creae chimera",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "miners/scripts/create_dirs_for_plots_inference.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--pickle_dir", "results/triads",
+                "--output_dir", "results/triads",
+                "--ligand_dir", "/home/iscb/wolfson/hagairavid/triads",
+                "--base_path", "/home/iscb/wolfson/hagairavid/ligand_alligner"
+            ],
+        },
+
+        
         {
             "name": "Split CSV by Ligand",
             "type": "debugpy",
             "request": "launch",
-            "program": "datasets/utils/split_dataset.py",
+            "program": "aligner_dl/datasets/utils/split_dataset.py",
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
@@ -133,7 +163,7 @@
                 // "results/alignment_temp_results/2025-02-01_17-48-34_3000.csv",
                 "results/alignment_results/2025-02-04_09-07-32_106886.csv",
                 "--output_dir", 
-                "datasets/csv_files/grouping_1302",       // Directory to save the train, val, and test CSVs
+                "aligner_dl/datasets/csv_files/grouping_1305",       // Directory to save the train, val, and test CSVs
                 "--test_size", 
                 "0.0",               // Optional: Adjust the test set size (default 0.2)
                 "--val_size", 

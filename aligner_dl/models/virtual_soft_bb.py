@@ -244,3 +244,20 @@ class VirtualSoftBB(SoftBBBase):
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': transformation_dict}
         self._metrics.update(batch, outputs)
         return outputs
+    
+    def inference_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """
+        Validation step for the model. Computes the loss and the metrics for the model.
+
+        Args:
+            batch (dict[str, torch.Tensor]): 
+
+        Returns:
+            dict[str, torch.Tensor]: 
+        """
+        # print(f"tar protein: {batch['metadata'][0]['ref_protein']}{batch['metadata'][0]['ref_chain']} src protein: {batch['metadata'][0]['mov_protein']}{batch['metadata'][0]['mov_chain']}")
+        batch = move_batch_to_device(batch, self.device)
+        transformation_dict, src_offsets, tar_offsets = self._compute_soft_bb_algorithm(batch)
+        
+        outputs = {'transformation_dict': transformation_dict, 'metadata': batch['metadata']}
+        return outputs
