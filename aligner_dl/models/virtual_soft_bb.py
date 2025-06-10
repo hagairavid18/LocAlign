@@ -178,7 +178,7 @@ class VirtualSoftBB(SoftBBBase):
         soft_correspondences = self._get_soft_correspondences(top_src_embedding, top_tar_embedding, top_src_scalar, top_tar_scalar, top_src_mask, top_tar_mask).to(input_dtype)  
         src_frames, tar_frames = top_src_frames, top_tar_frames 
         
-        top_corr_values, top_corr_indices = self._denoiser._force_consistency(soft_correspondences, src_frames[:, :, 0, :], tar_frames[:, :, 0, :])        
+        top_corr_values, top_corr_indices = self._denoiser(soft_correspondences, src_frames, tar_frames)        
         # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices)
         # orig_src_embedding = batch['src_embedding'].gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
         # orig_tar_embedding = batch['tar_embedding'].gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))

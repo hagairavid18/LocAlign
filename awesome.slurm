@@ -14,5 +14,5 @@
 
 
 # /home/iscb/wolfson/hagairavid/miniforge3/envs/aligner/bin/python lightning_trainer.py --config configs/soft_bb.yaml
-/home/iscb/wolfson/hagairavid/miniforge3/envs/aligner_dl/bin/python aligner_dl/trainers/lightning_trainer.py --config aligner_dl/configs/virtual_soft_bb.yaml
+/home/iscb/wolfson/hagairavid/miniforge3/envs/aligner_dl2/bin/python aligner_dl/trainers/lightning_trainer.py --config aligner_dl/configs/virtual_soft_bb.yaml
 # /home/iscb/wolfson/hagairavid/miniforge3/envs/aligner/bin/python models/learnable_soft_bb.py

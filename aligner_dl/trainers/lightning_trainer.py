@@ -2,7 +2,7 @@ import glob
 import torch
 import logging
 import yaml
-from torch.utils.data import DataLoader, RandomSampler
+from torch.utils.data import DataLoader
 from pytorch_lightning.loggers import CometLogger
 from comet_ml import API, ExistingExperiment
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -36,8 +36,6 @@ def main():
     log_dir = args.log_dir
     os.makedirs(log_dir, exist_ok=True)
     logging.basicConfig(filename=os.path.join(log_dir, start_time + ".log"), level=logging.INFO, format='%(message)s')
-
-    logger = logging.getLogger(__name__)
 
     # Load configuration
     with open(args.config) as f:
