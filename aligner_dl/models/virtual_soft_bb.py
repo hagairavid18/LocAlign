@@ -2,14 +2,25 @@ from typing import Any
 import torch
 
 from models.soft_bb_base import SoftBBBase
-from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord, mask_and_normalize_matrix
+from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord
 from models.utils.math import group_lasso_regularization
 from models.utils.plots import plot_correspondences, plot_offsets
-torch.set_float32_matmul_precision('medium')
 
 
 class VirtualSoftBB(SoftBBBase):
-    def __init__(self, loss: dict[str, Any], optimizer: dict[str, Any], input_layer: dict[str, Any], virtual_layer: dict, scalar_layer: dict, denoiser: dict, max_iter: int = 5, n_iter_train: int = 2, top_k: int = 1200, plot_dir: str | None = None) -> None:
+    def __init__(
+            self, 
+            loss: dict[str, Any], 
+            optimizer: dict[str, Any], 
+            input_layer: dict[str, Any], 
+            virtual_layer: dict, 
+            scalar_layer: dict, 
+            denoiser: dict, 
+            max_iter: int = 5, 
+            n_iter_train: int = 2, 
+            top_k: int = 1200, 
+            plot_dir: str | None = None
+            ) -> None:
        
         super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir)
         self._input_block = build_object(input_layer, 'models.layers')
@@ -17,16 +28,34 @@ class VirtualSoftBB(SoftBBBase):
         # self._virtual_point_block = build_object(virtual_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
         self._top_k = top_k
-        # self._automatic_optimization = False
     
-    def _get_scalar(self, embedding: torch.Tensor, mask:torch.Tensor) -> torch.Tensor:
+    def _get_scalar(
+            self, 
+            embedding: torch.Tensor, 
+            mask:torch.Tensor
+            ) -> torch.Tensor:
         return self._linear(embedding, mask=mask).squeeze(-1)
     
-    def _get_rectified_top_k(self, scalar: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor,torch.Tensor]:
+    def _get_rectified_top_k(
+            self, 
+            scalar_values: torch.Tensor, 
+            mask: torch.Tensor
+            ) -> tuple[torch.Tensor,torch.Tensor]:
+        """
+        Computes the top k scalar values and their indices, while ensuring that the mask is applied correctly.
+
+
+        Args:
+            scalar_values (torch.Tensor): Values to compute the top k from.
+            mask (torch.Tensor): Mask to apply on the scalar values.
+
+        Returns:
+            tuple[torch.Tensor,torch.Tensor]: Top k indices and their corresponding scalar values.
+        """        
         
-        scalar = scalar.masked_fill(~mask, -float('inf'))
+        scalar_values = scalar_values.masked_fill(~mask, -float('inf'))
                 
-        top_k_plus_one_scalar, top_k_plus_one_indices = torch.topk(scalar, self._top_k + 1, dim=-1, largest=True) # I removed the train/eval condition for now...
+        top_k_plus_one_scalar, top_k_plus_one_indices = torch.topk(scalar_values, self._top_k + 1, dim=-1, largest=True) # I removed the train/eval condition for now...
         
         top_k_plus_one_mask = mask.gather(1, top_k_plus_one_indices) #
         top_k_plus_one_scalar.masked_fill_(~top_k_plus_one_mask, 0) # These two lines are to deal with the edge case where num_real_atoms < _top_k. In this case and without the fix, top_k_plus_one_scalar[:,:,_top_k] = -infty.
@@ -35,25 +64,32 @@ class VirtualSoftBB(SoftBBBase):
         top_k_indices = top_k_plus_one_indices[:, :self._top_k]        
         return top_k_indices, top_k_scalar
     
-    def _get_soft_correspondences(self,
-                                    src_embedding: torch.Tensor,
-                                    tar_embedding: torch.Tensor,
-                                    src_scalar: torch.Tensor,
-                                    tar_scalar: torch.Tensor,                                                      
-                                    src_mask: torch.Tensor,
-                                    tar_mask: torch.Tensor) -> torch.Tensor: 
+    def _get_soft_correspondences(
+            self,
+            src_embedding: torch.Tensor,
+            tar_embedding: torch.Tensor,
+            src_scalar: torch.Tensor,
+            tar_scalar: torch.Tensor,                                                      
+            src_mask: torch.Tensor,
+            tar_mask: torch.Tensor
+            ) -> torch.Tensor: 
         '''
-        These are the differences compared to your version:
-        1/ Most importantly, we want that if an atom has scalar=0 or close to 0, it should not contribute at all. This guarantees differentiability when combined with the top-K.
-        2/ I used dot products and softmax instead of the distance and softmin. Since there was a layernorm before, it should be exactly identical. dot product might also be faster.
-        3/ There is a tiny fix that might help with numerical underflows...   
-        4/ I did not use adaptive temperature... Maybe you will need to put it back.     
+           Computes the soft correspondences between the source and target embeddings.
+              The soft correspondences are computed by first computing the dot product between the source and target embeddings, then applying a softmax over the source and target embeddings.
+        Args:
+            src_embedding (torch.Tensor): Source embedding of shape [Batch Size, src_size, dim].
+            tar_embedding (torch.Tensor): Target embedding of shape [Batch Size, tar_size, dim].
+            src_scalar (torch.Tensor): Scalar values for the source embedding of shape [Batch Size, src_size].
+            tar_scalar (torch.Tensor): Scalar values for the target embedding of shape [Batch Size, tar_size].
+            src_mask (torch.Tensor): Mask for the source embedding of shape [Batch Size, src_size].
+            tar_mask (torch.Tensor): Mask for the target embedding of shape [Batch Size, tar_size].
+        Returns:
+            torch.Tensor: Soft correspondences of shape [Batch Size, tar_size, src_size].  
         '''
         
         dim = src_embedding.shape[-1]
         scale = torch.sqrt(torch.tensor(dim, device=src_embedding.device, dtype=src_embedding.dtype))        
-        dot_products = torch.bmm(tar_embedding, src_embedding.transpose(1, 2)) / scale # [Batch Size , tar_size , src_size] Hopefully it's the right ordering...
-        # exp_dot_products = torch.exp( dot_products - dot_products.max() )  ## This is what you used, but I did it separately for each dim to guarantee that there are no underflows.
+        dot_products = torch.bmm(tar_embedding, src_embedding.transpose(1, 2)) / scale
         
         # first softmax over src
         exp_dot_products = torch.exp(dot_products - dot_products.max(2,keepdims=True)[0])        
@@ -67,36 +103,6 @@ class VirtualSoftBB(SoftBBBase):
         
         soft_correspondences = softmax_over_src * softmax_over_tar
         return soft_correspondences
-                                                     
-                
-    def _get_top_k_indices(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Get the top k indices of the source and target embeddings based on the distance matrix.
-
-        Args:
-            src_embedding (torch.Tensor): Source embedding.
-            tar_embedding (torch.Tensor): Target embedding.
-            src_mask (torch.Tensor): Source mask.
-            tar_mask (torch.Tensor): Target mask.
-
-        Returns:
-            tuple[torch.Tensor, torch.Tensor]: Top k indices for source and target embeddings.
-        """
-        src_scalar = self._linear(src_embedding, mask=src_mask).squeeze(-1)
-        tar_scalar = self._linear(tar_embedding, mask=tar_mask).squeeze(-1)
-        src_scalar = src_scalar.masked_fill(~src_mask, -float('inf'))
-        tar_scalar = tar_scalar.masked_fill(~tar_mask, -float('inf'))
-        top_src_indices = torch.topk(src_scalar, k=self._top_k if self.training else src_scalar.shape[1], dim=-1).indices
-        top_tar_indices = torch.topk(tar_scalar, k=self._top_k if self.training else src_scalar.shape[1], dim=-1).indices
-        return top_src_indices, top_tar_indices
-    
-    def _get_distance_matrix(self, src_embedding: torch.Tensor, tar_embedding: torch.Tensor) -> torch.Tensor: 
-        dim = src_embedding.shape[-1]
-        scale = torch.sqrt(torch.tensor(dim, device=src_embedding.device, dtype=src_embedding.dtype))
-        diff = src_embedding.unsqueeze(1) - tar_embedding.unsqueeze(2)
-        distance_matrix = torch.sum(torch.mul(diff, diff), dim=-1) / scale
-
-        return distance_matrix
     
     def _transform_offsets_with_frames(self, offsets: torch.Tensor, frames: torch.Tensor) -> torch.Tensor:
         """
@@ -156,7 +162,6 @@ class VirtualSoftBB(SoftBBBase):
         tar_embedding, src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
         tar_scalar = self._get_scalar(tar_embedding, batch['tar_mask'])
         src_scalar = self._get_scalar(src_embedding, batch['src_mask'])
-        # distance_matrix = self._get_distance_matrix(src_embedding=src_embedding, tar_embedding=tar_embedding).to(input_dtype)
 
         tar_mask, src_mask = batch['tar_mask'], batch['src_mask']
         tar_frames, src_frames = batch['tar_frames'], batch['src_frames']        

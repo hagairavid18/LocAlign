@@ -1,5 +1,4 @@
 from abc import ABC
-from models.utils.plots import generate_and_log_scatter_plot
 import pandas as pd
 import os
 from typing import Any
@@ -8,16 +7,22 @@ import lightning as L
 import torch.optim as optim
 
 from metrics import PocketRMSD
+from models.utils.plots import generate_and_log_scatter_plot
 from models.utils.misc import build_object
-# from models.utils.plots import plot_transformed_point_clouds_interactive
-
-torch.set_float32_matmul_precision('medium')
 
 
 class SoftBBBase(L.LightningModule, ABC):
-    def __init__(self, loss: dict[str, Any] | None, optimizer: dict[str, Any] | None, max_iter: int = 5, n_iter_train: int = 2, plot_dir : str | None = None) -> None:
+    def __init__(
+            self, 
+            loss: dict[str, Any] | None, 
+            optimizer: dict[str, Any] | None, 
+            max_iter: int = 5, 
+            n_iter_train: int = 2, 
+            plot_dir : str | None = None
+            ) -> None:
         """
-        Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of embeddings and computes the optimal transformation between them.
+        Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of 
+        embeddings and computes the optimal transformation between them.
         Iterate over the optimal transformation and the correspondence matrix to minimize the pocket RMSD loss function.
 
         Args:
@@ -30,7 +35,7 @@ class SoftBBBase(L.LightningModule, ABC):
         super().__init__()
         self._pocket_loss = build_object(loss['pocket'], 'losses') if loss is not None else None
         self._transformation_loss = build_object(loss['transformation'], 'losses') if loss is not None else None
-        self._ligadn_loss = build_object(loss['ligand'], 'losses') if loss is not None else None
+        self._ligand_loss = build_object(loss['ligand'], 'losses') if loss is not None else None
         self._use_transformation_loss = loss['use_transformation'] if loss is not None else False
         self._alpha_loss = 0.5
         self._metrics = PocketRMSD()
@@ -126,7 +131,7 @@ class SoftBBBase(L.LightningModule, ABC):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
         loss = loss_dict['pocket_rmsd']
         loss_dict.update(self._transformation_loss(batch, R_total, t_total))
-        loss_dict.update(self._ligadn_loss(batch, R_total, t_total))
+        loss_dict.update(self._ligand_loss(batch, R_total, t_total))
         # loss = loss_dict['ligand_rmsd']
         if self._use_transformation_loss:
             loss = self._alpha_loss * loss_dict['pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
