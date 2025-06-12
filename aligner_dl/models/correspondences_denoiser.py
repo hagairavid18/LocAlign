@@ -22,7 +22,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         super(CorrespondenceDenoisingModule, self).__init__()
         self.k = k  # Number of top correspondences to keep
         self.n_gnn_layers = n_gnn_layers  # Number of GNN layers
-        self.gnn_layers = GraphConv(1, 1, aggr='sum')
+        self.gnn_layer = GraphConv(1, 1, aggr='sum')
         self.n_rbf_functions = n_rbf_functions  # Number of RBF functions
         self.with_angles = with_angles  # Whether to include angle features
         
@@ -33,13 +33,12 @@ class CorrespondenceDenoisingModule(nn.Module):
 
         self.apply(self.init_weights)
        
-        for gnn_layer in self.gnn_layers:
-            with torch.no_grad():
-                gnn_layer.lin_rel.weight.fill_(0.05)
-                gnn_layer.lin_rel.bias.fill_(1.0)
-                gnn_layer.lin_root.weight.fill_(0.0)
-            gnn_layer.lin_root.weight.requires_grad = False
-            gnn_layer.lin_rel.bias.requires_grad = False
+        with torch.no_grad():
+            self.gnn_layer.lin_rel.weight.fill_(0.05)
+            self.gnn_layer.lin_rel.bias.fill_(1.0)
+            self.gnn_layer.lin_root.weight.fill_(0.0)
+        self.gnn_layer.lin_root.weight.requires_grad = False
+        self.gnn_layer.lin_rel.bias.requires_grad = False
          
     @staticmethod
     def init_weights(m):
@@ -57,7 +56,7 @@ class CorrespondenceDenoisingModule(nn.Module):
 
         for i in range(self.n_gnn_layers):
             graph_data.x = (graph_data.x.reshape(B,self.k) / graph_data.x.reshape(B,self.k).sum(1, keepdim=True)).reshape(B *self.k,1)
-            graph_data.x = self.gnn_layers(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
+            graph_data.x = self.gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
 
         graph_data.x = graph_data.x.relu()
         # Step 4: Update soft correspondences
