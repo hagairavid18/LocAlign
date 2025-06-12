@@ -1,9 +1,9 @@
 trainer:
-  exp_name: noangles-topk400-100corr-all-caths
-  tags: ["virtual", "atom", "grouping_1305", "1800", "new_block"]
+  exp_name: group-by-protein-refactor-angles-fix
+  tags: ["virtual", "atom"]
   max_epochs: 30
   validate_only: False
-  check_val_every_n_epoch: 3
+  check_val_every_n_epoch: 1
   gradient_clipping: 30
   # profiler: true
   # ckpt_path: "checkpoints/denoiser-b8-k2000-5000-top1200-dp01-differentgnn5-1305/epoch=8-step=47799.ckpt"
@@ -38,7 +38,7 @@ model:
       name: 
         CorrespondenceDenoisingModule
       args:
-        k: 100
+        n_nodes: 100
         n_gnn_layers: 10
         n_rbf_functions: 32
         with_angles: true
@@ -62,9 +62,9 @@ model:
           interval: step
           args:
 
-            max_lr: 0.0005
+            max_lr: 0.001
             epochs: 30
-            steps_per_epoch: 2700      # epochs × steps_per_epoch
+            steps_per_epoch: 4316      # epochs × steps_per_epoch
             div_factor: 25
             # final_div_factor: 1e4
 
@@ -72,7 +72,7 @@ dataset:
   train:
     name: ScannetDataset
     args:
-      df_path: aligner_dl/datasets/csv_files/grouping_1305/train.csv
+      df_path: datasets/csv_files/protein_grouping_1206/train.csv
       # n_samples: 3000
       seed: 41
       # min_cath: 3
@@ -83,7 +83,7 @@ dataset:
   validation:
     name: ScannetDataset
     args:
-      df_path: aligner_dl/datasets/csv_files/grouping_1305/val.csv
+      df_path: datasets/csv_files/protein_grouping_1206/val.csv
       # n_samples: 15
       seed: 81
       max_cath: 4

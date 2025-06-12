@@ -1,49 +1,37 @@
+from models.utils.math import euclidean_to_spherical
 import torch
 import torch.nn as nn
 from torch_geometric.data import Data
 from torch_geometric.nn import GraphConv
 
 
-import numpy as np
-
-def euclidean_to_spherical(x, cut='2pi', eps=1e-8):
-    r = torch.linalg.norm(x, dim=-1)
-    theta = torch.acos(x[..., 2] / (r + eps))
-    phi = torch.atan2(x[..., 1], x[..., 0] + eps)
-    
-    if cut == '2pi':
-        phi = phi + (phi < 0).float() * (2 * np.pi)
-    
-    return torch.stack([r, theta, phi], dim=-1)
-
 class CorrespondenceDenoisingModule(nn.Module):
 
     def __init__(
         self, 
-        k: int, 
+        n_nodes: int, 
         n_gnn_layers: int = 3, 
         n_rbf_functions: int = 16, 
         with_angles: bool = True
         ):
         super(CorrespondenceDenoisingModule, self).__init__()
-        self.k = k  # Number of top correspondences to keep
-        self.n_gnn_layers = n_gnn_layers  # Number of GNN layers
-        self.gnn_layer = GraphConv(1, 1, aggr='sum')
-        self.n_rbf_functions = n_rbf_functions  # Number of RBF functions
-        self.with_angles = with_angles  # Whether to include angle features
+        self._n_nodes = n_nodes  # Number of top correspondences to keep
+        self._n_gnn_layers = n_gnn_layers  # Number of GNN layers
+        self._gnn_layer = GraphConv(1, 1, aggr='sum')
+        self._add_angle_features = with_angles  # Whether to include angle features
         
         pre_input_dim = 2 * n_rbf_functions + 8 if with_angles else 2 * n_rbf_functions
-        self.edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
-        self.rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 100.0), learn_gamma=True)
+        self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
+        self._rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 100.0), learn_gamma=True)
         
         self.apply(self.init_weights)
        
         with torch.no_grad():
-            self.gnn_layer.lin_rel.weight.fill_(0.05)
-            self.gnn_layer.lin_rel.bias.fill_(1.0)
-            self.gnn_layer.lin_root.weight.fill_(0.0)
-        self.gnn_layer.lin_root.weight.requires_grad = False
-        self.gnn_layer.lin_rel.bias.requires_grad = False
+            self._gnn_layer.lin_rel.weight.fill_(0.05)
+            self._gnn_layer.lin_rel.bias.fill_(1.0)
+            self._gnn_layer.lin_root.weight.fill_(0.0)
+        self._gnn_layer.lin_root.weight.requires_grad = False
+        self._gnn_layer.lin_rel.bias.requires_grad = False
          
     @staticmethod
     def init_weights(m):
@@ -64,9 +52,9 @@ class CorrespondenceDenoisingModule(nn.Module):
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
         graph_data = self.build_correspondence_graph(top_k_values, top_k_indices, src_frames, tgt_frames)
 
-        for i in range(self.n_gnn_layers):
-            graph_data.x = (graph_data.x.reshape(B,self.k) / graph_data.x.reshape(B,self.k).sum(1, keepdim=True)).reshape(B *self.k,1)
-            graph_data.x = self.gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
+        for i in range(self._n_gnn_layers):
+            graph_data.x = (graph_data.x.reshape(B, self._n_nodes) / graph_data.x.reshape(B,self._n_nodes).sum(1, keepdim=True)).reshape(B *self._n_nodes,1)
+            graph_data.x = self._gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
 
         graph_data.x = graph_data.x.relu()
         # Step 4: Update soft correspondences
@@ -87,9 +75,9 @@ class CorrespondenceDenoisingModule(nn.Module):
         flat_correspondences = soft_correspondences.reshape(B, -1)  # Flatten each batch
         
         # Find the top K values and their indices across the entire matrix
-        top_k_plus_one_values, top_k_plus_one_indices_flat = torch.topk(flat_correspondences, self.k + 1, dim=-1, largest=True)
-        top_k_values = top_k_plus_one_values[:, :self.k] - top_k_plus_one_values[:, self.k:]
-        top_k_indices_flat = top_k_plus_one_indices_flat[:, :self.k] 
+        top_k_plus_one_values, top_k_plus_one_indices_flat = torch.topk(flat_correspondences, self._n_nodes + 1, dim=-1, largest=True)
+        top_k_values = top_k_plus_one_values[:, :self._n_nodes] - top_k_plus_one_values[:, self._n_nodes:]
+        top_k_indices_flat = top_k_plus_one_indices_flat[:, :self._n_nodes] 
         
         # Convert the flattened indices back to (i, j) pairs in the original 2D matrix
         top_k_indices = torch.stack((top_k_indices_flat // N, top_k_indices_flat % N), dim=-1)  # Convert to (i, j) index pairs
@@ -119,8 +107,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         """
         selected_frames = frames.gather(1, indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, frames.size(2), frames.size(3)))
         diff = selected_frames[:, :, 0, :].unsqueeze(2) - selected_frames[:, :, 0, :].unsqueeze(1)  # (B, K, K, 3)
-        # diff_invariant = torch.einsum('bklm,bknm->bkln', diff, selected_frames[:, :, 1:, :].transpose(-1, -2)) # TODO: test this line
-        diff_invariant = torch.einsum('bklm,bknm->bkln', diff, selected_frames[:, :, 1:, :]) # TODO: test this line
+        diff_invariant = torch.einsum('bklm,blnm->bkln', diff, selected_frames[:, :, 1:, :])
         diff_r_theta_phi = euclidean_to_spherical(diff_invariant)
         return diff_r_theta_phi
     
@@ -156,14 +143,14 @@ class CorrespondenceDenoisingModule(nn.Module):
         # Stack all edge features together
         distance_features = torch.stack([src_diff_r_theta_phi[:, i_idx, j_idx, 0], tgt_diff_r_theta_phi[:, i_idx, j_idx, 0]], dim=-1)
         
-        edge_features = self.rbf_encoder(distance_features).view(B, distance_features.shape[1], -1)
-        if self.with_angles:
+        edge_features = self._rbf_encoder(distance_features).view(B, distance_features.shape[1], -1)
+        if self._add_angle_features:
             angle_features = torch.cat([self._encode_angles(tgt_diff_r_theta_phi[:, i_idx, j_idx, 1:]),
                                         self._encode_angles(src_diff_r_theta_phi[:, i_idx, j_idx, 1:]),], dim=-1)
                 
             edge_features = torch.cat([edge_features, angle_features], dim=-1)  # Concatenate RBF features
         # Pass through the edge learner
-        edge_weight = self.edge_learner(edge_features).view(-1, 1)
+        edge_weight = self._edge_learner(edge_features).view(-1, 1)
 
         # Create PyG Data object
         data = Data(
