@@ -3,6 +3,9 @@ import pandas as pd
 import os
 from typing import Any
 import torch
+import torch
+torch.set_float32_matmul_precision('medium')  # or 'high'
+
 import lightning as L
 import torch.optim as optim
 

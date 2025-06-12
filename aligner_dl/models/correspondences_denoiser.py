@@ -22,7 +22,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         super(CorrespondenceDenoisingModule, self).__init__()
         self.k = k  # Number of top correspondences to keep
         self.n_gnn_layers = n_gnn_layers  # Number of GNN layers
-        self.gnn_layers = nn.ModuleList([GraphConv(1, 1, aggr='sum') for _ in range(n_gnn_layers)])
+        self.gnn_layers = GraphConv(1, 1, aggr='sum')
         self.n_rbf_functions = n_rbf_functions  # Number of RBF functions
         self.with_angles = with_angles  # Whether to include angle features
         
@@ -57,7 +57,7 @@ class CorrespondenceDenoisingModule(nn.Module):
 
         for i in range(self.n_gnn_layers):
             graph_data.x = (graph_data.x.reshape(B,self.k) / graph_data.x.reshape(B,self.k).sum(1, keepdim=True)).reshape(B *self.k,1)
-            graph_data.x = self.gnn_layers[i](graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
+            graph_data.x = self.gnn_layers(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
 
         graph_data.x = graph_data.x.relu()
         # Step 4: Update soft correspondences

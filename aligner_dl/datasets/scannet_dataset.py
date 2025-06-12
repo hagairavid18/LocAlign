@@ -2,6 +2,7 @@ import warnings
 import logging
 import os
 import torch
+torch.set_float32_matmul_precision('medium')  # or 'high'
 import torch.nn.functional as F
 import pickle
 import numpy as np

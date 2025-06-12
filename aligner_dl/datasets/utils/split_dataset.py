@@ -74,6 +74,30 @@ def split_csv(input_csv, output_dir, test_size=0.2, val_size=0.1, group_by_ligan
         val_df = df[df['Ligand_ID'].isin(val_ligands)]
         val_df = val_df.groupby('Ligand_ID').head(300)  # Ensure each ligand is present in the validation set
         test_df = df[df['Ligand_ID'].isin(test_ligands)]
+    else :
+        # Step 1: Get the unique set of all proteins
+        all_proteins = set(df['ref_protein']).union(set(df['mov_protein']))
+        all_proteins = list(all_proteins)
+        random.seed(42)
+        random.shuffle(all_proteins)
+
+        # Step 2: Split protein set
+        total = len(all_proteins)
+        test_cutoff = int(total * test_size)
+        val_cutoff = int(total * val_size)
+
+        test_proteins = set(all_proteins[:test_cutoff])
+        val_proteins = set(all_proteins[test_cutoff:test_cutoff + val_cutoff])
+        train_proteins = set(all_proteins[test_cutoff + val_cutoff:])
+
+        # Step 3: Assign rows only if both ref and mov proteins are from the same split
+        train_df = df[df['ref_protein'].isin(train_proteins) & df['mov_protein'].isin(train_proteins)]
+        val_df = df[df['ref_protein'].isin(val_proteins) & df['mov_protein'].isin(val_proteins)]
+        test_df = df[df['ref_protein'].isin(test_proteins) & df['mov_protein'].isin(test_proteins)]
+
+        print(f"Train proteins: {len(train_proteins)}, rows: {len(train_df)}")
+        print(f"Val proteins: {len(val_proteins)}, rows: {len(val_df)}")
+        print(f"Test proteins: {len(test_proteins)}, rows: {len(test_df)}")
 
         # Plot histograms for each dataset
         # plot_histogram(train_df['Ligand_ID'].value_counts(), 'Train Set: Pairs per Ligand', output_dir, 'train_histogram.png')
@@ -82,22 +106,6 @@ def split_csv(input_csv, output_dir, test_size=0.2, val_size=0.1, group_by_ligan
         # plot_histogram(train_df['ref_protein'].value_counts(), 'Train Set: ref protein', output_dir, 'train_histogram_ref_protein.png')
         # plot_histogram(val_df['ref_protein'].value_counts(), 'Validation Set: ref protein', output_dir, 'val_histogram_ref_protein.png')
         # plot_histogram(test_df['ref_protein'].value_counts(), 'Test Set: ref protein', output_dir, 'test_histogram.png')
-
-    else:
-        # Regular row-wise split without considering Ligand_ID
-        df = df.sample(frac=1, random_state=42).reset_index(drop=True)
-
-        # Calculate row lengths for each split
-        total_rows = len(df)
-        test_len = int(total_rows * test_size)
-        val_len = int(total_rows * val_size)
-
-        # Split rows into train, validation, and test
-        test_df = df.iloc[:test_len]
-        val_df = df.iloc[test_len:test_len + val_len]
-        train_df = df.iloc[test_len + val_len:]
-
-    # Ensure output directory exists
     
 
     # Save the splits into CSV files
