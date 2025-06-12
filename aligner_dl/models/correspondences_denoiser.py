@@ -18,7 +18,13 @@ def euclidean_to_spherical(x, cut='2pi', eps=1e-8):
 
 class CorrespondenceDenoisingModule(nn.Module):
 
-    def __init__(self, k: int, n_gnn_layers: int = 3, n_rbf_functions: int = 16, with_angles: bool = True):
+    def __init__(
+        self, 
+        k: int, 
+        n_gnn_layers: int = 3, 
+        n_rbf_functions: int = 16, 
+        with_angles: bool = True
+        ):
         super(CorrespondenceDenoisingModule, self).__init__()
         self.k = k  # Number of top correspondences to keep
         self.n_gnn_layers = n_gnn_layers  # Number of GNN layers
@@ -30,7 +36,6 @@ class CorrespondenceDenoisingModule(nn.Module):
         self.edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
         self.rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 100.0), learn_gamma=True)
         
-
         self.apply(self.init_weights)
        
         with torch.no_grad():
@@ -48,7 +53,12 @@ class CorrespondenceDenoisingModule(nn.Module):
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
         
-    def forward(self, soft_correspondences: torch.Tensor, src_frames: torch.Tensor, tgt_frames: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, 
+        soft_correspondences: torch.Tensor, 
+        src_frames: torch.Tensor, 
+        tgt_frames: torch.Tensor
+        ) -> torch.Tensor:
         B, N, _ = soft_correspondences.shape  # B: batch size, N: number of points
 
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
@@ -64,7 +74,10 @@ class CorrespondenceDenoisingModule(nn.Module):
 
         return updated_correspondences, top_k_indices
 
-    def extract_top_k_correspondences(self, soft_correspondences: torch.Tensor) -> torch.Tensor:
+    def extract_top_k_correspondences(
+        self, 
+        soft_correspondences: torch.Tensor
+        ) -> torch.Tensor:
         """
         Extract the top K correspondences from the entire matrix by flattening it.
         """
@@ -83,7 +96,10 @@ class CorrespondenceDenoisingModule(nn.Module):
 
         return top_k_values, top_k_indices
 
-    def _encode_angles(self, angles: torch.Tensor) -> torch.Tensor:
+    def _encode_angles(
+        self, 
+        angles: torch.Tensor
+        ) -> torch.Tensor:
         """
         Encode angles using sine and cosine transformations.
         """
@@ -93,7 +109,11 @@ class CorrespondenceDenoisingModule(nn.Module):
         phi_cos = torch.cos(angles[..., 1])
         return torch.stack([theta_sin, theta_cos, phi_sin, phi_cos], dim=-1)
     
-    def get_node_diffs(self, frames, indices):
+    def get_node_diffs(
+        self, 
+        frames: torch.Tensor, 
+        indices: torch.Tensor
+        ) -> torch.Tensor:
         """
         Get the differences between the selected frames based on the indices.
         """
@@ -104,7 +124,13 @@ class CorrespondenceDenoisingModule(nn.Module):
         diff_r_theta_phi = euclidean_to_spherical(diff_invariant)
         return diff_r_theta_phi
     
-    def build_correspondence_graph(self, top_k_values: torch.Tensor, top_k_indices: torch.Tensor, src_frames: torch.Tensor, tgt_frames: torch.Tensor):
+    def build_correspondence_graph(
+        self, 
+        top_k_values: torch.Tensor, 
+        top_k_indices: torch.Tensor, 
+        src_frames: torch.Tensor, 
+        tgt_frames: torch.Tensor
+        ) -> Data:
         """
         Build a batch-aware graph using richer edge features including angles.
         """
@@ -151,9 +177,12 @@ class CorrespondenceDenoisingModule(nn.Module):
 
         
 class EdgeWeightLearner(nn.Module):
-    def __init__(self, input_dim: int = 1, hidden_dim=16):
+    def __init__(
+        self, 
+        input_dim: int = 1, 
+        hidden_dim=16
+        ):
         super().__init__()
-        self.bn = nn.BatchNorm1d(input_dim)
         self.norm = nn.LayerNorm(input_dim)
         self.mlp = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),  # Input: edge_attr
@@ -166,7 +195,10 @@ class EdgeWeightLearner(nn.Module):
             nn.Linear(hidden_dim, 1)
         )
 
-    def forward(self, edge_attr):
+    def forward(
+        self, 
+        edge_attr: torch.Tensor
+        )-> torch.Tensor:
         """
         Args:
             edge_attr: Tensor of shape (B * num_edges, input_dim)
