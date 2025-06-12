@@ -1,5 +1,5 @@
 trainer:
-  exp_name: noangles-topk400-100corr-all-caths
+  exp_name: delete-angles-topk400-100corr-all-caths-recycle-3iter-v1-layercomb2
   tags: ["virtual", "atom", "grouping_1305", "1800", "new_block"]
   max_epochs: 30
   validate_only: False
@@ -49,7 +49,7 @@ model:
         k: 100
         n_gnn_layers: 10
         n_rbf_functions: 32
-        with_angles: false
+        with_angles: true
     loss:
       use_transformation: false
       pocket:

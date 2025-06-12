@@ -1,5 +1,7 @@
 from typing import Any
+from models.recycling import RecyclingModule, rescale_and_concat
 import torch
+torch.set_float32_matmul_precision('medium')  # or 'high'
 
 from models.soft_bb_base import SoftBBBase
 from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord
@@ -27,7 +29,11 @@ class VirtualSoftBB(SoftBBBase):
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
         # self._virtual_point_block = build_object(virtual_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
+        self._recycling = RecyclingModule()
         self._top_k = top_k
+
+        self._n_recycling_iterations = 3
+        # self.automatic_optimization = False  # We will handle the optimization manually
     
     def _get_scalar(
             self, 
@@ -159,9 +165,10 @@ class VirtualSoftBB(SoftBBBase):
 
         # #### Top K on atoms version #1
         tar_embedding, src_embedding = batch['tar_embedding'], batch['src_embedding']
-        tar_embedding, src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
-        tar_scalar = self._get_scalar(tar_embedding, batch['tar_mask'])
-        src_scalar = self._get_scalar(src_embedding, batch['src_mask'])
+        orig_tar_embedding, orig_src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
+        
+        tar_scalar = self._get_scalar(orig_tar_embedding, batch['tar_mask'])
+        src_scalar = self._get_scalar(orig_src_embedding, batch['src_mask'])
 
         tar_mask, src_mask = batch['tar_mask'], batch['src_mask']
         tar_frames, src_frames = batch['tar_frames'], batch['src_frames']        
@@ -178,29 +185,35 @@ class VirtualSoftBB(SoftBBBase):
         
         top_src_mask = src_mask.gather(1, top_src_indices)
         top_tar_mask = tar_mask.gather(1, top_tar_indices)
-        
-                        
-        soft_correspondences = self._get_soft_correspondences(top_src_embedding, top_tar_embedding, top_src_scalar, top_tar_scalar, top_src_mask, top_tar_mask).to(input_dtype)  
-        src_frames, tar_frames = top_src_frames, top_tar_frames 
-        
-        top_corr_values, top_corr_indices = self._denoiser(soft_correspondences, src_frames, tar_frames)        
-        # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices)
-        # orig_src_embedding = batch['src_embedding'].gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
-        # orig_tar_embedding = batch['tar_embedding'].gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
-        # virtual_src_coord, src_offsets = self._create_virtual_coordinates(orig_src_embedding, src_frames, top_src_mask, metadata=batch['metadata'])
-        # virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(orig_tar_embedding, tar_frames, top_tar_mask, metadata=batch['metadata'])
-        virtual_src_coord, src_offsets = src_frames[:, :, 0, :], torch.zeros_like(src_frames[:, :, 0, :], dtype=torch.float16)
-        virtual_tar_coord, tar_offsets =  tar_frames[:, :, 0, :], torch.zeros_like(src_frames[:, :, 0, :], dtype=torch.float16)
-        B, K, _ = top_corr_indices.shape
+    
+        for i in range(self._n_recycling_iterations +1):
+            src_frames, tar_frames = top_src_frames, top_tar_frames 
+            soft_correspondences = self._get_soft_correspondences(top_src_embedding, top_tar_embedding, top_src_scalar, top_tar_scalar, top_src_mask, top_tar_mask).to(input_dtype)  
+            
+            top_corr_values, top_corr_indices = self._denoiser(soft_correspondences, src_frames, tar_frames)        
+            # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices)
+            # orig_src_embedding = batch['src_embedding'].gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
+            # orig_tar_embedding = batch['tar_embedding'].gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
+            # virtual_src_coord, src_offsets = self._create_virtual_coordinates(orig_src_embedding, src_frames, top_src_mask, metadata=batch['metadata'])
+            # virtual_tar_coord, tar_offsets =  self._create_virtual_coordinates(orig_tar_embedding, tar_frames, top_tar_mask, metadata=batch['metadata'])
+            virtual_src_coord, src_offsets = src_frames[:, :, 0, :], torch.zeros_like(src_frames[:, :, 0, :], dtype=torch.float16)
+            virtual_tar_coord, tar_offsets =  tar_frames[:, :, 0, :], torch.zeros_like(src_frames[:, :, 0, :], dtype=torch.float16)
+            B, K, _ = top_corr_indices.shape
 
-        # Batch index helper: [B, K]
-        batch_indices = torch.arange(B, device=top_corr_indices.device).unsqueeze(-1).expand(-1, K)
+            # Batch index helper: [B, K]
+            batch_indices = torch.arange(B, device=top_corr_indices.device).unsqueeze(-1).expand(-1, K)
 
-        # Gather coordinates
-        gathered_virtual_tar = virtual_tar_coord[batch_indices, top_corr_indices[:, :, 0]]  # [B, K, 3]
-        gathered_virtual_src = virtual_src_coord[batch_indices, top_corr_indices[:, :, 1]]  # [B, K, 3]
-        
-        optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], top_corr_values, gathered_virtual_src, gathered_virtual_tar, iter_limit=self._max_iter if not self.training else self._n_iter_train)
+            # Gather coordinates
+            gathered_virtual_tar = virtual_tar_coord[batch_indices, top_corr_indices[:, :, 0]]  # [B, K, 3]
+            gathered_virtual_src = virtual_src_coord[batch_indices, top_corr_indices[:, :, 1]]  # [B, K, 3]
+            
+            optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], top_corr_values, gathered_virtual_src, gathered_virtual_tar, iter_limit=self._max_iter if not self.training else self._n_iter_train)
+            transformed_src_coord = torch.matmul(batch['src_frames'][:, :, 0, :], optimal_transformation['pred_R']) + optimal_transformation['pred_t'][:,:3].unsqueeze(1)
+            if i < self._n_recycling_iterations - 1:
+                recycled_tar_embedding, recycled_src_embedding = self._recycling(transformed_src_coord, batch['tar_frames'][:, :, 0, :])
+                top_src_embedding = rescale_and_concat(top_src_embedding,recycled_src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 1022)))
+                top_tar_embedding = rescale_and_concat(top_tar_embedding,recycled_tar_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 1022)))
+            
         return optimal_transformation, src_offsets, tar_offsets
 
     def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
