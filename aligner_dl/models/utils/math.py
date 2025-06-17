@@ -1,4 +1,27 @@
+import numpy as np
 import torch
+
+
+def euclidean_to_spherical(x: torch.Tensor, cut='2pi', eps=1e-8) -> torch.Tensor:
+    """
+    Convert Euclidean coordinates to spherical coordinates.
+    Args:
+        x (torch.Tensor): Input tensor of shape (..., 3) representing Euclidean coordinates.
+        cut (str): If '2pi', the azimuthal angle phi is adjusted to be in the range [0, 2π].
+        eps (float): Small value to avoid division by zero.
+    Returns:
+        torch.Tensor: Tensor of shape (..., 3) representing spherical coordinates (r, theta, phi).
+    """
+    if x.shape[-1] != 3:
+        raise ValueError("Input tensor must have the last dimension of size 3 for spherical coordinates conversion.")
+    r = torch.linalg.norm(x, dim=-1)
+    theta = torch.acos(x[..., 2] / (r + eps))
+    phi = torch.atan2(x[..., 1], x[..., 0] + eps)
+    
+    # if cut == '2pi':
+        # phi = phi + (phi < 0).float() * (2 * np.pi)
+    
+    return torch.stack([r, theta, phi], dim=-1)
 
 
 def compute_rmsd_torch(coordinates: torch.Tensor, gt_R: torch.Tensor, gt_t: torch.Tensor, pred_R: torch.Tensor, pred_t:torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
