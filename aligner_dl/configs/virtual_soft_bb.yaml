@@ -62,9 +62,9 @@ model:
           interval: step
           args:
 
-            max_lr: 0.001
+            max_lr: 0.0005
             epochs: 30
-            steps_per_epoch: 4316      # epochs × steps_per_epoch
+            steps_per_epoch: 2755      # epochs × steps_per_epoch
             div_factor: 25
             # final_div_factor: 1e4
 

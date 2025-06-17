@@ -18,14 +18,15 @@ def set_seed(seed: int):
 
 
 class BasePairDataset(Dataset):
-    def __init__(self, df_path: str, base_data_path: str, n_samples: int, min_cath: int = 0, max_cath: int = 8, only_one_transformation:bool = True, bbc_filter_ratio = 0.0, seed: int | None = None):
+    def __init__(self, df_path: str, base_data_path: str, base_embedding_path: str, n_samples: int, min_cath: int = 0, max_cath: int = 8, only_one_transformation:bool = True, bbc_filter_ratio = 0.0, seed: int | None = None, inference: bool= False):
         self._df_path = df_path
         self._base_data_path = base_data_path
-        self._base_embedding_path = '/home/iscb/wolfson/hagairavid/scannet_outputs'
+        self._base_embedding_path = base_embedding_path
         self._n_samples = n_samples
         self._only_one_transformation = only_one_transformation
         self._min_cath = min_cath
         self._max_cath = max_cath
+        self.inference = inference 
         assert max_cath >= min_cath, f"max_cath ({max_cath}) must be greater than min_cath ({min_cath})"
         self._bbc_filter_ratio = bbc_filter_ratio
         if seed:
@@ -49,22 +50,26 @@ class BasePairDataset(Dataset):
         pairs = pd.read_csv(self._df_path)
         if 'index' in pairs.columns:
             pairs = pairs.drop('index', axis=1)
-        if self._only_one_transformation:
-            pairs = pairs[pairs['n_transformations'] == 1]
-        pairs = pairs[pairs['cath_degree'] >= self._min_cath].reset_index()
-        pairs = pairs[pairs['cath_degree'] <= self._max_cath].reset_index()
+        if not self.inference:
+            if self._only_one_transformation:
+                pairs = pairs[pairs['n_transformations'] == 1]
+            pairs = pairs[pairs['cath_degree'] >= self._min_cath].reset_index()
+            pairs = pairs[pairs['cath_degree'] <= self._max_cath].reset_index()
 
-        if self._n_samples:
-            pairs = pairs.sample(n=self._n_samples, random_state=42, replace=True)
+            if self._n_samples:
+                pairs = pairs.sample(n=self._n_samples, random_state=42, replace=True)
+            pairs = pairs[(pairs['cath_degree'] >= 4) | ((pairs['cath_degree'] < 4) & (pairs['bbc'] > self._bbc_filter_ratio))]
+            print(f"Read df with {len(pairs)} pairs")
+        
         for col in pairs.columns:
             if pairs[col].apply(lambda x: isinstance(x, str) and x.startswith('[') and x.endswith(']')).any():
                 pairs[col] = pairs[col].fillna('[]')
                 
                 pairs[col] = pairs[col].apply(lambda x: json.loads(x))
                 pairs[col] = pairs[col].apply(lambda x: deserialize_nested_lists(x, col))
-                
-        print(f"Read df with {len(pairs)} pairs")
-        pairs = self._calculate_sample_weights(pairs)
+             
+
+        # pairs = self._calculate_sample_weights(pairs)
 
         return pairs
 
