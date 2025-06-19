@@ -65,7 +65,7 @@ model:
 
             max_lr: 0.0005
             epochs: 30
-            steps_per_epoch: 2755      # epochs × steps_per_epoch
+            steps_per_epoch: 2365 
             div_factor: 25
             # final_div_factor: 1e4
 
@@ -74,6 +74,7 @@ dataset:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/protein_grouping_1206/train.csv
+      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
       # n_samples: 3000
       seed: 41
       # min_cath: 3
@@ -85,6 +86,7 @@ dataset:
     name: ScannetDataset
     args:
       df_path: datasets/csv_files/protein_grouping_1206/val.csv
+      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
       # n_samples: 15
       seed: 81
       max_cath: 4

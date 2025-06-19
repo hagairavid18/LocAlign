@@ -108,13 +108,15 @@ class VirtualSoftBB(SoftBBBase):
         
     def _compute_soft_bb_algorithm(
         self, 
-        batch: dict[torch.Tensor]
+        batch: dict[torch.Tensor],
+        return_correspondences: bool = False
         ) -> dict[str, torch.Tensor]:
         """
         The main algorithm of the model. Computes the soft correspondence matrix and the optimal transformation between two sets of embeddings.
 
         Args:
             batch (dict[torch.Tensor]): Dictionary containing the input tensors.
+            return_correspondences (bool, optional): Whether to return the correspondences. Defaults to False.
 
         Returns:
             dict[str, torch.Tensor]: Dictionary containing the predicted transformation matrices and other intermediate results.
@@ -154,15 +156,15 @@ class VirtualSoftBB(SoftBBBase):
             elif i == self._n_recycling_iterations:
                 print('here')
             # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices)
-            B, K, _ = top_corr_indices.shape
-
-            # Batch index helper: [B, K]
-            batch_indices = torch.arange(B, device=top_corr_indices.device).unsqueeze(-1).expand(-1, K)
 
             # Gather coordinates
+            batch_indices = torch.arange(top_corr_indices.shape[0], device=top_corr_indices.device).unsqueeze(-1).expand(-1, top_corr_indices.shape[1])
             gathered_coord_tar = top_tar_frames[:, :, 0, :][batch_indices, top_corr_indices[:, :, 0]]  # [B, K, 3]
             gathered_coord_src = top_src_frames[:, :, 0, :][batch_indices, top_corr_indices[:, :, 1]]  # [B, K, 3]
-            
+            top_corr_residue_idx_tar = batch['tar_residue_indices'].gather(1, top_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
+            top_corr_residue_idx_src = batch['src_residue_indices'].gather(1, top_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
+            corr_residue_indices = torch.stack([top_corr_residue_idx_src, top_corr_residue_idx_tar], dim=-1)  # [B, K, 2]
+
             optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], top_corr_values, gathered_coord_src, gathered_coord_tar, iter_limit=self._max_iter if not self.training else self._n_iter_train)
             optimal_transformations.append(optimal_transformation)
             transformed_src_coord = torch.matmul(batch['src_frames'][:, :, 0, :], optimal_transformation['pred_R']) + optimal_transformation['pred_t'][:,:3].unsqueeze(1)
@@ -171,6 +173,8 @@ class VirtualSoftBB(SoftBBBase):
                 top_src_embedding = rescale_and_concat(top_src_embedding_orig, recycled_src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 1022)))
                 top_tar_embedding = rescale_and_concat(top_tar_embedding_orig, recycled_tar_embedding.gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 1022)))
             
+        if return_correspondences:
+            return optimal_transformations, top_corr_values, corr_residue_indices
         return optimal_transformations
 
     def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -238,7 +242,7 @@ class VirtualSoftBB(SoftBBBase):
         """
         # print(f"tar protein: {batch['metadata'][0]['ref_protein']}{batch['metadata'][0]['ref_chain']} src protein: {batch['metadata'][0]['mov_protein']}{batch['metadata'][0]['mov_chain']}")
         batch = move_batch_to_device(batch, self.device)
-        transformation_dict, src_offsets, tar_offsets = self._compute_soft_bb_algorithm(batch)
+        transformation_dicts, corr_values, corr_residue_indices = self._compute_soft_bb_algorithm(batch, return_correspondences=True)
         
-        outputs = {'transformation_dict': transformation_dict, 'metadata': batch['metadata']}
+        outputs = {'transformation_dict': transformation_dicts[-1], 'metadata': batch['metadata'], 'corr_values': corr_values, 'corr_indices': corr_residue_indices}
         return outputs

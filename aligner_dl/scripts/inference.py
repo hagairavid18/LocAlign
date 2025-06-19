@@ -34,14 +34,15 @@ def parse_args():
     parser.add_argument("--scannet_env", type=str, default="py_scannet", help="Conda environment name for ScanNet.")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for DataLoader.")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for DataLoader.")
+    parser.add_argument("--ligand_id", type=str, default="general", help="Ligand ID to use for the analysis.")
     return parser.parse_args()
 
-def save_non_ligand_models(df, output_dir) -> None:
+def save_non_ligand_models(df, output_dir, ligand_id) -> None:
     for _, row in df.iterrows():
         for protein, chain in [(row['ref_protein'], 'A'), (row['mov_protein'], 'A')]:
-            Protein(pdb_name=protein, chain_id=chain, ligand_name='general', save_models=True, ligand_dir=output_dir)
+            Protein(pdb_name=protein, chain_id=chain, ligand_name=ligand_id, save_models=True, ligand_dir=output_dir)
 
-def run_scannet(df, output_dir: str, scannet_dir: str) -> None:
+def run_scannet(df, output_dir: str, scannet_dir: str, ligand_id: str) -> None:
     """
     Runs ScanNet feature extraction using hardcoded Python from the 'py_scannet' conda environment.
     """
@@ -51,10 +52,10 @@ def run_scannet(df, output_dir: str, scannet_dir: str) -> None:
 
     all_paths = []
     for idx, row in df.iterrows():
-        if not os.path.exists(os.path.join(scannet_dir, 'general', f"{row['ref_protein']}_scannet_atoms.pkl")):
-            all_paths.append(os.path.join(output_dir, 'general', f"{row['ref_protein']}_non_ligand.ent"))
-        if not os.path.exists(os.path.join(scannet_dir,'general', f"{row['mov_protein']}_scannet_atoms.pkl")):
-            all_paths.append(os.path.join(output_dir, 'general', f"{row['mov_protein']}_non_ligand.ent"))
+        if not os.path.exists(os.path.join(scannet_dir, ligand_id, f"{row['ref_protein']}_scannet_atoms.pkl")):
+            all_paths.append(os.path.join(output_dir, ligand_id, f"{row['ref_protein']}_non_ligand.ent"))
+        if not os.path.exists(os.path.join(scannet_dir,ligand_id, f"{row['mov_protein']}_scannet_atoms.pkl")):
+            all_paths.append(os.path.join(output_dir, ligand_id, f"{row['mov_protein']}_non_ligand.ent"))
 
     cmd = [
         scannet_python,
@@ -99,18 +100,18 @@ def main():
         df = pd.DataFrame([{
         "ref_protein": ref,
         "mov_protein": mov,
-        "ligand": "general"  # Or modify as needed
+        "ligand": args.ligand_id  # Or modify as needed
     }])
         csv_path = "temp_csv.csv"
         df.to_csv(csv_path, index=False)
 
     # Step 1: Save non-ligand models
     print("Saving non-ligand models...")
-    save_non_ligand_models(df, args.output_dir)
+    save_non_ligand_models(df, args.output_dir, args.ligand_id)
 
     # Step 2: Run ScanNet feature extraction
     print("Running ScanNet feature extraction...")
-    run_scannet(df, args.output_dir, args.scannet_dir)
+    run_scannet(df, args.output_dir, args.scannet_dir, args.ligand_id)
 
     # Step 3: Build dataset and dataloader
     print("Preparing dataset and dataloader...")
@@ -163,9 +164,12 @@ def main():
         for idx, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc="Running inference"):
             preds = model.inference_step(batch)
 
-            metadata = preds.get("metadata", [{}])[0]
-            ref = metadata.get("ref_protein")
-            mov = metadata.get("mov_protein")
+            metadata = preds["metadata"][0]
+            top_k_corr, top_k_corr_indices= torch.topk(preds["corr_values"][0], 10)
+            top_corr_values = preds["corr_values"][0][top_k_corr_indices]  # Get top 10 correlation values
+            top_corr_indices = preds["corr_indices"][0][top_k_corr_indices]  # Get top 10 correlation values]
+            ref = metadata["ref_protein"]
+            mov = metadata["mov_protein"]
             ligand = metadata.get("ligand", "general")
 
             if not (ref and mov and ligand):
@@ -178,7 +182,7 @@ def main():
             template = ref + "_A"
             query = mov + "_A"
 
-            trans_dict = preds.get("transformation_dict", {})
+            trans_dict = preds["transformation_dict"]
             R = tensor_to_list(trans_dict.get("pred_R")[0])  # shape (3, 3)
             t = tensor_to_list(trans_dict.get("pred_t")[0])  # shape (3,)
             print(f"R: {R}, t: {t}")
@@ -188,7 +192,9 @@ def main():
             t_vec = np.round(t, 6)            # shape (3,)
             transform_args = [f"{val:.6f}" for val in np.concatenate([flat_R, t_vec])]
 
-
+            # correspondences handling
+            corr_path = os.path.join(base_folder, f"{mov}_{ref}_correspondences.npz")
+            np.savez_compressed(corr_path, top_corr_values=top_corr_values.numpy(), top_corr_indices=top_corr_indices.numpy())
             # Set paths
             scannet_python = "/home/iscb/wolfson/hagairavid/miniforge3/envs/py_scannet/bin/python"
 
@@ -197,6 +203,7 @@ def main():
                 scannet_python,
                 script_path,
                 "--base_folder", base_folder,
+                "--corr_path", corr_path,
                 "--template", template ,
                 "--template_ligand", ligand,
                 "--query", query ,

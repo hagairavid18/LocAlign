@@ -52,24 +52,24 @@ class ScannetDataset(BasePairDataset):
         #         'gt_t': torch.Tensor(row['translations'][0][0]),
         #     }
 
-        # try:
-        embedding_dicts = {
-            "tar": self._read_embedding(ligand_id=row[self.ligand_column], chain=row['ref_protein']),
-            "src": self._read_embedding(ligand_id=row[self.ligand_column], chain=row['mov_protein'])
-        }
-        if not self.inference:
-            src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self.ligand_column], chain=row['mov_protein'])
-            tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self.ligand_column], chain=row['ref_protein'])
-            if not src_atom_ids == tar_atom_ids:
-                shared_atom_ids = set(src_atom_ids).intersection(tar_atom_ids)
-                src_ligand_coordinates = src_ligand_coordinates[torch.tensor([src_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
-                tar_ligand_coordinates = tar_ligand_coordinates[torch.tensor([tar_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
-                assert src_ligand_coordinates.shape == tar_ligand_coordinates.shape
+        try:
+            embedding_dicts = {
+                "tar": self._read_embedding(ligand_id=row[self.ligand_column], chain=row['ref_protein']),
+                "src": self._read_embedding(ligand_id=row[self.ligand_column], chain=row['mov_protein'])
+            }
+            if not self.inference:
+                src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self.ligand_column], chain=row['mov_protein'])
+                tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self.ligand_column], chain=row['ref_protein'])
+                if not src_atom_ids == tar_atom_ids:
+                    shared_atom_ids = set(src_atom_ids).intersection(tar_atom_ids)
+                    src_ligand_coordinates = src_ligand_coordinates[torch.tensor([src_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
+                    tar_ligand_coordinates = tar_ligand_coordinates[torch.tensor([tar_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
+                    assert src_ligand_coordinates.shape == tar_ligand_coordinates.shape
 
-        # except Exception as e:
-        #     # print(f"Error reading embeddings for {row[ligand_column]} {row[ligand_column]} {row[ligand_column]}: {e}")
-        #     idx = torch.randint(0, len(self), (1,)).item()
-        #     return self.__getitem__(idx)
+        except Exception as e:
+            # print(f"Error reading embeddings for {row[ligand_column]} {row[ligand_column]} {row[ligand_column]}: {e}")
+            idx = torch.randint(0, len(self), (1,)).item()
+            return self.__getitem__(idx)
 
         if not self.inference:
             try:
@@ -92,7 +92,7 @@ class ScannetDataset(BasePairDataset):
 
             ret[f'{key}_embedding'] = F.pad(embedding_dict[f'{self._level}_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
             ret[f'{key}_frames'] = F.pad(embedding_dict[f'{self._level}_frames'], (0, 0, 0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
-            # ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'{self._level}_residue_indices'], (0, self.MAX_LENGTH_DICT[self._level] - length))
+            ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'{self._level}_residue_indices'], (0, self.MAX_LENGTH_DICT[self._level] - length))
             ret[f'{key}_mask'] = F.pad(torch.ones(length), (0, self.MAX_LENGTH_DICT[self._level] - length), value=0).bool()
             if self.inference:
                 continue
