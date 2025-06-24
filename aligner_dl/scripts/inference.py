@@ -1,4 +1,3 @@
-import json
 import os
 import subprocess
 import sys
@@ -8,7 +7,6 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from utils.constants import LIGAND_DIR
 import yaml
 
 
@@ -26,15 +24,11 @@ def parse_args():
     parser.add_argument("--experiment_name", type=str, required=True, help="Name of the experiment, i.e. checkpoint directory name under ./checkpoints/")
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save inference results.")
     parser.add_argument("--scannet_dir", type=str, help="Directory containing ligand files.")
+    parser.add_argument("--ligand_id", type=str, default="general", help="Ligand ID to use for non-ligand models.")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--csv_path", type=str, help="Path to CSV file with ref/mov chains.")
     group.add_argument("--protein_pair", nargs=2, metavar=("REF_PROTEIN", "MOV_PROTEIN"),
                        help="Specify a single protein pair instead of a CSV.")
-    parser.add_argument("--device", type=str, choices=["cpu", "cuda"], default=None, help="Device to run inference on.")
-    parser.add_argument("--scannet_env", type=str, default="py_scannet", help="Conda environment name for ScanNet.")
-    parser.add_argument("--batch_size", type=int, default=1, help="Batch size for DataLoader.")
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for DataLoader.")
-    parser.add_argument("--ligand_id", type=str, default="general", help="Ligand ID to use for the analysis.")
     return parser.parse_args()
 
 def save_non_ligand_models(df, output_dir, ligand_id) -> None:
@@ -73,23 +67,11 @@ def run_scannet(df, output_dir: str, scannet_dir: str, ligand_id: str) -> None:
     except subprocess.CalledProcessError as e:
         print(f"❌ ScanNet feature extraction failed: {e}")
 
-def tensor_to_numpy(d):
-    """Recursively convert torch.Tensors in dicts/lists/tuples to numpy arrays"""
-    if isinstance(d, torch.Tensor):
-        return d.cpu().numpy()
-    elif isinstance(d, dict):
-        return {k: tensor_to_numpy(v) for k, v in d.items()}
-    elif isinstance(d, list):
-        return [tensor_to_numpy(v) for v in d]
-    elif isinstance(d, tuple):
-        return tuple(tensor_to_numpy(v) for v in d)
-    return d
+
 def main():
     args = parse_args()
 
-    device = args.device
-    if device is None:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     if args.csv_path:
         df = pd.read_csv(args.csv_path)
@@ -116,7 +98,7 @@ def main():
     # Step 3: Build dataset and dataloader
     print("Preparing dataset and dataloader...")
     dataset = ScannetDataset(df_path=csv_path, base_data_path=args.output_dir, base_embedding_path=args.scannet_dir, level='atom', inference=True, ligand_column='ligand')
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=custom_collate_fn, pin_memory=True)
+    dataloader = DataLoader(dataset, batch_size=1, num_workers=0, collate_fn=custom_collate_fn, pin_memory=True)
 
     # Step 4: Build model and load checkpoint
     checkpoint_dir = os.path.join("checkpoints", args.experiment_name)
@@ -145,18 +127,6 @@ def main():
     # Ensure the output directory exists
     os.makedirs(args.output_dir, exist_ok=True)
 
-    def tensor_to_list(obj):
-        if isinstance(obj, torch.Tensor):
-            return obj.cpu().numpy().tolist()
-        elif isinstance(obj, dict):
-            return {k: tensor_to_list(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [tensor_to_list(x) for x in obj]
-        else:
-            return obj
-
-    # Inside your saving loop:
-
     scannet_python = "/home/iscb/wolfson/hagairavid/miniforge3/envs/py_scannet/bin/python"
     script_path = "miners/scripts/chimera_pocket_viz.py"
 
@@ -165,7 +135,7 @@ def main():
             preds = model.inference_step(batch)
 
             metadata = preds["metadata"][0]
-            top_k_corr, top_k_corr_indices= torch.topk(preds["corr_values"][0], 10)
+            top_k_corr_indices= torch.topk(preds["corr_values"][0], 10)[1]
             top_corr_values = preds["corr_values"][0][top_k_corr_indices]  # Get top 10 correlation values
             top_corr_indices = preds["corr_indices"][0][top_k_corr_indices]  # Get top 10 correlation values]
             ref = metadata["ref_protein"]
@@ -179,38 +149,22 @@ def main():
             base_folder = os.path.join(args.output_dir, f"{ref}_{mov}")
             os.makedirs(base_folder, exist_ok=True)
 
-            template = ref + "_A"
-            query = mov + "_A"
-
             trans_dict = preds["transformation_dict"]
-            R = tensor_to_list(trans_dict.get("pred_R")[0])  # shape (3, 3)
-            t = tensor_to_list(trans_dict.get("pred_t")[0])  # shape (3,)
-            print(f"R: {R}, t: {t}")
-
-            # Flatten R and round all values
-            flat_R = np.round(sum(R, []), 6)  # shape (9,)
-            t_vec = np.round(t, 6)            # shape (3,)
-            transform_args = [f"{val:.6f}" for val in np.concatenate([flat_R, t_vec])]
 
             # correspondences handling
-            corr_path = os.path.join(base_folder, f"{mov}_{ref}_correspondences.npz")
-            np.savez_compressed(corr_path, top_corr_values=top_corr_values.numpy(), top_corr_indices=top_corr_indices.numpy())
-            # Set paths
-            scannet_python = "/home/iscb/wolfson/hagairavid/miniforge3/envs/py_scannet/bin/python"
+            model_output_path = os.path.join(base_folder, f"{mov}_{ref}_output.npz")
+            np.savez_compressed(model_output_path, top_corr_values=top_corr_values.numpy(), top_corr_indices=top_corr_indices.numpy(), R=trans_dict['pred_R'][0].numpy(), t=trans_dict['pred_t'][0].numpy())
 
             # Build the command
             cmd = [
                 scannet_python,
                 script_path,
                 "--base_folder", base_folder,
-                "--corr_path", corr_path,
-                "--template", template ,
+                "--model_output_path", model_output_path,
+                "--template", ref + "_A" ,
                 "--template_ligand", ligand,
-                "--query", query ,
-                "--query_transformation"
-            ] + transform_args
-
-
+                "--query", mov + "_A" ]
+          
             print(f"Running visualization: {' '.join(cmd)}")
             subprocess.run(cmd, check=True, text=True, stdout=sys.stdout, stderr=sys.stderr)
 

@@ -24,6 +24,7 @@ events*
 *.html
 *.pb
 *.cxc
+*.npz
 
 .DS_Store
 aligner_dl/.DS_Store
