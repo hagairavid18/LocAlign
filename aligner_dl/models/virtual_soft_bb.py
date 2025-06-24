@@ -1,4 +1,5 @@
 from typing import Any
+from models.layers.blocks import EmbeddingBlock
 from models.recycling import RecyclingModule, rescale_and_concat
 import torch
 torch.set_float32_matmul_precision('medium')  # or 'high'
@@ -25,7 +26,25 @@ class VirtualSoftBB(SoftBBBase):
        
         super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir)
         self._input_block = build_object(input_layer, 'models.layers')
-        self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
+        self._linear_iter0 = EmbeddingBlock(
+            input_dim=256,  # 256 is the embedding dimension
+            output_dim=1,
+            n_blocks=3,
+            hidden_dim=128,
+            dropout=0.0,
+            bias=False,
+            norm_in_last_layer=False
+        )
+        self._linear_iter1 = EmbeddingBlock(
+            input_dim=1278,  # 256 is the embedding dimension, and we add the previous iteration's embedding
+            output_dim=1,
+            n_blocks=3,
+            hidden_dim=128,             
+            dropout=0.0,
+            bias=False,
+            norm_in_last_layer=False
+        )
+
         self._denoiser = build_object(denoiser, 'models')
         self._recycling = RecyclingModule()
         self._top_k = top_k
@@ -36,9 +55,14 @@ class VirtualSoftBB(SoftBBBase):
     def _get_atom_importance(
             self, 
             embedding: torch.Tensor, 
-            mask:torch.Tensor
+            mask:torch.Tensor,
+            i
             ) -> torch.Tensor:
-        return self._linear(embedding, mask=mask).squeeze(-1)
+        if i == 0:
+            return self._linear_iter0(embedding, mask=mask).squeeze(-1)
+        else:
+            # For the first iteration, we use the original embedding
+            return self._linear_iter1(embedding, mask=mask).squeeze(-1)
     
     def _get_rectified_top_k(
         self, 
@@ -125,36 +149,34 @@ class VirtualSoftBB(SoftBBBase):
 
         # #### Top K on atoms version #1
         orig_tar_embedding, orig_src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
-        tar_atom_importance = self._get_atom_importance(orig_tar_embedding, batch['tar_mask'])
-        src_atom_importance = self._get_atom_importance(orig_src_embedding, batch['src_mask'])
-
-        top_tar_indices, top_tar_values = self._get_rectified_top_k(tar_atom_importance, batch['tar_mask'])
-        top_src_indices, top_src_values = self._get_rectified_top_k(src_atom_importance, batch['src_mask'])
-
-        # Now gather        
-        top_src_embedding_orig = orig_src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
-        top_tar_embedding_orig = orig_tar_embedding.gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
         
-        top_src_frames = batch['src_frames'].gather(1, top_src_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
-        top_tar_frames = batch['tar_frames'].gather(1, top_tar_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
-        
-        top_src_mask = batch['src_mask'].gather(1, top_src_indices)
-        top_tar_mask = batch['tar_mask'].gather(1, top_tar_indices)
-
         optimal_transformations = []
         for i in range(self._n_recycling_iterations +1):
-            src_frames, tar_frames = top_src_frames, top_tar_frames 
             if i == 0:
-                top_src_embedding = top_src_embedding_orig
-                top_tar_embedding = top_tar_embedding_orig
+                tar_embedding, src_embedding = orig_tar_embedding, orig_src_embedding
+            tar_atom_importance = self._get_atom_importance(tar_embedding, batch['tar_mask'], i)
+            src_atom_importance = self._get_atom_importance(src_embedding, batch['src_mask'], i)
+
+            top_tar_indices, top_tar_values = self._get_rectified_top_k(tar_atom_importance, batch['tar_mask'])
+            top_src_indices, top_src_values = self._get_rectified_top_k(src_atom_importance, batch['src_mask'])
+
+            # Now gather        
+            top_src_embedding = src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
+            top_tar_embedding = tar_embedding.gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
+            
+            top_src_frames = batch['src_frames'].gather(1, top_src_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
+            top_tar_frames = batch['tar_frames'].gather(1, top_tar_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
+            
+            top_src_mask = batch['src_mask'].gather(1, top_src_indices)
+            top_tar_mask = batch['tar_mask'].gather(1, top_tar_indices)
+
+            src_frames, tar_frames = top_src_frames, top_tar_frames 
+            # if i == 0:
+            #     top_src_embedding = top_src_embedding_orig
+            #     top_tar_embedding = top_tar_embedding_orig
             soft_correspondences = self._get_soft_correspondences(top_src_embedding, top_tar_embedding, top_src_values, top_tar_values, top_src_mask, top_tar_mask).to(input_dtype)  
             
             top_corr_values, top_corr_indices = self._denoiser(soft_correspondences, src_frames, tar_frames)
-            if i==0:
-                top_corr_values_orig = top_corr_values
-                top_corr_indices_orig = top_corr_indices
-            elif i == self._n_recycling_iterations:
-                print('here')
             # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices)
 
             # Gather coordinates
@@ -170,8 +192,10 @@ class VirtualSoftBB(SoftBBBase):
             transformed_src_coord = torch.matmul(batch['src_frames'][:, :, 0, :], optimal_transformation['pred_R']) + optimal_transformation['pred_t'][:,:3].unsqueeze(1)
             if i < self._n_recycling_iterations - 1:
                 recycled_tar_embedding, recycled_src_embedding = self._recycling(transformed_src_coord, batch['tar_frames'][:, :, 0, :])
-                top_src_embedding = rescale_and_concat(top_src_embedding_orig, recycled_src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 1022)))
-                top_tar_embedding = rescale_and_concat(top_tar_embedding_orig, recycled_tar_embedding.gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 1022)))
+                # src_embedding = rescale_and_concat(orig_src_embedding, recycled_src_embedding)
+                # tar_embedding = rescale_and_concat(orig_tar_embedding, recycled_tar_embedding)
+                src_embedding = torch.cat([orig_src_embedding, recycled_src_embedding], dim=-1)
+                tar_embedding = torch.cat([orig_tar_embedding, recycled_tar_embedding], dim=-1)
             
         if return_correspondences:
             return optimal_transformations, top_corr_values, corr_residue_indices
