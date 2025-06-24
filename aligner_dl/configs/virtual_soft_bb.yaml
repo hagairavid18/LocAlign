@@ -1,5 +1,5 @@
 trainer:
-  exp_name: recycle-0iter-new-dataset-loss-each-iter-top1000
+  exp_name: delete-recycle-0iter-new-dataset-loss-each-iter-top1000
   tags: ["virtual", "atom", "grouping_130x`5", "1800", "new_block"]
   max_epochs: 30
   validate_only: false
@@ -96,4 +96,4 @@ dataset:
 dataloader:
   train_batch_size: 8
   valid_batch_size: 1
-  n_workers: 12
+  n_workers: 0
