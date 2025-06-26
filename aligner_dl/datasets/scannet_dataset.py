@@ -11,8 +11,7 @@ from Bio.PDB.Atom import PDBConstructionWarning
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Structure import Structure
 import esm
-from Bio.PDB import PDBParser, PPBuilder
-from typing import List, Tuple
+from Bio.PDB import PDBParser
 
 from datasets import BasePairDataset
 from utils.constants import LIGAND_DIR
@@ -31,7 +30,7 @@ class ScannetDataset(BasePairDataset):
         original_num_pairs = len(self._df)        
         self._infer_baseline = infer_baseline
         self.ligand_column = ligand_column
-        self._esm_model, self._esm_alphabet = getattr(esm.pretrained, "esm2_t33_650M_UR50D")()
+        self._esm_model, self._esm_alphabet = getattr(esm.pretrained, "esm2_t6_8M_UR50D")()
         self._batch_converter = self._esm_alphabet.get_batch_converter()
         self._esm_model = self._esm_model.eval()
         # if torch.cuda.is_available():
@@ -180,12 +179,6 @@ class ScannetDataset(BasePairDataset):
         residue_embeddings_up_pooled = residue_embeddings[atom_residue_index]
         atomic_plus_residue_embedding = np.concatenate((atom_embeddings, residue_embeddings_up_pooled),axis=-1)
         
-        if self._level == 'atom':
-            atom_sampled_indices = np.random.choice(len(atom_embeddings), size=min(len(atom_embeddings), self.MAX_LENGTH_DICT['atom']), replace=False)
-            atom_embeddings = atom_embeddings[atom_sampled_indices]
-            atom_residue_index = atom_residue_index[atom_sampled_indices]
-            atom_frames = atom_frames[atom_sampled_indices]
-            atomic_plus_residue_embedding = atomic_plus_residue_embedding[atom_sampled_indices]
 
         residue_indices = residue_ids[:, -1].astype(int)  # Extract residue indices (last column of residue_ids)
         atom_residue_index = residue_indices[atom_residue_index]
@@ -202,6 +195,12 @@ class ScannetDataset(BasePairDataset):
 
         # === Concatenate ===
         atomic_plus_residue_embedding = np.concatenate([atomic_plus_residue_embedding, esm_per_atom], axis=-1)
+        if self._level == 'atom':
+            atom_sampled_indices = np.random.choice(len(atom_embeddings), size=min(len(atom_embeddings), self.MAX_LENGTH_DICT['atom']), replace=False)
+            atom_embeddings = atom_embeddings[atom_sampled_indices]
+            atom_residue_index = atom_residue_index[atom_sampled_indices]
+            atom_frames = atom_frames[atom_sampled_indices]
+            atomic_plus_residue_embedding = atomic_plus_residue_embedding[atom_sampled_indices]
 
         ret_dict = {
             'atom_frames': atom_frames,
@@ -281,7 +280,7 @@ class ScannetDataset(BasePairDataset):
         from Bio.PDB import PDBParser, PPBuilder
 
         # === Caching ===
-        cache_dir = os.path.join(self._base_data_path, "esm_cache")
+        cache_dir = os.path.join(self._base_data_path, "esm_cache_esm2_t6_8M_UR50D")
         os.makedirs(cache_dir, exist_ok=True)
 
         # Use a hash of the pdb path for unique filename
@@ -321,9 +320,11 @@ class ScannetDataset(BasePairDataset):
         _, _, tokens = self._batch_converter(data)
 
         with torch.no_grad():
-            results = self._esm_model(tokens, repr_layers=[33], return_contacts=False)
+            num_layers = self._esm_model.num_layers
+            results = self._esm_model(tokens, repr_layers=[num_layers], return_contacts=False)
 
-        reps = results["representations"][33][0, 1:len(sequence)+1]  # Skip CLS/EOS
+        layer = list(results["representations"].keys())[-1]
+        reps = results["representations"][layer][0, 1:len(sequence)+1]
 
         embedding_dict = {
             resseq: reps[idx].cpu()  # Save as CPU tensors for portability

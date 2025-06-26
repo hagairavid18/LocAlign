@@ -1,5 +1,5 @@
 trainer:
-  exp_name: esm-embedding
+  exp_name: esm-embedding-small2
   tags: ["virtual", "atom", "grouping_130x`5", "1800", "new_block"]
   max_epochs: 30
   validate_only: false
@@ -20,7 +20,7 @@ model:
         EmbeddingBlock
       args:
         n_blocks: 3
-        input_dim: 1536
+        input_dim: 576
         hidden_dim: 256
         output_dim: 256
         dropout: 0.0
