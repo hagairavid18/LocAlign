@@ -1,5 +1,5 @@
 trainer:
-  exp_name: recycle-0iter-new-dataset-loss-each-iter-top1000
+  exp_name: gnn-mlp2
   tags: ["virtual", "atom", "grouping_130x`5", "1800", "new_block"]
   max_epochs: 30
   validate_only: false
@@ -14,7 +14,7 @@ model:
     max_iter: 1
     n_iter_train: 1
     top_k: 1000
-    n_iter_recycling: 0
+    n_iter_recycling: 2
     input_layer:
       name: 
         EmbeddingBlock
@@ -40,7 +40,7 @@ model:
         CorrespondenceDenoisingModule
       args:
         n_nodes: 100
-        n_gnn_layers: 10
+        n_gnn_layers: 1
         n_rbf_functions: 32
         with_angles: true
     loss:

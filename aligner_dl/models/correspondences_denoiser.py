@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.data import Data
 from torch_geometric.nn import GraphConv
+from models.layers.gnn import GraphConvMLP
 
 #update_i = MLP { s_i,   sum_j[ MLP ( s_i | s_j | w_{ij}) ] }
 class CorrespondenceDenoisingModule(nn.Module):
@@ -17,7 +18,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         super(CorrespondenceDenoisingModule, self).__init__()
         self._n_nodes = n_nodes  # Number of top correspondences to keep
         self._n_gnn_layers = n_gnn_layers  # Number of GNN layers
-        self._gnn_layer = GraphConv(1, 1, aggr='sum')
+        self._gnn_layer = GraphConvMLP(1, 8, 1, aggr='sum')
         self._add_angle_features = with_angles  # Whether to include angle features
         
         pre_input_dim = 2 * n_rbf_functions + 8 if with_angles else 2 * n_rbf_functions
@@ -26,12 +27,12 @@ class CorrespondenceDenoisingModule(nn.Module):
         
         self.apply(self.init_weights)
        
-        with torch.no_grad():
-            self._gnn_layer.lin_rel.weight.fill_(0.05)
-            self._gnn_layer.lin_rel.bias.fill_(1.0)
-            self._gnn_layer.lin_root.weight.fill_(0.0)
-        self._gnn_layer.lin_root.weight.requires_grad = False
-        self._gnn_layer.lin_rel.bias.requires_grad = False
+        # with torch.no_grad():
+        #     self._gnn_layer.lin_rel.weight.fill_(0.05)
+        #     self._gnn_layer.lin_rel.bias.fill_(1.0)
+        #     self._gnn_layer.lin_root.weight.fill_(0.0)
+        # self._gnn_layer.lin_root.weight.requires_grad = False
+        # self._gnn_layer.lin_rel.bias.requires_grad = False
          
     @staticmethod
     def init_weights(m):
