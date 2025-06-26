@@ -1,5 +1,5 @@
 trainer:
-  exp_name: esm-embedding-small2
+  exp_name: esm-embedding-maxlr0002
   tags: ["virtual", "atom", "grouping_130x`5", "1800", "new_block"]
   max_epochs: 30
   validate_only: false
@@ -63,7 +63,7 @@ model:
           interval: step
           args:
 
-            max_lr: 0.0005
+            max_lr: 0.0002
             epochs: 30
             steps_per_epoch: 2365 
             div_factor: 25
