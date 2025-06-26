@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch_geometric.data import Data
 from torch_geometric.nn import GraphConv
 
-
+#update_i = MLP { s_i,   sum_j[ MLP ( s_i | s_j | w_{ij}) ] }
 class CorrespondenceDenoisingModule(nn.Module):
 
     def __init__(
