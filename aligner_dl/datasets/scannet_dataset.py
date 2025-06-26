@@ -34,8 +34,8 @@ class ScannetDataset(BasePairDataset):
         self._esm_model, self._esm_alphabet = getattr(esm.pretrained, "esm2_t33_650M_UR50D")()
         self._batch_converter = self._esm_alphabet.get_batch_converter()
         self._esm_model = self._esm_model.eval()
-        if torch.cuda.is_available():
-            self._esm_model = self._esm_model.cuda()
+        # if torch.cuda.is_available():
+        #     self._esm_model = self._esm_model.cuda()
         num_lost_pairs = original_num_pairs - len(self._df)
         if max_length is not None:
             # self.MAX_LENGTH_DICT['residue'] = max_length
@@ -60,32 +60,33 @@ class ScannetDataset(BasePairDataset):
         #         'gt_t': torch.Tensor(row['translations'][0][0]),
         #     }
 
-        # try:
-        esm_embeddings_tar = self.extract_esm_embeddings_by_resseq(
-            pdb_file=os.path.join(self._base_data_path, row[self.ligand_column], row['ref_protein'] + '_non_ligand.ent'),
-            # residue_numbers=embedding_dicts['tar']['residue_residue_indices'].tolist(),
-        )
-        esm_embeddings_src = self.extract_esm_embeddings_by_resseq(
-            pdb_file=os.path.join(self._base_data_path, row[self.ligand_column], row['mov_protein'] + '_non_ligand.ent'),
-            # residue_numbers=embedding_dicts['src']['residue_residue_indices'].tolist(),
-        )
-        embedding_dicts = {
-            "tar": self._read_embedding(ligand_id=row[self.ligand_column], chain=row['ref_protein'], esm_embedding_dict= esm_embeddings_tar),
-            "src": self._read_embedding(ligand_id=row[self.ligand_column], chain=row['mov_protein'], esm_embedding_dict= esm_embeddings_src),
-        }
-        if not self.inference:
-            src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self.ligand_column], chain=row['mov_protein'])
-            tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self.ligand_column], chain=row['ref_protein'])
-            if not src_atom_ids == tar_atom_ids:
-                shared_atom_ids = set(src_atom_ids).intersection(tar_atom_ids)
-                src_ligand_coordinates = src_ligand_coordinates[torch.tensor([src_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
-                tar_ligand_coordinates = tar_ligand_coordinates[torch.tensor([tar_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
-                assert src_ligand_coordinates.shape == tar_ligand_coordinates.shape
+        try:
+            esm_embeddings_tar = self.extract_esm_embeddings_by_resseq(
+                pdb_file=os.path.join(self._base_data_path, row[self.ligand_column], row['ref_protein'] + '_non_ligand.ent'),
+                # residue_numbers=embedding_dicts['tar']['residue_residue_indices'].tolist(),
+            )
+            esm_embeddings_src = self.extract_esm_embeddings_by_resseq(
+                pdb_file=os.path.join(self._base_data_path, row[self.ligand_column], row['mov_protein'] + '_non_ligand.ent'),
+                # residue_numbers=embedding_dicts['src']['residue_residue_indices'].tolist(),
+            )
+            embedding_dicts = {
+                "tar": self._read_embedding(ligand_id=row[self.ligand_column], chain=row['ref_protein'], esm_embedding_dict= esm_embeddings_tar),
+                "src": self._read_embedding(ligand_id=row[self.ligand_column], chain=row['mov_protein'], esm_embedding_dict= esm_embeddings_src),
+            }
+            print(f"Read embeddings for {row[self.ligand_column]} {row['mov_protein']} {row['ref_protein']}")
+            if not self.inference:
+                src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self.ligand_column], chain=row['mov_protein'])
+                tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self.ligand_column], chain=row['ref_protein'])
+                if not src_atom_ids == tar_atom_ids:
+                    shared_atom_ids = set(src_atom_ids).intersection(tar_atom_ids)
+                    src_ligand_coordinates = src_ligand_coordinates[torch.tensor([src_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
+                    tar_ligand_coordinates = tar_ligand_coordinates[torch.tensor([tar_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
+                    assert src_ligand_coordinates.shape == tar_ligand_coordinates.shape
 
-        # except Exception as e:
-        #     # print(f"Error reading embeddings for {row[ligand_column]} {row[ligand_column]} {row[ligand_column]}: {e}")
-        #     idx = torch.randint(0, len(self), (1,)).item()
-        #     return self.__getitem__(idx)
+        except Exception as e:
+            # print(f"Error reading embeddings for {row[ligand_column]} {row[ligand_column]} {row[ligand_column]}: {e}")
+            idx = torch.randint(0, len(self), (1,)).item()
+            return self.__getitem__(idx)
         
             # embedding_dicts['tar']['esm_embeddings'] = torch.stack([esm_embeddings[resseq] for resseq in row['residue_numbers']])
             # embedding_dicts['src']['esm_embeddings'] = torch.stack([esm_embeddings[resseq] for resseq in row['residue_numbers']])
@@ -197,9 +198,7 @@ class ScannetDataset(BasePairDataset):
             raise ValueError(f"Missing ESM embedding for residue {e} in ligand {ligand_id}, chain {chain}")
 
         # === Map ESM embeddings to atoms ===
-        esm_per_atom = esm_vectors[np.array([
-            np.where(residue_indices == rid)[0][0] for rid in atom_residue_index
-        ])]  # shape: [num_atoms, 1280]
+        esm_per_atom = esm_vectors[data["sequence_indices_atom"]]
 
         # === Concatenate ===
         atomic_plus_residue_embedding = np.concatenate([atomic_plus_residue_embedding, esm_per_atom], axis=-1)
@@ -272,14 +271,28 @@ class ScannetDataset(BasePairDataset):
 
     def extract_esm_embeddings_by_resseq(self, pdb_file: str) -> dict:
         """
-        Extract ESM embeddings for all standard residues in a PDB file.
+        Extract ESM embeddings for all standard residues in a PDB file, with caching.
         
         Returns:
             Dict mapping resseq (int) → ESM embedding tensor of shape [1280]
         """
+        import os
+        import hashlib
         from Bio.PDB import PDBParser, PPBuilder
-        import torch
 
+        # === Caching ===
+        cache_dir = os.path.join(self._base_data_path, "esm_cache")
+        os.makedirs(cache_dir, exist_ok=True)
+
+        # Use a hash of the pdb path for unique filename
+        pdb_hash = hashlib.md5(pdb_file.encode()).hexdigest()
+        cache_path = os.path.join(cache_dir, f"{pdb_hash}.pt")
+
+        if os.path.exists(cache_path):
+            # print(f"Loading cached ESM embeddings from {cache_path}")
+            return torch.load(cache_path)
+
+        # === Compute ESM embeddings ===
         parser = PDBParser(QUIET=True)
         structure = parser.get_structure("pdb", pdb_file)
         ppb = PPBuilder()
@@ -291,9 +304,12 @@ class ScannetDataset(BasePairDataset):
         if not peptides:
             raise ValueError("No peptide chains found")
 
-        peptide = max(peptides, key=lambda x: len(x))
-        sequence = str(peptide.get_sequence())
-        residues = list(peptide)
+        sequence = ""
+        residues = []
+
+        for peptide in peptides:
+            sequence += str(peptide.get_sequence())
+            residues.extend(peptide)
 
         # Map resseq → index in sequence
         resseq_to_index = {
@@ -306,13 +322,18 @@ class ScannetDataset(BasePairDataset):
 
         with torch.no_grad():
             results = self._esm_model(tokens, repr_layers=[33], return_contacts=False)
-        
+
         reps = results["representations"][33][0, 1:len(sequence)+1]  # Skip CLS/EOS
 
-        return {
-            resseq: reps[idx].cpu()
+        embedding_dict = {
+            resseq: reps[idx].cpu()  # Save as CPU tensors for portability
             for resseq, idx in resseq_to_index.items()
         }
+
+        # === Save to cache ===
+        torch.save(embedding_dict, cache_path)
+
+        return embedding_dict
 
 
 

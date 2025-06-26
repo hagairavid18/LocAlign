@@ -1,5 +1,5 @@
 trainer:
-  exp_name: delete-recycle-0iter-new-dataset-loss-each-iter-top1000
+  exp_name: esm-embedding
   tags: ["virtual", "atom", "grouping_130x`5", "1800", "new_block"]
   max_epochs: 30
   validate_only: false
@@ -20,7 +20,7 @@ model:
         EmbeddingBlock
       args:
         n_blocks: 3
-        input_dim: 256
+        input_dim: 1536
         hidden_dim: 256
         output_dim: 256
         dropout: 0.0
@@ -96,4 +96,4 @@ dataset:
 dataloader:
   train_batch_size: 8
   valid_batch_size: 1
-  n_workers: 0
+  n_workers: 12
