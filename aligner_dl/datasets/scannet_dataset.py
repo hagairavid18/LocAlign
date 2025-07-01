@@ -30,7 +30,7 @@ class ScannetDataset(BasePairDataset):
         original_num_pairs = len(self._df)        
         self._infer_baseline = infer_baseline
         self.ligand_column = ligand_column
-        self._esm_model, self._esm_alphabet = getattr(esm.pretrained, "esm2_t6_8M_UR50D")()
+        self._esm_model, self._esm_alphabet = getattr(esm.pretrained, "esm2_t30_150M_UR50D")()
         self._batch_converter = self._esm_alphabet.get_batch_converter()
         self._esm_model = self._esm_model.eval()
         # if torch.cuda.is_available():
@@ -280,7 +280,7 @@ class ScannetDataset(BasePairDataset):
         from Bio.PDB import PDBParser, PPBuilder
 
         # === Caching ===
-        cache_dir = os.path.join(self._base_data_path, "esm_cache_esm2_t6_8M_UR50D")
+        cache_dir = os.path.join(self._base_data_path, "esm_cache_esm2_t30_150M_UR50D")
         os.makedirs(cache_dir, exist_ok=True)
 
         # Use a hash of the pdb path for unique filename
