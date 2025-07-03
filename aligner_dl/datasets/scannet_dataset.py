@@ -39,6 +39,7 @@ class ScannetDataset(BasePairDataset):
             inference: bool = False, 
             ligand_column: str = 'Ligand_ID',
             esm_model: str = None,
+            bert_model: bool = None
             ) -> None:
         """
         Initializes the ScannetDataset.
@@ -72,6 +73,7 @@ class ScannetDataset(BasePairDataset):
         
         self.MAX_LENGTH_DICT = {'residue': 1000, 'atom': 5000, 'pocket': 800}
         self._mmcif_parser = PDBParser()
+        self._ppb_builder = PPBuilder()
         
         self._infer_baseline = infer_baseline
         
@@ -82,15 +84,34 @@ class ScannetDataset(BasePairDataset):
         assert level in ['residue', 'atom', 'pocket'], "level must be one of ['residue', 'atom', 'pocket']"
         self._level = level
 
-        if esm_model is not None:
+        assert bert_model is None or esm_model is None, "Only one of bert_model or esm_model can be provided"
+        if esm_model:
             self._init_esm_model(esm_model)
 
+        self._use_bert = bert_model is not None
+        if bert_model:
+            self._init_bert_model(bert_model)
+            
     def _init_esm_model(self, esm_model: str) -> None:
         self._esm_model, self._esm_alphabet = getattr(esm.pretrained, esm_model)()
         self._batch_converter = self._esm_alphabet.get_batch_converter()
         self._esm_model = self._esm_model.eval()
-        self._ppb_builder = PPBuilder()
         self._cache_dir = os.path.join(self._base_data_path, f"esm_cache_{esm_model}")
+        os.makedirs(self._cache_dir, exist_ok=True)
+
+    def _init_bert_model(self, bert_model: str) -> None:
+        from transformers import BertModel, BertTokenizer
+        # Load model and tokenizer
+        if 't5' in bert_model:
+            from transformers import T5Tokenizer, T5EncoderModel
+
+            self._tokenizer = T5Tokenizer.from_pretrained(f"Rostlab/{bert_model}", do_lower_case=False)
+            model = T5EncoderModel.from_pretrained(f"Rostlab/{bert_model}")
+        else:
+            self._tokenizer = BertTokenizer.from_pretrained(f"Rostlab/{bert_model}", do_lower_case=False)
+            model = BertModel.from_pretrained(f"Rostlab/{bert_model}")
+        self._bert_model = model.eval()  # Set to evaluation mode
+        self._cache_dir = os.path.join(self._base_data_path, f"bert_cache_{bert_model}")
         os.makedirs(self._cache_dir, exist_ok=True)
 
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
@@ -108,17 +129,27 @@ class ScannetDataset(BasePairDataset):
         #     }
 
         try:
-            esm_embeddings_tar = self.extract_esm_embeddings(
-                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['ref_protein'] + '_non_ligand.ent'),
-                chain_name=row['ref_protein'] + '_' + row['ref_chain']
-            )
-            esm_embeddings_src = self.extract_esm_embeddings(
-                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['mov_protein'] + '_non_ligand.ent'),
-                chain_name=row['mov_protein'] + '_' + row['mov_chain']
-            ) 
+            if not self._use_bert:
+                embeddings_tar = self.extract_esm_embeddings(
+                    pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['ref_protein'] + '_non_ligand.ent'),
+                    chain_name=row['ref_protein'] + '_' + row['ref_chain']
+                )
+                embeddings_src = self.extract_esm_embeddings(
+                    pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['mov_protein'] + '_non_ligand.ent'),
+                    chain_name=row['mov_protein'] + '_' + row['mov_chain']
+                ) 
+            else:
+                embeddings_tar = self.extract_prottrans_embeddings(
+                    pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['ref_protein'] + '_non_ligand.ent'),
+                    chain_name=row['ref_protein'] + '_' + row['ref_chain']
+                )
+                embeddings_src = self.extract_prottrans_embeddings(
+                    pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['mov_protein'] + '_non_ligand.ent'),
+                    chain_name=row['mov_protein'] + '_' + row['mov_chain']
+                )
             embedding_dicts = {
-                "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['ref_protein'], esm_embedding_dict= esm_embeddings_tar),
-                "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['mov_protein'], esm_embedding_dict= esm_embeddings_src),
+                "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['ref_protein'], esm_embedding_dict= embeddings_tar),
+                "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['mov_protein'], esm_embedding_dict= embeddings_src),
             }
             print(f"Read embeddings for {row[self._ligand_column]} {row['mov_protein']} {row['ref_protein']}")
             if not self.inference:
@@ -222,7 +253,7 @@ class ScannetDataset(BasePairDataset):
                 esm_embedding_dict[res_id] for res_id in residue_indices
             ])  # shape: [num_residues, 1280]
         except KeyError as e:
-            raise ValueError(f"Missing ESM embedding for residue {e} in ligand {ligand_id}, chain {chain}")
+            raise ValueError(f"Missing pretrained ESM/BERT embedding for residue {e} in ligand {ligand_id}, chain {chain}")
 
         # === Map ESM embeddings to atoms ===
         esm_per_atom = esm_vectors[data["sequence_indices_atom"]]
@@ -311,8 +342,8 @@ class ScannetDataset(BasePairDataset):
 
         pdb_hash = hashlib.md5(pdb_file.encode()).hexdigest()
         cache_path = os.path.join(self._cache_dir, f"{pdb_hash}.pt")
-        # if os.path.exists(cache_path):
-        #     return torch.load(cache_path)
+        if os.path.exists(cache_path):
+            return torch.load(cache_path)
         
         # === Compute ESM embeddings ===
         structure = self._mmcif_parser.get_structure("pdb", pdb_file)
@@ -352,7 +383,7 @@ class ScannetDataset(BasePairDataset):
         }
 
         # === Save to cache ===
-        # torch.save(embedding_dict, cache_path)
+        torch.save(embedding_dict, cache_path)
         
         fasta_cache_dir = os.path.join(self._base_data_path, "fasta")
         os.makedirs(fasta_cache_dir, exist_ok=True)
@@ -363,6 +394,65 @@ class ScannetDataset(BasePairDataset):
                 # Wrap sequence every 60 chars for readability
                 for i in range(0, len(sequence), 60):
                     f.write(sequence[i:i+60] + "\n")
+
+        return embedding_dict
+
+
+    def extract_prottrans_embeddings(self, pdb_file: str, chain_name: str) -> dict:
+        """
+        Extract ProtTrans (ProtBert) embeddings for all standard residues in a PDB file, with caching.
+        
+        Returns:
+            Dict mapping resseq (int) → ProtTrans embedding tensor.
+        """
+        # === Caching ===
+        pdb_hash = hashlib.md5(pdb_file.encode()).hexdigest()
+        cache_path = os.path.join(self._cache_dir, f"{pdb_hash}.pt")
+        if os.path.exists(cache_path):
+            return torch.load(cache_path)
+
+        # === Parse structure and extract sequence ===
+        structure = self._mmcif_parser.get_structure("pdb", pdb_file)
+        model = list(structure)[0]
+        chain = list(model)[0]
+        peptides = self._ppb_builder.build_peptides(chain)
+
+        if not peptides:
+            raise ValueError(f"No peptides found in chain {chain_name}")
+
+        sequence = ""
+        residues = []
+
+        for peptide in peptides:
+            sequence += str(peptide.get_sequence())
+            residues.extend(peptide)
+
+        resseq_to_index = {
+            res.get_id()[1]: idx for idx, res in enumerate(residues)
+            if res.get_id()[0] == ' '  # Only standard residues
+        }
+
+        # === Load ProtBert ===
+        tokenizer = self._tokenizer  # assumed loaded in __init__
+        # model = self._bert_model.eval()   # assumed loaded in __init__
+
+        # === Prepare input ===
+        spaced_sequence = ' '.join(list(sequence))
+        inputs = tokenizer(spaced_sequence, return_tensors="pt")
+
+        with torch.no_grad():
+            outputs = self._bert_model(**inputs)
+        
+        # Get per-residue embeddings (remove [CLS] and [SEP])
+        reps = outputs.last_hidden_state[0, 1:len(sequence)+1]  # Shape: (seq_len, hidden_dim)
+
+        embedding_dict = {
+            resseq: reps[idx].cpu()
+            for resseq, idx in resseq_to_index.items()
+        }
+
+        # === Save to cache ===
+        torch.save(embedding_dict, cache_path)
 
         return embedding_dict
 

@@ -1,5 +1,5 @@
 trainer:
-  exp_name: esm-embedding-esm2_t30_150M_UR50D_0107_save_fastas2
+  exp_name: bert-embedding-prot_t5_xl_uniref50
   tags: ["atom", "esm"]
   max_epochs: 30
   validate_only: false
@@ -20,7 +20,7 @@ model:
         EmbeddingBlock
       args:
         n_blocks: 3
-        input_dim: 768
+        input_dim: 1152 
         hidden_dim: 256
         output_dim: 256
         dropout: 0.0
@@ -75,7 +75,8 @@ dataset:
     args:
       df_path: datasets/csv_files/protein_grouping_1206/train.csv
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
-      esm_model: "esm2_t30_150M_UR50D"
+      # esm_model: "esm2_t30_150M_UR50D"
+      bert_model: "prot_t5_xl_uniref50"
       # n_samples: 3000
       seed: 41
       # min_cath: 3
@@ -88,7 +89,8 @@ dataset:
     args:
       df_path: datasets/csv_files/protein_grouping_1206/val.csv
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
-      esm_model: "esm2_t30_150M_UR50D"
+      # esm_model: "esm2_t30_150M_UR50D"
+      bert_model: "prot_t5_xl_uniref50"
       # n_samples: 15
       seed: 81
       max_cath: 4
