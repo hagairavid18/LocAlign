@@ -1,6 +1,6 @@
 trainer:
-  exp_name: esm-embedding-maxlr0002
-  tags: ["virtual", "atom", "grouping_130x`5", "1800", "new_block"]
+  exp_name: esm-embedding-esm2_t30_150M_UR50D_0107_save_fastas2
+  tags: ["atom", "esm"]
   max_epochs: 30
   validate_only: false
   check_val_every_n_epoch: 1
@@ -75,6 +75,7 @@ dataset:
     args:
       df_path: datasets/csv_files/protein_grouping_1206/train.csv
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
+      esm_model: "esm2_t30_150M_UR50D"
       # n_samples: 3000
       seed: 41
       # min_cath: 3
@@ -87,6 +88,7 @@ dataset:
     args:
       df_path: datasets/csv_files/protein_grouping_1206/val.csv
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
+      esm_model: "esm2_t30_150M_UR50D"
       # n_samples: 15
       seed: 81
       max_cath: 4

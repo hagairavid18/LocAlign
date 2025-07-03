@@ -18,7 +18,19 @@ def set_seed(seed: int):
 
 
 class BasePairDataset(Dataset):
-    def __init__(self, df_path: str, base_data_path: str, base_embedding_path: str, n_samples: int, min_cath: int = 0, max_cath: int = 8, only_one_transformation:bool = True, bbc_filter_ratio = 0.0, seed: int | None = None, inference: bool= False):
+    def __init__(
+            self, 
+            df_path: str, 
+            base_data_path: str, 
+            base_embedding_path: str, 
+            n_samples: int,
+            ligand_column: str = 'Ligand_ID', 
+            min_cath: int = 0, 
+            max_cath: int = 8, 
+            only_one_transformation: bool = True, 
+            bbc_filter_ratio = 0.0, seed: int | None = None, 
+            inference: bool= False
+            ) -> None:
         self._df_path = df_path
         self._base_data_path = base_data_path
         self._base_embedding_path = base_embedding_path
@@ -26,6 +38,7 @@ class BasePairDataset(Dataset):
         self._only_one_transformation = only_one_transformation
         self._min_cath = min_cath
         self._max_cath = max_cath
+        self._ligand_column = ligand_column
         self.inference = inference 
         assert max_cath >= min_cath, f"max_cath ({max_cath}) must be greater than min_cath ({min_cath})"
         self._bbc_filter_ratio = bbc_filter_ratio
@@ -33,7 +46,7 @@ class BasePairDataset(Dataset):
             set_seed(seed)
 
         self._df: pd.DataFrame = self._read_data_path()
-
+                
     def _calculate_sample_weights(self, df):
         ligand_counts = df['Ligand_ID'].value_counts()
         weights = 1 / (ligand_counts ** 0.5)
