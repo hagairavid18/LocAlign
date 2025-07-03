@@ -311,8 +311,8 @@ class ScannetDataset(BasePairDataset):
 
         pdb_hash = hashlib.md5(pdb_file.encode()).hexdigest()
         cache_path = os.path.join(self._cache_dir, f"{pdb_hash}.pt")
-        # if os.path.exists(cache_path):
-        #     return torch.load(cache_path)
+        if os.path.exists(cache_path):
+            return torch.load(cache_path)
         
         # === Compute ESM embeddings ===
         structure = self._mmcif_parser.get_structure("pdb", pdb_file)
@@ -352,7 +352,7 @@ class ScannetDataset(BasePairDataset):
         }
 
         # === Save to cache ===
-        # torch.save(embedding_dict, cache_path)
+        torch.save(embedding_dict, cache_path)
         
         fasta_cache_dir = os.path.join(self._base_data_path, "fasta")
         os.makedirs(fasta_cache_dir, exist_ok=True)
