@@ -39,6 +39,7 @@ class ScannetDataset(BasePairDataset):
             inference: bool = False, 
             ligand_column: str = 'Ligand_ID',
             esm_model: str = None,
+            esm_layer: int = 28
             ) -> None:
         """
         Initializes the ScannetDataset.
@@ -83,6 +84,7 @@ class ScannetDataset(BasePairDataset):
         self._level = level
 
         if esm_model is not None:
+            self._esm_layer= esm_layer
             self._init_esm_model(esm_model)
 
     def _init_esm_model(self, esm_model: str) -> None:
@@ -90,7 +92,7 @@ class ScannetDataset(BasePairDataset):
         self._batch_converter = self._esm_alphabet.get_batch_converter()
         self._esm_model = self._esm_model.eval()
         self._ppb_builder = PPBuilder()
-        self._cache_dir = os.path.join(self._base_data_path, f"esm_cache_{esm_model}")
+        self._cache_dir = os.path.join(self._base_data_path, f"esm_cache_{esm_model}_{self._esm_layer}")
         os.makedirs(self._cache_dir, exist_ok=True)
 
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
@@ -117,8 +119,8 @@ class ScannetDataset(BasePairDataset):
                 chain_name=row['mov_protein'] + '_' + row['mov_chain']
             ) 
             embedding_dicts = {
-                "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['ref_protein'], esm_embedding_dict= esm_embeddings_tar),
-                "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['mov_protein'], esm_embedding_dict= esm_embeddings_src),
+                "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['ref_protein'], esm_embedding_dict=esm_embeddings_tar),
+                "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['mov_protein'], esm_embedding_dict=esm_embeddings_src),
             }
             print(f"Read embeddings for {row[self._ligand_column]} {row['mov_protein']} {row['ref_protein']}")
             if not self.inference:
@@ -307,8 +309,6 @@ class ScannetDataset(BasePairDataset):
         """
 
         # === Caching ===
-
-
         pdb_hash = hashlib.md5(pdb_file.encode()).hexdigest()
         cache_path = os.path.join(self._cache_dir, f"{pdb_hash}.pt")
         if os.path.exists(cache_path):
@@ -340,11 +340,9 @@ class ScannetDataset(BasePairDataset):
         _, _, tokens = self._batch_converter(data)
 
         with torch.no_grad():
-            num_layers = self._esm_model.num_layers
-            results = self._esm_model(tokens, repr_layers=[num_layers], return_contacts=False)
+            results = self._esm_model(tokens, repr_layers=[self._esm_layer], return_contacts=False)
 
-        layer = list(results["representations"].keys())[-1]
-        reps = results["representations"][layer][0, 1:len(sequence)+1]
+        reps = results["representations"][self._esm_layer][0, 1:len(sequence)+1]
 
         embedding_dict = {
             resseq: reps[idx].cpu()  # Save as CPU tensors for portability
