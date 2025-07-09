@@ -20,7 +20,7 @@ model:
         EmbeddingBlock
       args:
         n_blocks: 3
-        input_dim: 256
+        input_dim: 768
         hidden_dim: 256
         output_dim: 256
         dropout: 0.0
@@ -63,7 +63,7 @@ model:
           interval: step
           args:
 
-            max_lr: 0.0005
+            max_lr: 0.0002
             epochs: 30
             steps_per_epoch: 2365 
             div_factor: 25
@@ -73,8 +73,10 @@ dataset:
   train:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/protein_grouping_1206/train.csv
+      df_path: datasets/csv_files/homology_0507_05/train.csv
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
+      esm_model: "esm2_t30_150M_UR50D"
+      esm_layer: 30
       # n_samples: 3000
       seed: 41
       # min_cath: 3
@@ -85,8 +87,10 @@ dataset:
   validation:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/protein_grouping_1206/val.csv
+      df_path: datasets/csv_files/homology_0507_05/val.csv
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
+      esm_model: "esm2_t30_150M_UR50D"
+      esm_layer: 30
       # n_samples: 15
       seed: 81
       max_cath: 4
