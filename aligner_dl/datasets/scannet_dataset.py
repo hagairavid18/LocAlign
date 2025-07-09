@@ -97,10 +97,6 @@ class ScannetDataset(BasePairDataset):
 
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
         row = self._df.iloc[idx]
-        if row['mov_protein'] == '3n6r' or row['mov_protein'] == '4hyj' or idx in [5094, 5095]:
-                print(f"idx {idx} {row['Ligand_ID']} {row['mov_protein']} {row['ref_protein']}")
-                idx = torch.randint(0, len(self), (1,)).item()
-                return self.__getitem__(idx)
 
         # if self._infer_baseline:
         #     return {
@@ -122,7 +118,7 @@ class ScannetDataset(BasePairDataset):
                 "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['ref_protein'], esm_embedding_dict=esm_embeddings_tar),
                 "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['mov_protein'], esm_embedding_dict=esm_embeddings_src),
             }
-            print(f"Read embeddings for {row[self._ligand_column]} {row['mov_protein']} {row['ref_protein']}")
+            # print(f"Read embeddings for {row[self._ligand_column]} {row['mov_protein']} {row['ref_protein']}")
             if not self.inference:
                 src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['mov_protein'])
                 tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['ref_protein'])
@@ -212,22 +208,31 @@ class ScannetDataset(BasePairDataset):
         atom_embeddings = data["atomic_embeddings"]
         atom_residue_index = data["sequence_indices_atom"]  # Residue index for each atom
         atom_frames = data["atomic_frames"]
-        residue_embeddings_up_pooled = residue_embeddings[atom_residue_index]
-        atomic_plus_residue_embedding = np.concatenate((atom_embeddings, residue_embeddings_up_pooled),axis=-1)
-        
 
         residue_indices = residue_ids[:, -1].astype(int)  # Extract residue indices (last column of residue_ids)
         atom_residue_index = residue_indices[atom_residue_index]
+        valid_residue_indices = set(atom_residue_index).intersection(set(esm_embedding_dict.keys()))
+        
+        atom_embeddings = np.stack([atom_embeddings[i] for i in range(len(atom_embeddings)) if atom_residue_index[i] in valid_residue_indices])
+        atom_frames = np.stack([atom_frames[i] for i in range(len(atom_frames)) if atom_residue_index[i] in valid_residue_indices])
+        atom_residue_index = np.array([atom_residue_index[i] for i in range(len(atom_residue_index)) if atom_residue_index[i] in valid_residue_indices])
 
-        try:
-            esm_vectors = np.stack([
-                esm_embedding_dict[res_id] for res_id in residue_indices
-            ])  # shape: [num_residues, 1280]
-        except KeyError as e:
-            raise ValueError(f"Missing ESM embedding for residue {e} in ligand {ligand_id}, chain {chain}")
+
+        # residue_embeddings_up_pooled = residue_embeddings[atom_residue_index]
+        # atomic_plus_residue_embedding = np.concatenate((atom_embeddings, residue_embeddings_up_pooled),axis=-1)
+        
+
+
+        # try:
+        #     esm_vectors = np.stack([
+        #         esm_embedding_dict[res_id] for res_id in valid_residue_indices
+        #     ])  # shape: [num_residues, 1280]
+        # except KeyError as e:
+        #     raise ValueError(f"Missing ESM embedding for residue {e} in ligand {ligand_id}, chain {chain}")
 
         # === Map ESM embeddings to atoms ===
-        esm_per_atom = esm_vectors[data["sequence_indices_atom"]]
+        esm_per_atom = np.stack([esm_embedding_dict[int(id)] for id in atom_residue_index])
+        # esm_per_atom = esm_vectors[data["sequence_indices_atom"]]
 
         # === Concatenate ===
         atomic_plus_residue_embedding = np.concatenate([atom_embeddings, esm_per_atom], axis=-1)

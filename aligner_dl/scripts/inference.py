@@ -82,6 +82,8 @@ def main():
         df = pd.DataFrame([{
         "ref_protein": ref,
         "mov_protein": mov,
+        "ref_chain": "A",  # Default chain, modify as needed
+        "mov_chain": "A",  # Default chain, modify as needed
         "ligand": args.ligand_id  # Or modify as needed
     }])
         csv_path = "temp_csv.csv"
@@ -97,7 +99,7 @@ def main():
 
     # Step 3: Build dataset and dataloader
     print("Preparing dataset and dataloader...")
-    dataset = ScannetDataset(df_path=csv_path, base_data_path=args.output_dir, base_embedding_path=args.scannet_dir, level='atom', inference=True, ligand_column='ligand')
+    dataset = ScannetDataset(df_path=csv_path, base_data_path=args.output_dir, base_embedding_path=args.scannet_dir, level='atom', inference=True, ligand_column='ligand', esm_layer=30, esm_model="esm2_t30_150M_UR50D")
     dataloader = DataLoader(dataset, batch_size=1, num_workers=0, collate_fn=custom_collate_fn, pin_memory=True)
 
     # Step 4: Build model and load checkpoint
