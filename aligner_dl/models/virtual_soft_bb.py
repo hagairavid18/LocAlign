@@ -149,13 +149,13 @@ class VirtualSoftBB(SoftBBBase):
                 top_tar_embedding = top_tar_embedding_orig
             soft_correspondences = self._get_soft_correspondences(top_src_embedding, top_tar_embedding, top_src_values, top_tar_values, top_src_mask, top_tar_mask).to(input_dtype)  
             
-            top_corr_values, top_corr_indices = self._denoiser(soft_correspondences, src_frames, tar_frames)
+            top_corr_values, top_corr_indices, orig_corr_values = self._denoiser(soft_correspondences, src_frames, tar_frames)
             if i==0:
                 top_corr_values_orig = top_corr_values
                 top_corr_indices_orig = top_corr_indices
             elif i == self._n_recycling_iterations:
                 print('here')
-            # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices)
+            # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices, orig_corr_values)
 
             # Gather coordinates
             batch_indices = torch.arange(top_corr_indices.shape[0], device=top_corr_indices.device).unsqueeze(-1).expand(-1, top_corr_indices.shape[1])

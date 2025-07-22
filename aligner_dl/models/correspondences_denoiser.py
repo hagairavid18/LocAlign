@@ -60,7 +60,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         # Step 4: Update soft correspondences
         updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
 
-        return updated_correspondences, top_k_indices
+        return updated_correspondences, top_k_indices, top_k_values
 
     def extract_top_k_correspondences(
         self, 

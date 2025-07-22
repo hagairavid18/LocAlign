@@ -297,7 +297,7 @@ def generate_and_log_scatter_plot(metrics):
     return temp_file.name
 
 
-def plot_correspondences(batch, src_coordinates, tar_coordinates, soft_correspondences,top_corr_indices, plot_dir=None ):
+def plot_correspondences(batch, src_coordinates, tar_coordinates, soft_correspondences,top_corr_indices,  orig_top_values,plot_dir=None ):
     import matplotlib.pyplot as plt
     import numpy as np
     gt_R, gt_t = batch['gt_R'], batch['gt_t']
@@ -308,6 +308,7 @@ def plot_correspondences(batch, src_coordinates, tar_coordinates, soft_correspon
     soft_correspondences = soft_correspondences[0].cpu().numpy()
     mask = soft_correspondences > 0
     soft_correspondences = soft_correspondences[mask]
+    orig_vals_np = orig_top_values[0].cpu().numpy()
     gt_vals_np = gt_vals_np[mask]
 
     # Log x values
@@ -330,6 +331,8 @@ def plot_correspondences(batch, src_coordinates, tar_coordinates, soft_correspon
     plt.figure(figsize=(8, 6))
     # plt.scatter(orig_vals_np, gt_vals_np, color='blue', label='Original', alpha=0.4, s=10)
     plt.scatter(soft_correspondences, gt_vals_np, color='red', label='After Consistency', alpha=0.4, s=10)
+    plt.scatter(orig_top_values, gt_vals_np, color='green', label='Original Soft Correspondences', alpha=0.4, s=10)
+
     # plt.plot(x_range, trend_orig, color='blue', linestyle='--', label='Original Trend')
     plt.plot(x_range, trend_new, color='red', linestyle='--', label='Refined Trend')
     plt.xscale('log')

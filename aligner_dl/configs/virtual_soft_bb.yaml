@@ -23,7 +23,7 @@ model:
         input_dim: 768
         hidden_dim: 256
         output_dim: 256
-        dropout: 0.0
+        dropout: 0.1
         norm_in_last_layer: false
     scalar_layer:
       name: 
@@ -39,7 +39,7 @@ model:
       name: 
         CorrespondenceDenoisingModule
       args:
-        n_nodes: 100
+        n_nodes: 400
         n_gnn_layers: 10
         n_rbf_functions: 32
         with_angles: true
