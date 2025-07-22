@@ -1,12 +1,12 @@
 trainer:
-  exp_name: esm-embedding-esm2_t30_150M_UR50D_0107_save_fastas2
+  exp_name: matrix-denoiser-10gnn-dp01-handcraft-beta0
   tags: ["atom", "esm"]
   max_epochs: 30
   validate_only: false
   check_val_every_n_epoch: 1
   gradient_clipping: 30
   # profiler: true
-  # ckpt_path: "checkpoints/recycle-3iter-new-dataset-loss-each-iter/epoch=5-step=25896.ckpt"
+  # ckpt_path: "checkpoints/matrix-denoiser-3gnn-dp01-handcraft/epoch=13-step=33586.ckpt"
 model:
   name: VirtualSoftBB
   args:

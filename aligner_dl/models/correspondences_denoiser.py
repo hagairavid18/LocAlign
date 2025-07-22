@@ -17,21 +17,33 @@ class CorrespondenceDenoisingModule(nn.Module):
         super(CorrespondenceDenoisingModule, self).__init__()
         self._n_nodes = n_nodes  # Number of top correspondences to keep
         self._n_gnn_layers = n_gnn_layers  # Number of GNN layers
-        self._gnn_layer = GraphConv(1, 1, aggr='sum')
+        # self._gnn_layer = GraphConv(1, 1, aggr='sum')
         self._add_angle_features = with_angles  # Whether to include angle features
         
-        pre_input_dim = 2 * n_rbf_functions + 8 if with_angles else 2 * n_rbf_functions
-        self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
+        # pre_input_dim = 2 * n_rbf_functions + 8 if with_angles else 2 * n_rbf_functions
+        pre_input_dim = n_rbf_functions + 4 if with_angles else n_rbf_functions
+        # pre_input_dim = n_rbf_functions 
+        # pre_input_dim = 4
+        # self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
         self._rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 100.0), learn_gamma=True)
         
         self.apply(self.init_weights)
-       
-        with torch.no_grad():
-            self._gnn_layer.lin_rel.weight.fill_(0.05)
-            self._gnn_layer.lin_rel.bias.fill_(1.0)
-            self._gnn_layer.lin_root.weight.fill_(0.0)
-        self._gnn_layer.lin_root.weight.requires_grad = False
-        self._gnn_layer.lin_rel.bias.requires_grad = False
+        # self._alpha = torch.nn.Parameter(torch.tensor(0.5))  # Scaling factor for the current state
+        # self._beta = torch.nn.Parameter(torch.tensor(0.5))  # Scaling factor for the previous state
+#         self._alphas = torch.nn.ParameterList([
+#     torch.nn.Parameter(torch.tensor(0.5)) for _ in range(n_gnn_layers)
+    
+# ])
+#         self._betas = torch.nn.ParameterList([
+#     torch.nn.Parameter(torch.tensor(0.5)) for _ in range(n_gnn_layers)
+# ])
+
+        # with torch.no_grad():
+        #     self._gnn_layer.lin_rel.weight.fill_(0.05)
+        #     self._gnn_layer.lin_rel.bias.fill_(1.0)
+        #     self._gnn_layer.lin_root.weight.fill_(0.0)
+        # self._gnn_layer.lin_root.weight.requires_grad = False
+        # self._gnn_layer.lin_rel.bias.requires_grad = False
          
     @staticmethod
     def init_weights(m):
@@ -51,14 +63,28 @@ class CorrespondenceDenoisingModule(nn.Module):
 
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
         graph_data = self.build_correspondence_graph(top_k_values, top_k_indices, src_frames, tgt_frames)
+        A = graph_data.edge_attr  # Edge attributes (weights)
+        S = top_k_values  # Node features (correspondence scores
+        # A: (B, K, K)
+        # min_vals = A.view(B, -1).min(dim=1, keepdim=True).values  # shape: (B, 1)
+        # A = A + 5  # broadcast to (B, K, K)
+        # A = torch.nn.functional.softmax(A, dim=2) 
 
         for i in range(self._n_gnn_layers):
-            graph_data.x = (graph_data.x.reshape(B, self._n_nodes) / graph_data.x.reshape(B,self._n_nodes).sum(1, keepdim=True)).reshape(B *self._n_nodes,1)
-            graph_data.x = self._gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
+            # graph_data.x = (graph_data.x.reshape(B, self._n_nodes) / graph_data.x.reshape(B,self._n_nodes).sum(1, keepdim=True)).reshape(B *self._n_nodes,1)
+            
+            S_new = torch.relu(torch.einsum('bik,bk->bi', A, S))
+            # S = S_new * (self._alpha * S) + torch.relu(self._beta * top_k_values)
+            # S = S_new * (S) + torch.relu(0.05 * top_k_values)
+            S = S_new * (S) 
+            S = S / (torch.sum(S, dim=1, keepdim=True) + 1e-6)  # Normalize to sum to 1
 
-        graph_data.x = graph_data.x.relu()
+            print(f"max: {S.max()}, min: {S.min()}, mean: {S.mean()}")
+        # S = torch.relu(S)  # Apply ReLU activation
+        # print(f" alpha: {self._alpha.item()}, betas: {self._beta.item()}")
         # Step 4: Update soft correspondences
-        updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
+        updated_correspondences = S.view(B, -1)  # Reshape to (B, K, 1)
+        # updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
 
         return updated_correspondences, top_k_indices, top_k_values
 
@@ -141,22 +167,60 @@ class CorrespondenceDenoisingModule(nn.Module):
         edge_index = edge_index.permute(0, 2, 1).reshape(-1, 2).T  # (2, total_edges)
 
         # Stack all edge features together
-        distance_features = torch.stack([src_diff_r_theta_phi[:, i_idx, j_idx, 0], tgt_diff_r_theta_phi[:, i_idx, j_idx, 0]], dim=-1)
-        
+        # distance_features = torch.stack([src_diff_r_theta_phi[:, i_idx, j_idx, 0], tgt_diff_r_theta_phi[:, i_idx, j_idx, 0]], dim=-1)
+        distance_features = torch.abs(src_diff_r_theta_phi[:, i_idx, j_idx, 0]-  tgt_diff_r_theta_phi[:, i_idx, j_idx, 0]).unsqueeze(-1)
+
         edge_features = self._rbf_encoder(distance_features).view(B, distance_features.shape[1], -1)
+        def angle_diff(a, b):
+            """Compute a - b in radians, wrapped to [-π, π]"""
+            diff = a - b
+            return (diff + torch.pi) % (2 * torch.pi) - torch.pi
         if self._add_angle_features:
-            angle_features = torch.cat([self._encode_angles(tgt_diff_r_theta_phi[:, i_idx, j_idx, 1:]),
-                                        self._encode_angles(src_diff_r_theta_phi[:, i_idx, j_idx, 1:]),], dim=-1)
+            angle_diffs =  angle_diff(src_diff_r_theta_phi[:, i_idx, j_idx, 1:], tgt_diff_r_theta_phi[:, i_idx, j_idx, 1:])
+            # angle_features = torch.cat([self._encode_angles(tgt_diff_r_theta_phi[:, i_idx, j_idx, 1:]),
+            #                             self._encode_angles(src_diff_r_theta_phi[:, i_idx, j_idx, 1:]),], dim=-1)
+            angle_features = self._encode_angles(angle_diffs)
                 
             edge_features = torch.cat([edge_features, angle_features], dim=-1)  # Concatenate RBF features
+            # edge_features = angle_features
         # Pass through the edge learner
-        edge_weight = self._edge_learner(edge_features).view(-1, 1)
+        # edge_weight = self._edge_learner(edge_features).view(B, -1)  # Shape: (B, num_edges)
+        # edge_weight = ( (1 / (1 + distance_features)) / (1 + angle_diffs[...,[0]].abs())).squeeze(-1)
+        edge_weight = ( (1 / (1 + distance_features)) / (1 + (angle_diffs[...,[0]].abs()+ angle_diffs[...,[1]].abs()))).squeeze(-1)
+        #init a matrix of B X K X K
+        full_edge_weight = torch.zeros((B, K * K), device=edge_weight.device)
+
+        _, n_edges = edge_index_per_batch.shape
+
+        # Get source and target indices per batch
+        src = edge_index_per_batch[0, :]  # (B, n_edges)
+        dst = edge_index_per_batch[1, :]  # (B, n_edges)
+
+        # Compute flat indices into the K*K matrix for each batch
+        flat_indices = src * K + dst  # (B, n_edges)
+
+        # Use advanced indexing to assign values
+        # Prepare batch indices for advanced indexing
+        batch_indices = torch.arange(B, device=edge_weight.device).unsqueeze(1).expand(B, n_edges)  # (B, n_edges)
+
+        # Fill in the edge weights
+        full_edge_weight[batch_indices, flat_indices] = edge_weight
+        full_edge_weight = full_edge_weight.view(B, K, K)  # Reshape to (B, K, K)
+
+
+        # import matplotlib.pyplot as plt
+        # plt.scatter(src_diff_r_theta_phi[:, i_idx, j_idx, 0], tgt_diff_r_theta_phi[:, i_idx, j_idx, 0], c=edge_weight[0], s=5)
+        # plt.colorbar()
+
+
+        # plt.savefig("edges.png")
+        # plt.close()
 
         # Create PyG Data object
         data = Data(
             x=top_k_values.reshape(-1, 1),  # Node features (correspondence scores)
             edge_index=edge_index,  # Edge connectivity
-            edge_attr=edge_weight,  # Enhanced edge attributes
+            edge_attr=full_edge_weight,  # Enhanced edge attributes
             batch=batch_idx  # Batch assignment for each node
         )
         
