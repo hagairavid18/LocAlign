@@ -25,6 +25,9 @@ events*
 *.pb
 *.cxc
 *.npz
+*.fasta
+*.pt
+
 
 .DS_Store
 aligner_dl/.DS_Store
