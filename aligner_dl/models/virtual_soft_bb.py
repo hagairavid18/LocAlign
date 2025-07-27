@@ -183,7 +183,7 @@ class VirtualSoftBB(SoftBBBase):
         transformation_dicts = self._compute_soft_bb_algorithm(batch)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_embedding'].dtype)
         for transformation_dict in transformation_dicts:
-            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
+            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'],  transformation_dict['kabsch_rmsd'])
             loss += curr_loss
         loss /= len(transformation_dicts)  # Average loss over all iterations
         
@@ -205,7 +205,7 @@ class VirtualSoftBB(SoftBBBase):
         transformation_dicts = self._compute_soft_bb_algorithm(batch)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_embedding'].dtype)
         for transformation_dict in transformation_dicts:
-            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
+            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'], transformation_dict['kabsch_rmsd'])
             loss += curr_loss
         loss /= len(transformation_dicts)  # Average loss over all iterations
         if self._plot:

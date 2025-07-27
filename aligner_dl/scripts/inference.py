@@ -21,8 +21,6 @@ from datasets import ScannetDataset  # Ensure this is in your PYTHONPATH
 def parse_args():
     parser = argparse.ArgumentParser(description="Run inference using a trained model.")
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint.")
-    parser.add_argument("--experiment_name", type=str, required=True, help="Name of the experiment, i.e. checkpoint directory name under ./checkpoints/")
-    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save inference results.")
     parser.add_argument("--scannet_dir", type=str, help="Directory containing ligand files.")
     parser.add_argument("--ligand_id", type=str, default="general", help="Ligand ID to use for non-ligand models.")
     group = parser.add_mutually_exclusive_group(required=True)
@@ -89,21 +87,24 @@ def main():
         csv_path = "temp_csv.csv"
         df.to_csv(csv_path, index=False)
 
+    experiment_name = args.checkpoint.split('/')[1]
+    output_dir = os.path.join("inference_results", experiment_name)
+    os.makedirs(output_dir, exist_ok=True)
     # Step 1: Save non-ligand models
     print("Saving non-ligand models...")
-    save_non_ligand_models(df, args.output_dir, args.ligand_id)
+    save_non_ligand_models(df, output_dir, args.ligand_id)
 
     # Step 2: Run ScanNet feature extraction
     print("Running ScanNet feature extraction...")
-    run_scannet(df, args.output_dir, args.scannet_dir, args.ligand_id)
+    run_scannet(df, output_dir, args.scannet_dir, args.ligand_id)
 
     # Step 3: Build dataset and dataloader
     print("Preparing dataset and dataloader...")
-    dataset = ScannetDataset(df_path=csv_path, base_data_path=args.output_dir, base_embedding_path=args.scannet_dir, level='atom', inference=True, ligand_column='ligand', esm_layer=30, esm_model="esm2_t30_150M_UR50D")
+    dataset = ScannetDataset(df_path=csv_path, base_data_path=output_dir, base_embedding_path=args.scannet_dir, level='atom', inference=True, ligand_column='ligand', esm_layer=30, esm_model="esm2_t30_150M_UR50D")
     dataloader = DataLoader(dataset, batch_size=1, num_workers=0, collate_fn=custom_collate_fn, pin_memory=True)
 
     # Step 4: Build model and load checkpoint
-    checkpoint_dir = os.path.join("checkpoints", args.experiment_name)
+    checkpoint_dir = os.path.join("checkpoints", experiment_name)
     if not os.path.isdir(checkpoint_dir):
         raise FileNotFoundError(f"Checkpoint directory not found: {checkpoint_dir}")
 
@@ -127,7 +128,7 @@ def main():
     model.eval()
 
     # Ensure the output directory exists
-    os.makedirs(args.output_dir, exist_ok=True)
+    # os.makedirs(args.output_dir, exist_ok=True)
 
     scannet_python = "/home/iscb/wolfson/hagairavid/miniforge3/envs/py_scannet/bin/python"
     script_path = "miners/scripts/chimera_pocket_viz.py"
@@ -148,7 +149,7 @@ def main():
                 print(f"⚠️ Skipping visualization for batch {idx} due to missing metadata")
                 continue
 
-            base_folder = os.path.join(args.output_dir, f"{ref}_{mov}")
+            base_folder = os.path.join('inference_results', experiment_name, f"{ref}_{mov}")
             os.makedirs(base_folder, exist_ok=True)
 
             trans_dict = preds["transformation_dict"]

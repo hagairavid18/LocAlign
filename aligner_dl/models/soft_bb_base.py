@@ -130,7 +130,7 @@ class SoftBBBase(L.LightningModule, ABC):
         # if batch_idx % 10 == 0 and self._plot:
         #     plot_transformed_point_clouds_interactive(self.logger, batch, outputs['transformation_dict'], epoch=self.current_epoch, step=batch_idx)
 
-    def _compute_loss(self, batch, R_total, t_total):
+    def _compute_loss(self, batch, R_total, t_total, kabsch_rmsd: torch.Tensor):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
         loss = loss_dict['pocket_rmsd']
         loss_dict.update(self._transformation_loss(batch, R_total, t_total))
@@ -138,6 +138,10 @@ class SoftBBBase(L.LightningModule, ABC):
         # loss = loss_dict['ligand_rmsd']
         if self._use_transformation_loss:
             loss = self._alpha_loss * loss_dict['pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
+        kabsch_rmsd_loss = kabsch_rmsd.mean()
+        loss_dict['kabsch_rmsd'] = kabsch_rmsd_loss
+        print(f"kabsch_rmsd: {kabsch_rmsd_loss.item()}")
+        loss = loss + 0.2 *  kabsch_rmsd_loss  # Add Kabsch RMSD loss to the total loss
         loss_dict['loss'] = loss
         return loss, loss_dict
 

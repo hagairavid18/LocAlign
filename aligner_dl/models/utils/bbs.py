@@ -1,7 +1,7 @@
 import torch
 from models.utils.math import compose_transformations
 from models.utils.tensor_operations import create_2d_mask
-from models.utils.deepbbs_utils import cdist_torch, guess_best_alpha_torch, softargmin_rows_torch
+from models.utils.deepbbs_utils import guess_best_alpha_torch, softargmin_rows_torch
 from models.utils.kabsch import weighted_kabsch_torch
 
 
@@ -42,47 +42,13 @@ def compute_transformation_from_corr_and_coord(max_protein_length: int, soft_cor
 
     for iter_num in range(iter_limit):
         all_gamma.append(gamma)
-        R_gamma, t_gamma, _, _ = weighted_kabsch_torch(src_coordinates.float(), tar_coordinates.float(), gamma.float())
-        # print(f"R: {R_gamma} t : {t_gamma}")
+        R_gamma, t_gamma, rmsd= weighted_kabsch_torch(src_coordinates.float(), tar_coordinates.float(), gamma.float())
         all_R.append(R_gamma)
         all_t.append(t_gamma)
         src_coordinates = (torch.matmul(src_coordinates, R_gamma) + t_gamma.unsqueeze(1)) 
         src_tgt_euc_dist = torch.sqrt(torch.sum((tar_coordinates - src_coordinates) ** 2, dim=2))
-        # print(f"max sum: {torch.sum((tar_coordinates - src_coordinates) ** 2, dim=2).max()}")
         gamma = ((soft_corr / ((1 + (src_tgt_euc_dist / get_d0(max_protein_length).to(soft_corr.device)[:, None])**2)**2)).to(soft_corr.device)).to(dtype)
 
     rotation, translation = compose_transformations(rotations=all_R, translations=all_t)
-    return {'pred_R': rotation, 'pred_t': translation, 'all_R': all_R, 'all_t': all_t, 'all_gamma': all_gamma}
+    return {'pred_R': rotation, 'pred_t': translation, 'all_R': all_R, 'all_t': all_t, 'all_gamma': all_gamma, 'kabsch_rmsd': rmsd}
 
-
-def mask_and_normalize_matrix(distance_matrix: torch.Tensor, src_mask: torch.Tensor, tar_mask: torch.Tensor, src_embedding: torch.Tensor, tar_embedding: torch.Tensor) -> list[tuple]:
-    """
-    Apply softmin on rows and columns of the distance matrix and normalize the matrix using the source and target masks.
-
-    Args:
-        distance_matrix (torch.Tensor): _description_
-        src_mask (torch.Tensor): _description_
-        tar_mask (torch.Tensor): _description_
-        src_embedding (torch.Tensor): _description_
-        tar_embedding (_type_): _description_
-
-    Returns:
-        list[tuple]: _description_
-    """    
-    batch_size = distance_matrix.shape[0]
-    device = distance_matrix.device
-    combined_mask = create_2d_mask(src_mask, tar_mask)
-    distance_matrix = distance_matrix.masked_fill(~combined_mask, float('inf'))
-    t = torch.tensor([guess_best_alpha_torch(tar_embedding[i,:][tar_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)] , device=device)
-    # t = torch.tensor([torch.tensor(1) for i in range(batch_size)], device=device)
-    # print(f't1 {t}')
-
-    R = torch.stack([softargmin_rows_torch(distance_matrix[i], t[i]) for i in range(batch_size)], dim=0)
-    t = torch.tensor([guess_best_alpha_torch(src_embedding[i,:][src_mask[i]], dim_num=tar_embedding.shape[-1], transpose=False) for i in range(batch_size)], device=device)
-    # print(f't2 {t}')
-    C = torch.stack([softargmin_rows_torch(torch.transpose(distance_matrix, dim0=1, dim1=2)[i], t[i]) for i in range(batch_size)], dim=0)
-    C = torch.transpose(C, dim0=1, dim1=2)
-    B = torch.mul(R, C)
-
-    B = B * combined_mask
-    return B
