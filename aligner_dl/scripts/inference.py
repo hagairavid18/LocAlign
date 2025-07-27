@@ -127,9 +127,6 @@ def main():
     model.to(device)
     model.eval()
 
-    # Ensure the output directory exists
-    # os.makedirs(args.output_dir, exist_ok=True)
-
     scannet_python = "/home/iscb/wolfson/hagairavid/miniforge3/envs/py_scannet/bin/python"
     script_path = "miners/scripts/chimera_pocket_viz.py"
 
