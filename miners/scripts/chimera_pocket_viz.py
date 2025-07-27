@@ -377,7 +377,6 @@ if __name__ == "__main__":
         corr_indices = output_dict.get('top_corr_indices', None)
         R = output_dict['R']
         t = output_dict['t']
-        print(f"R: {R}, t: {t}")
         process_alignment(
             args.base_folder, 
             args.template, 

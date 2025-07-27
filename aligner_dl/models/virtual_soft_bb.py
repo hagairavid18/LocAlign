@@ -10,20 +10,21 @@ from models.utils.plots import plot_correspondences
 
 class VirtualSoftBB(SoftBBBase):
     def __init__(
-            self, 
-            loss: dict[str, Any], 
-            optimizer: dict[str, Any], 
-            input_layer: dict[str, Any], 
-            scalar_layer: dict, 
-            denoiser: dict, 
-            max_iter: int = 5, 
-            n_iter_train: int = 2, 
-            top_k: int = 1200,
-            n_iter_recycling: int = 3,
-            plot_dir: str | None = None
-            ) -> None:
+        self, 
+        loss: dict[str, Any], 
+        optimizer: dict[str, Any], 
+        input_layer: dict[str, Any], 
+        scalar_layer: dict, 
+        denoiser: dict, 
+        max_iter: int = 1, 
+        n_iter_train: int = 1, 
+        top_k: int = 1200,
+        corr_rmsd_lambda: float = 0.2,
+        n_iter_recycling: int = 3,
+        plot_dir: str | None = None
+        ) -> None:
        
-        super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir)
+        super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir, corr_rmsd_lambda=corr_rmsd_lambda)
         self._input_block = build_object(input_layer, 'models.layers')
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
         self._denoiser = build_object(denoiser, 'models')
@@ -183,7 +184,7 @@ class VirtualSoftBB(SoftBBBase):
         transformation_dicts = self._compute_soft_bb_algorithm(batch)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_embedding'].dtype)
         for transformation_dict in transformation_dicts:
-            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
+            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'],  transformation_dict['corr_rmsd'])
             loss += curr_loss
         loss /= len(transformation_dicts)  # Average loss over all iterations
         
@@ -205,26 +206,13 @@ class VirtualSoftBB(SoftBBBase):
         transformation_dicts = self._compute_soft_bb_algorithm(batch)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_embedding'].dtype)
         for transformation_dict in transformation_dicts:
-            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'])
+            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'], transformation_dict['corr_rmsd'])
             loss += curr_loss
         loss /= len(transformation_dicts)  # Average loss over all iterations
         if self._plot:
             loss_iter1, _ = self._compute_loss(batch, transformation_dict['all_R'][0].detach(), transformation_dict['all_t'][0].detach())
-            plot_correspondences(transformation_dict['all_gamma'], mask, batch['metadata'], [loss_iter1, loss], self._plot_dir)
+            plot_correspondences(transformation_dict['all_gamma'], batch['metadata'], [loss_iter1, loss], self._plot_dir)
             print(f"Loss: {loss.item()}")            
-            metadata = batch['metadata']
-            name = f"{metadata[0]['Ligand_ID']}_{metadata[0]['mov_protein']}_{metadata[0]['ref_protein']}_{metadata[0]['cath_degree']}"
-            env = {
-                'name':name,
-                'batch':batch,
-                'transformation_dict':transformation_dict,
-                'mask':mask,
-                'metadata':batch['metadata'],
-                'loss_dict':loss_dict,
-                'virtual_src_coord':virtual_src_coord,
-                'virtual_tar_coord':virtual_tar_coord,
-            }
-            pickle.dump(env, open(os.path.join(self._plot_dir, f'all_info_{name}.pkl'),'wb') )
         
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': transformation_dict}
         self._metrics.update(batch, outputs)

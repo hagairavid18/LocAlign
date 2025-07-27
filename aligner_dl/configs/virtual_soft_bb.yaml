@@ -11,10 +11,9 @@ model:
   name: VirtualSoftBB
   args:
     # plot_dir: "plots/maskedln-atom-256-.a?KB6Pea3Pq%_pocketloss-dp002/val"
-    max_iter: 1
-    n_iter_train: 1
     top_k: 1000
     n_iter_recycling: 0
+    corr_rmsd_lambda: 0.1
     input_layer:
       name: 
         EmbeddingBlock
@@ -65,7 +64,7 @@ model:
 
             max_lr: 0.0002
             epochs: 30
-            steps_per_epoch: 2365 
+            steps_per_epoch: 2399
             div_factor: 25
             # final_div_factor: 1e4
 

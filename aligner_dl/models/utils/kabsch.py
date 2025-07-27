@@ -62,14 +62,11 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     weights = weights + zero_mask * 1e-6  # Avoid zero weights
     # Normalize weights per batch (optional but stable)
     weights_sum = weights.sum(dim=1, keepdim=True) + 1e-8
-    # print(f"weights_sum: {weights_sum}")
     norm_weights = weights / weights_sum  # [B, K]
-    # print(f"norm_weights max: {norm_weights.max()}")
 
     # Compute weighted centroids
     centroid_P = torch.sum(P * norm_weights.unsqueeze(-1), dim=1)  # [B, 3]
     centroid_Q = torch.sum(Q * norm_weights.unsqueeze(-1), dim=1)  # [B, 3]
-    # print(f"centroid_P: {centroid_P}, centroid_Q: {centroid_Q}")
 
     # Center the point clouds
     P_centered = P - centroid_P.unsqueeze(1)  # [B, K, 3]
@@ -82,18 +79,25 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     dtype = H.dtype
     with torch.autocast(device_type="cuda", enabled=False):
         U, S, raw_Vt = torch.linalg.svd(H.float(), full_matrices=False)
-        
-        # Validate right-handed coordinate system
-        Vt = raw_Vt.clone()
-        for i, value in  enumerate(torch.det(torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2)))):
-            if value < 0.0:
-                Vt[i, -1, :] = -raw_Vt[i, -1, :] # change 0 to batch idx
+
+        # Compute determinant signs: (B,)
+        det_sign = torch.sign(torch.det(torch.bmm(raw_Vt.transpose(1, 2), U.transpose(1, 2))))
+
+        # Fix reflection by adjusting the last row of Vt
+        eye = torch.eye(3, device=H.device, dtype=H.dtype).unsqueeze(0).repeat(H.shape[0], 1, 1)
+        eye[:, -1, -1] = det_sign  # last singular value sign correction
+
+        # Corrected Vt
+        Vt = torch.bmm(eye, raw_Vt)
 
         # Optimal rotation
         R = torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2))
         t =  centroid_Q - torch.bmm(R.transpose(1,2), centroid_P[:, :, None]).squeeze(2)
-        diff = (torch.bmm(P, R.transpose(1,2)) + t[:, None, :]) - Q
-        rmsd_per_bb = torch.sqrt(torch.sum(torch.square(diff), axis=1))
-        rmsd = torch.sqrt(torch.mean(torch.sum(torch.square(diff), axis=1)))
+        
+        diff = (torch.bmm(P, R) + t[:, None, :]) - Q
+        sq_dist = torch.sum(diff ** 2, dim=2)
+        weighted_sq = weights * sq_dist
+        rmsd = torch.sqrt(weighted_sq.sum(dim=1) / weights.sum(dim=1))
+        print(f"rmsd: {rmsd}")
 
-    return R.to(dtype), t.to(dtype), rmsd, rmsd_per_bb
+    return R.to(dtype), t.to(dtype), rmsd
