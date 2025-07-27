@@ -15,20 +15,16 @@ class PocketRMSD(Module):
     def reset(self):
         # Initialize metrics for each degree 1 through 8
         self.pocket_rmsd_per_degree = {deg: 0 for deg in range(0, 9)}
-        self.pocket_rmsd_first_iter_per_degree = {deg: 0 for deg in range(0, 9)}
         self.ligand_rmsd_per_degree = {deg: 0 for deg in range(0, 9)}
-        self.ligand_rmsd_first_iter_per_degree = {deg: 0 for deg in range(0, 9)}
-        self.src_pocket_embeddings_scalar = {deg: 0 for deg in range(0, 9)}
-        self.src_non_pocket_embeddings_scalar = {deg: 0 for deg in range(0, 9)}
-        self.tar_pocket_embeddings_scalar = {deg: 0 for deg in range(0, 9)}
-        self.tar_non_pocket_embeddings_scalar = {deg: 0 for deg in range(0, 9)}
+        self.corr_rmsd_per_degree = {deg: 0 for deg in range(0, 9)}
         self.count_per_degree = {deg: 0 for deg in range(0, 9)}
         self.total_count = 0
-        self.sample_metrics = {'cath_degree_per_sample': [], 'pocket_rmsd_per_sample': [], 'pair_infos': []}
+        self.sample_metrics = {'cath_degree_per_sample': [], 'pocket_rmsd_per_sample': [], "corr_rmsd_per_sample": [], 'pair_infos': []}
 
         # Initialize a dictionary to store protein names and their pocket_rmsd per degree
         self.pair_infos_per_degree = {deg: [] for deg in range(0, 9)}
         self.pocket_rmsd_per_degree_protein = {deg: [] for deg in range(0, 9)}
+        self.corr_rmsd_per_degree_protein = {deg: [] for deg in range(0, 9)}
 
     def update(self, batch, outputs):
         batch_size = len(batch['metadata'])
@@ -47,47 +43,35 @@ class PocketRMSD(Module):
             self.ligand_rmsd_per_degree[cath_degree] += ligand_rmsd
             self.count_per_degree[cath_degree] += 1
 
-            if 'embeddings_dict' in outputs and "src_pocket_scalar_mean" in outputs['embeddings_dict']:
-                self.src_pocket_embeddings_scalar[cath_degree] += outputs['embeddings_dict']['src_pocket_scalar_mean']
-                self.src_non_pocket_embeddings_scalar[cath_degree] += outputs['embeddings_dict']['src_non_pocket_scalar_mean']
-                self.tar_pocket_embeddings_scalar[cath_degree] += outputs['embeddings_dict']['tar_pocket_scalar_mean']
-                self.tar_non_pocket_embeddings_scalar[cath_degree] += outputs['embeddings_dict']['tar_non_pocket_scalar_mean']
-
             self.sample_metrics['cath_degree_per_sample'].append(cath_degree)
             self.sample_metrics['pocket_rmsd_per_sample'].append(pocket_rmsd.cpu())
+            
             self.sample_metrics['pair_infos'].append(pair_info)  # Store the protein name
 
             # Update the dictionary with protein names and pocket_rmsd per degree
             self.pair_infos_per_degree[cath_degree].append(pair_info)
             self.pocket_rmsd_per_degree_protein[cath_degree].append(pocket_rmsd.cpu())
 
-            # First iteration metrics
-            pocket_rmsd_first = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['all_R'][0], outputs['transformation_dict']['all_t'][0], batch['src_pocket_mask'])[batch_id]
-            self.pocket_rmsd_first_iter_per_degree[cath_degree] += pocket_rmsd_first
+            # update corr_rmsd per degree
+            corr_rmsd = outputs['transformation_dict']['corr_rmsd'][batch_id].cpu()
+            self.sample_metrics['corr_rmsd_per_sample'].append(corr_rmsd)
+            self.corr_rmsd_per_degree[cath_degree] += corr_rmsd
+            self.corr_rmsd_per_degree_protein[cath_degree].append(corr_rmsd)
 
         self.total_count += batch_size
 
     def compute(self):
         # Calculate overall averages by summing all per-degree values and dividing by total count
         total_metrics = {
-            'pocket_rmsd': sum(self.pocket_rmsd_per_degree.values()) / self.total_count if self.total_count > 0 else 0,
-            'pocket_rmsd_iter0': sum(self.pocket_rmsd_first_iter_per_degree.values()) / self.total_count if self.total_count > 0 else 0,
-        }
+            'pocket_rmsd': sum(self.pocket_rmsd_per_degree.values()) / self.total_count if self.total_count > 0 else 0        }
 
         # Calculate per-degree averages, handling zero counts
         per_degree_metrics = {
             'pocket_rmsd': {deg: (self.pocket_rmsd_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
-            'pocket_rmsd_iter0': {deg: (self.pocket_rmsd_first_iter_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
             'ligand_rmsd': {deg: (self.ligand_rmsd_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
-            'ligand_rmsd_iter0': {deg: (self.ligand_rmsd_first_iter_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
+            'corr_rmsd': {deg: (self.corr_rmsd_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
         }
         
-        pocket_embeddings_metrics = {
-            'src_pocket_embeddings_scalar': {deg: (self.src_pocket_embeddings_scalar[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
-            'tar_pocket_embeddings_scalar': {deg: (self.tar_pocket_embeddings_scalar[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
-            'src_non_pocket_embeddings_scalar': {deg: (self.src_non_pocket_embeddings_scalar[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
-            'tar_non_pocket_embeddings_scalar': {deg: (self.tar_non_pocket_embeddings_scalar[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
-        }
         counts = {
             'counts_per_degree': self.count_per_degree,
             'total_count': self.total_count
@@ -107,9 +91,9 @@ class PocketRMSD(Module):
         total_proportion_below_4 = total_rmsd_below_4 / self.total_count if self.total_count > 0 else 0
         return {   # Calculate proportion of RMSD < 4 per degree and overall
             **total_metrics, **per_degree_metrics, **counts, **self.sample_metrics, 
-            **pocket_embeddings_metrics, 
             'pair_infos_per_degree': self.pair_infos_per_degree, 
             'pocket_rmsd_per_degree_protein': self.pocket_rmsd_per_degree_protein,
-             'rmsd_below_4_proportion_per_degree': proportion_below_4_per_degree,
+            'corr_rmsd_per_degree_protein': self.corr_rmsd_per_degree_protein,
+            'rmsd_below_4_proportion_per_degree': proportion_below_4_per_degree,
             'rmsd_below_4_total_proportion': total_proportion_below_4,
         }

@@ -50,5 +50,5 @@ def compute_transformation_from_corr_and_coord(max_protein_length: int, soft_cor
         gamma = ((soft_corr / ((1 + (src_tgt_euc_dist / get_d0(max_protein_length).to(soft_corr.device)[:, None])**2)**2)).to(soft_corr.device)).to(dtype)
 
     rotation, translation = compose_transformations(rotations=all_R, translations=all_t)
-    return {'pred_R': rotation, 'pred_t': translation, 'all_R': all_R, 'all_t': all_t, 'all_gamma': all_gamma, 'kabsch_rmsd': rmsd}
+    return {'pred_R': rotation, 'pred_t': translation, 'all_R': all_R, 'all_t': all_t, 'all_gamma': all_gamma, 'corr_rmsd': rmsd}
 

@@ -1,5 +1,5 @@
 trainer:
-  exp_name: esm-embedding-esm2_t30_150M_UR50D_0107_save_fastas2
+  exp_name: kabsch-rmsd2-lambda-04
   tags: ["atom", "esm"]
   max_epochs: 30
   validate_only: false
@@ -13,6 +13,7 @@ model:
     # plot_dir: "plots/maskedln-atom-256-.a?KB6Pea3Pq%_pocketloss-dp002/val"
     top_k: 1000
     n_iter_recycling: 0
+    corr_rmsd_lambda: 0.1
     input_layer:
       name: 
         EmbeddingBlock
@@ -63,7 +64,7 @@ model:
 
             max_lr: 0.0002
             epochs: 30
-            steps_per_epoch: 2365 
+            steps_per_epoch: 2399
             div_factor: 25
             # final_div_factor: 1e4
 

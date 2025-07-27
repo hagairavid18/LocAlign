@@ -10,21 +10,21 @@ from models.utils.plots import plot_correspondences
 
 class VirtualSoftBB(SoftBBBase):
     def __init__(
-            self, 
-            loss: dict[str, Any], 
-            optimizer: dict[str, Any], 
-            input_layer: dict[str, Any], 
-            scalar_layer: dict, 
-            denoiser: dict, 
-            max_iter: int = 1, 
-            n_iter_train: int = 1, 
-            top_k: int = 1200,
-            kabsch_rmsd_lambda: float = 0.2,
-            n_iter_recycling: int = 3,
-            plot_dir: str | None = None
-            ) -> None:
+        self, 
+        loss: dict[str, Any], 
+        optimizer: dict[str, Any], 
+        input_layer: dict[str, Any], 
+        scalar_layer: dict, 
+        denoiser: dict, 
+        max_iter: int = 1, 
+        n_iter_train: int = 1, 
+        top_k: int = 1200,
+        corr_rmsd_lambda: float = 0.2,
+        n_iter_recycling: int = 3,
+        plot_dir: str | None = None
+        ) -> None:
        
-        super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir, kabsch_rmsd_lambda=kabsch_rmsd_lambda)
+        super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir, corr_rmsd_lambda=corr_rmsd_lambda)
         self._input_block = build_object(input_layer, 'models.layers')
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
         self._denoiser = build_object(denoiser, 'models')
@@ -184,7 +184,7 @@ class VirtualSoftBB(SoftBBBase):
         transformation_dicts = self._compute_soft_bb_algorithm(batch)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_embedding'].dtype)
         for transformation_dict in transformation_dicts:
-            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'],  transformation_dict['kabsch_rmsd'])
+            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'],  transformation_dict['corr_rmsd'])
             loss += curr_loss
         loss /= len(transformation_dicts)  # Average loss over all iterations
         
@@ -206,7 +206,7 @@ class VirtualSoftBB(SoftBBBase):
         transformation_dicts = self._compute_soft_bb_algorithm(batch)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_embedding'].dtype)
         for transformation_dict in transformation_dicts:
-            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'], transformation_dict['kabsch_rmsd'])
+            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'], transformation_dict['corr_rmsd'])
             loss += curr_loss
         loss /= len(transformation_dicts)  # Average loss over all iterations
         if self._plot:

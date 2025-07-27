@@ -22,7 +22,7 @@ class SoftBBBase(L.LightningModule, ABC):
             max_iter: int = 5, 
             n_iter_train: int = 2, 
             plot_dir : str | None = None,
-            kabsch_rmsd_lambda: float = 0.2
+            corr_rmsd_lambda: float = 0.2
             ) -> None:
         """
         Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of 
@@ -35,7 +35,7 @@ class SoftBBBase(L.LightningModule, ABC):
             max_iter (int, optional): Since the process is iterative, we define max iterations. Defaults to 5.
             n_iter_train (int, optional): Number of weighted kabsch iterations to train. Defaults to 2.
             plot_dir (str | None, optional): Directory to save plots. Defaults to None.,
-            kabsch_rmsd_lambda (float, optional): Weight for the Kabsch RMSD loss in the total loss. Defaults to 0.2.
+            corr_rmsd_lambda (float, optional): Weight for the Kabsch RMSD loss in the total loss. Defaults to 0.2.
         """        
         super().__init__()
         self._pocket_loss = build_object(loss['pocket'], 'losses') if loss is not None else None
@@ -44,7 +44,7 @@ class SoftBBBase(L.LightningModule, ABC):
         self._metrics = PocketRMSD()
         self._max_iter = max_iter
         self._n_iter_train = n_iter_train
-        self._kabsch_rmsd_lambda = kabsch_rmsd_lambda
+        self._corr_rmsd_lambda = corr_rmsd_lambda
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
         self._plot = False
@@ -69,13 +69,8 @@ class SoftBBBase(L.LightningModule, ABC):
         
         metric_types = {
             'pocket_rmsd': 'valid_pocket_rmsd',
-            'pocket_rmsd_iter0': 'valid_pocket_rmsd_iter0',
             'ligand_rmsd': 'valid_ligand_rmsd',
-            'ligand_rmsd_iter0': 'valid_ligand_rmsd_iter0',
-            'src_pocket_embeddings_scalar': 'src_pocket_embeddings_scalar',
-            'tar_pocket_embeddings_scalar': 'tar_pocket_embeddings_scalar',
-            'src_non_pocket_embeddings_scalar': 'src_non_pocket_embeddings_scalar',
-            'tar_non_pocket_embeddings_scalar': 'tar_non_pocket_embeddings_scalar',
+            'corr_rmsd': 'valid_corr_rmsd',
             'rmsd_below_4_proportion_per_degree': 'rmsd_below_4',
         }
         
@@ -100,14 +95,16 @@ class SoftBBBase(L.LightningModule, ABC):
         for cath_degree in range(1, 9):
             pair_infos = metrics['pair_infos_per_degree'][cath_degree]
             pocket_rmsd_values = metrics['pocket_rmsd_per_degree_protein'][cath_degree]
+            corr_rmsd_values = metrics['corr_rmsd_per_degree_protein'][cath_degree]
             
-            for pair_info, pocket_rmsd in zip(pair_infos, pocket_rmsd_values):
+            for pair_info, pocket_rmsd, corr_rmsd in zip(pair_infos, pocket_rmsd_values, corr_rmsd_values):
                 protein_rmsd_data.append({
                     'ligand': pair_info[0],
                     'src protein': pair_info[1],
                     'tar protein': pair_info[2],
                     'CATH Degree': cath_degree,
-                    'Pocket RMSD': pocket_rmsd.item()
+                    'Pocket RMSD': pocket_rmsd.item(),
+                    'Corr RMSD': corr_rmsd.item(),
                 })
         
         if protein_rmsd_data and hasattr(self.logger.experiment, 'get_name'):
@@ -131,15 +128,15 @@ class SoftBBBase(L.LightningModule, ABC):
         # if batch_idx % 10 == 0 and self._plot:
         #     plot_transformed_point_clouds_interactive(self.logger, batch, outputs['transformation_dict'], epoch=self.current_epoch, step=batch_idx)
 
-    def _compute_loss(self, batch, R_total, t_total, kabsch_rmsd: torch.Tensor):
+    def _compute_loss(self, batch, R_total, t_total, corr_rmsd: torch.Tensor):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
         loss = loss_dict['pocket_rmsd']
         loss_dict.update(self._transformation_loss(batch, R_total, t_total))
         loss_dict.update(self._ligand_loss(batch, R_total, t_total))
-        kabsch_rmsd_loss = kabsch_rmsd.mean()
-        loss_dict['kabsch_rmsd'] = kabsch_rmsd_loss
-        print(f"kabsch_rmsd: {kabsch_rmsd_loss.item()}")
-        loss = loss + self._kabsch_rmsd_lambda * kabsch_rmsd_loss
+        corr_rmsd_loss = corr_rmsd.mean()
+        loss_dict['corr_rmsd'] = corr_rmsd_loss
+        print(f"corr_rmsd: {corr_rmsd_loss.item()}")
+        loss = loss + self._corr_rmsd_lambda * corr_rmsd_loss
         loss_dict['loss'] = loss
         return loss, loss_dict
 
