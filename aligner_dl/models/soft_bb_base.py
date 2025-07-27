@@ -21,7 +21,8 @@ class SoftBBBase(L.LightningModule, ABC):
             optimizer: dict[str, Any] | None, 
             max_iter: int = 5, 
             n_iter_train: int = 2, 
-            plot_dir : str | None = None
+            plot_dir : str | None = None,
+            kabsch_rmsd_lambda: float = 0.2
             ) -> None:
         """
         Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of 
@@ -33,17 +34,17 @@ class SoftBBBase(L.LightningModule, ABC):
             optimizer (dict[str, Any]): optimizer configuration.
             max_iter (int, optional): Since the process is iterative, we define max iterations. Defaults to 5.
             n_iter_train (int, optional): Number of weighted kabsch iterations to train. Defaults to 2.
-            plot_dir (str | None, optional): Directory to save plots. Defaults to None.
+            plot_dir (str | None, optional): Directory to save plots. Defaults to None.,
+            kabsch_rmsd_lambda (float, optional): Weight for the Kabsch RMSD loss in the total loss. Defaults to 0.2.
         """        
         super().__init__()
         self._pocket_loss = build_object(loss['pocket'], 'losses') if loss is not None else None
         self._transformation_loss = build_object(loss['transformation'], 'losses') if loss is not None else None
         self._ligand_loss = build_object(loss['ligand'], 'losses') if loss is not None else None
-        self._use_transformation_loss = loss['use_transformation'] if loss is not None else False
-        self._alpha_loss = 0.5
         self._metrics = PocketRMSD()
         self._max_iter = max_iter
         self._n_iter_train = n_iter_train
+        self._kabsch_rmsd_lambda = kabsch_rmsd_lambda
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
         self._plot = False
@@ -135,13 +136,10 @@ class SoftBBBase(L.LightningModule, ABC):
         loss = loss_dict['pocket_rmsd']
         loss_dict.update(self._transformation_loss(batch, R_total, t_total))
         loss_dict.update(self._ligand_loss(batch, R_total, t_total))
-        # loss = loss_dict['ligand_rmsd']
-        if self._use_transformation_loss:
-            loss = self._alpha_loss * loss_dict['pocket_rmsd'] + (1-self._alpha_loss) * loss_dict['transformation']
         kabsch_rmsd_loss = kabsch_rmsd.mean()
         loss_dict['kabsch_rmsd'] = kabsch_rmsd_loss
         print(f"kabsch_rmsd: {kabsch_rmsd_loss.item()}")
-        loss = loss + 0.2 *  kabsch_rmsd_loss  # Add Kabsch RMSD loss to the total loss
+        loss = loss + self._kabsch_rmsd_lambda * kabsch_rmsd_loss
         loss_dict['loss'] = loss
         return loss, loss_dict
 
