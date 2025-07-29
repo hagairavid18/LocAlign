@@ -337,7 +337,7 @@ def process_alignment(
         for chain in np.unique(query_pocket_residues[:,0]):
             subset = (query_pocket_residues[:,0] == chain)
             indices = query_pocket_residues[subset,1]
-            query_pocket_residues_chimera_formatted.append(f'#3/{chain}:' + ','.join(indices))
+            query_pocket_residues_chimera_formatted.append(f'#2/{chain}:' + ','.join(indices))
         list_commands.append(f'sel ' + '| '.join(query_pocket_residues_chimera_formatted))
         list_commands.append(f'show sel atoms')
         list_commands.append(f'style sel stick')

@@ -92,7 +92,7 @@ class SoftBBBase(L.LightningModule, ABC):
         # Log protein names and pocket_rmsd per degree in a table
         protein_rmsd_data = []
         
-        for cath_degree in range(1, 9):
+        for cath_degree in range(0, 9):
             pair_infos = metrics['pair_infos_per_degree'][cath_degree]
             pocket_rmsd_values = metrics['pocket_rmsd_per_degree_protein'][cath_degree]
             corr_rmsd_values = metrics['corr_rmsd_per_degree_protein'][cath_degree]
