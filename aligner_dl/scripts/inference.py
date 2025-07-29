@@ -29,12 +29,12 @@ def parse_args():
                        help="Specify a single protein pair instead of a CSV.")
     return parser.parse_args()
 
-def save_non_ligand_models(df, output_dir, ligand_id) -> None:
+def save_non_ligand_models(df, output_dir) -> None:
     for _, row in df.iterrows():
-        for protein, chain in [(row['ref_protein'], 'A'), (row['mov_protein'], 'A')]:
-            Protein(pdb_name=protein, chain_id=chain, ligand_name=ligand_id, save_models=True, ligand_dir=output_dir)
+        for protein, chain, ligand in [(row['ref_protein'], 'A', row['ligand']), (row['mov_protein'], 'A', row['ligand'])]:
+            Protein(pdb_name=protein, chain_id=chain, ligand_name=ligand, save_models=True, ligand_dir=output_dir)
 
-def run_scannet(df, output_dir: str, scannet_dir: str, ligand_id: str) -> None:
+def run_scannet(df, output_dir: str, scannet_dir: str) -> None:
     """
     Runs ScanNet feature extraction using hardcoded Python from the 'py_scannet' conda environment.
     """
@@ -44,10 +44,10 @@ def run_scannet(df, output_dir: str, scannet_dir: str, ligand_id: str) -> None:
 
     all_paths = []
     for idx, row in df.iterrows():
-        if not os.path.exists(os.path.join(scannet_dir, ligand_id, f"{row['ref_protein']}_scannet_atoms.pkl")):
-            all_paths.append(os.path.join(output_dir, ligand_id, f"{row['ref_protein']}_non_ligand.ent"))
-        if not os.path.exists(os.path.join(scannet_dir,ligand_id, f"{row['mov_protein']}_scannet_atoms.pkl")):
-            all_paths.append(os.path.join(output_dir, ligand_id, f"{row['mov_protein']}_non_ligand.ent"))
+        if not os.path.exists(os.path.join(scannet_dir, row['ligand'], f"{row['ref_protein']}_scannet_atoms.pkl")):
+            all_paths.append(os.path.join(output_dir, row['ligand'], f"{row['ref_protein']}_non_ligand.ent"))
+        if not os.path.exists(os.path.join(scannet_dir,row['ligand'], f"{row['mov_protein']}_scannet_atoms.pkl")):
+            all_paths.append(os.path.join(output_dir, row['ligand'], f"{row['mov_protein']}_non_ligand.ent"))
 
     cmd = [
         scannet_python,
@@ -74,6 +74,10 @@ def main():
     if args.csv_path:
         df = pd.read_csv(args.csv_path)
         csv_path = args.csv_path
+        # rename columns to match expected format
+        df.rename(columns={'tar protein': 'ref_protein', 'src protein': 'mov_protein'}, inplace=True)
+        df['ref_chain'] = df.get('ref_chain', 'A')
+        df['mov_chain'] = df.get('mov_chain', 'A')
     else:
         # Build DataFrame manually from provided pair
         ref, mov = args.protein_pair
@@ -84,19 +88,19 @@ def main():
         "mov_chain": "A",  # Default chain, modify as needed
         "ligand": args.ligand_id  # Or modify as needed
     }])
-        csv_path = "temp_csv.csv"
-        df.to_csv(csv_path, index=False)
+    csv_path = "temp_csv.csv"
+    df.to_csv(csv_path, index=False)
 
     experiment_name = args.checkpoint.split('/')[1]
     output_dir = os.path.join("inference_results", experiment_name)
     os.makedirs(output_dir, exist_ok=True)
     # Step 1: Save non-ligand models
     print("Saving non-ligand models...")
-    save_non_ligand_models(df, output_dir, args.ligand_id)
+    save_non_ligand_models(df, output_dir)
 
     # Step 2: Run ScanNet feature extraction
     print("Running ScanNet feature extraction...")
-    run_scannet(df, output_dir, args.scannet_dir, args.ligand_id)
+    run_scannet(df, output_dir, args.scannet_dir)
 
     # Step 3: Build dataset and dataloader
     print("Preparing dataset and dataloader...")

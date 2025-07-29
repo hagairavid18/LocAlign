@@ -98,6 +98,6 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
         sq_dist = torch.sum(diff ** 2, dim=2)
         weighted_sq = weights * sq_dist
         rmsd = torch.sqrt(weighted_sq.sum(dim=1) / weights.sum(dim=1))
-        print(f"rmsd: {rmsd}")
+        # print(f"rmsd: {rmsd}")
 
     return R.to(dtype), t.to(dtype), rmsd
