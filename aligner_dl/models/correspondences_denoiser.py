@@ -22,28 +22,22 @@ class CorrespondenceDenoisingModule(nn.Module):
         
         # pre_input_dim = 2 * n_rbf_functions + 8 if with_angles else 2 * n_rbf_functions
         pre_input_dim = n_rbf_functions + 4 if with_angles else n_rbf_functions
+        pre_input_dim = pre_input_dim  +  2  # Each node has two features: distance and angle (if included)
         # pre_input_dim = n_rbf_functions 
         # pre_input_dim = 4
-        # self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
+        self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
         self._rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 100.0), learn_gamma=True)
         
         self.apply(self.init_weights)
         # self._alpha = torch.nn.Parameter(torch.tensor(0.5))  # Scaling factor for the current state
         # self._beta = torch.nn.Parameter(torch.tensor(0.5))  # Scaling factor for the previous state
-#         self._alphas = torch.nn.ParameterList([
-#     torch.nn.Parameter(torch.tensor(0.5)) for _ in range(n_gnn_layers)
+        self._alphas = torch.nn.ParameterList([
+    torch.nn.Parameter(torch.tensor(0.5)) for _ in range(n_gnn_layers)
     
-# ])
-#         self._betas = torch.nn.ParameterList([
-#     torch.nn.Parameter(torch.tensor(0.5)) for _ in range(n_gnn_layers)
-# ])
-
-        # with torch.no_grad():
-        #     self._gnn_layer.lin_rel.weight.fill_(0.05)
-        #     self._gnn_layer.lin_rel.bias.fill_(1.0)
-        #     self._gnn_layer.lin_root.weight.fill_(0.0)
-        # self._gnn_layer.lin_root.weight.requires_grad = False
-        # self._gnn_layer.lin_rel.bias.requires_grad = False
+])
+        self._betas = torch.nn.ParameterList([
+    torch.nn.Parameter(torch.tensor(0.5)) for _ in range(n_gnn_layers)
+])
          
     @staticmethod
     def init_weights(m):
@@ -64,6 +58,10 @@ class CorrespondenceDenoisingModule(nn.Module):
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
         graph_data = self.build_correspondence_graph(top_k_values, top_k_indices, src_frames, tgt_frames)
         A = graph_data.edge_attr  # Edge attributes (weights)
+        # A = A / (A.sum(dim=-1, keepdim=True) + 1e-6)
+        A = A - A.min(dim=-1, keepdim=True).values  # shift so min=0
+
+
         S = top_k_values  # Node features (correspondence scores
         # A: (B, K, K)
         # min_vals = A.view(B, -1).min(dim=1, keepdim=True).values  # shape: (B, 1)
@@ -74,19 +72,18 @@ class CorrespondenceDenoisingModule(nn.Module):
             # graph_data.x = (graph_data.x.reshape(B, self._n_nodes) / graph_data.x.reshape(B,self._n_nodes).sum(1, keepdim=True)).reshape(B *self._n_nodes,1)
             
             S_new = torch.relu(torch.einsum('bik,bk->bi', A, S))
-            # S = S_new * (self._alpha * S) + torch.relu(self._beta * top_k_values)
-            # S = S_new * (S) + torch.relu(0.05 * top_k_values)
-            S = S_new * (S) 
+            S = S_new * (self._alphas[i] * S) + torch.relu(self._betas[i] * top_k_values)
+            print(f" max value before normalization: {S.max(1)}, min: {S.min(1)}, mean: {S.mean(1)} sum: {S.sum(1)}")
             S = S / (torch.sum(S, dim=1, keepdim=True) + 1e-6)  # Normalize to sum to 1
 
-            print(f"max: {S.max()}, min: {S.min()}, mean: {S.mean()}")
+            # print(f"max: {S.max()}, min: {S.min()}, mean: {S.mean()}")
         # S = torch.relu(S)  # Apply ReLU activation
-        # print(f" alpha: {self._alpha.item()}, betas: {self._beta.item()}")
+            print(f" alpha: {self._alphas[i].item()}, betas: {self._betas[i].item()}")
         # Step 4: Update soft correspondences
-        updated_correspondences = S.view(B, -1)  # Reshape to (B, K, 1)
+        # updated_correspondences = S.view(B, -1)  # Reshape to (B, K, 1)
         # updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
 
-        return updated_correspondences, top_k_indices, top_k_values
+        return S, top_k_indices, top_k_values
 
     def extract_top_k_correspondences(
         self, 
@@ -184,9 +181,23 @@ class CorrespondenceDenoisingModule(nn.Module):
             edge_features = torch.cat([edge_features, angle_features], dim=-1)  # Concatenate RBF features
             # edge_features = angle_features
         # Pass through the edge learner
-        # edge_weight = self._edge_learner(edge_features).view(B, -1)  # Shape: (B, num_edges)
+        # Assume node_features is (B, K, F) – can be positions, embeddings, etc.
+        # Example: use top_k_values as scalar feature per node (expand to match edge_features)
+        node_features = top_k_values.unsqueeze(-1)  # (B, K, 1) → treat score as node feature
+
+        # Gather node features for i and j
+        node_features_i = node_features[:, i_idx, :]  # (B, num_edges, F)
+        node_features_j = node_features[:, j_idx, :]  # (B, num_edges, F)
+
+        # Concatenate node features for both endpoints
+        node_pair_features = torch.cat([node_features_i, node_features_j], dim=-1)  # (B, num_edges, 2F)
+
+        # Combine with your existing edge features (distance + angle)
+        edge_features = torch.cat([edge_features, node_pair_features], dim=-1)  # (B, num_edges, total_dim)
+
+        edge_weight = self._edge_learner(edge_features).view(B, -1)  # Shape: (B, num_edges)
         # edge_weight = ( (1 / (1 + distance_features)) / (1 + angle_diffs[...,[0]].abs())).squeeze(-1)
-        edge_weight = ( (1 / (1 + distance_features)) / (1 + (angle_diffs[...,[0]].abs()+ angle_diffs[...,[1]].abs()))).squeeze(-1)
+        # edge_weight = ( (1 / (1 + distance_features)) / (1 + (angle_diffs[...,[0]].abs()+ angle_diffs[...,[1]].abs()))).squeeze(-1)
         #init a matrix of B X K X K
         full_edge_weight = torch.zeros((B, K * K), device=edge_weight.device)
 

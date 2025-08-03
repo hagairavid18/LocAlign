@@ -1,5 +1,5 @@
 trainer:
-  exp_name: matrix-denoiser-10gnn-dp01-handcraft-beta0
+  exp_name: matrix-denoiser-10gnn-dp01-ligand_grouping_0107_corr005
   tags: ["atom", "esm"]
   max_epochs: 30
   validate_only: false
@@ -12,8 +12,8 @@ model:
   args:
     # plot_dir: "plots/maskedln-atom-256-.a?KB6Pea3Pq%_pocketloss-dp002/val"
     top_k: 1000
-    n_iter_recycling: 2
-    corr_rmsd_lambda: 0.15
+    n_iter_recycling: 0
+    corr_rmsd_lambda: 0.05
     input_layer:
       name: 
         EmbeddingBlock
@@ -72,7 +72,7 @@ dataset:
   train:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/homology_0507_05/train.csv
+      df_path: datasets/csv_files/ligand_grouping_0107/train.csv
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
       esm_model: "esm2_t30_150M_UR50D"
       esm_layer: 30
@@ -86,7 +86,7 @@ dataset:
   validation:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/homology_0507_05/val.csv
+      df_path: datasets/csv_files/ligand_grouping_0107/val.csv
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
       esm_model: "esm2_t30_150M_UR50D"
       esm_layer: 30
