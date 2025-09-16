@@ -9,7 +9,7 @@ from Bio.PDB.PDBIO import PDBIO
 from scipy.spatial import distance_matrix
 
 
-from utils.constants import LIGAND_DIR
+from miners.utils.constants import LIGAND_DIR, BaselineHolder
 
 from objects import Protein
 from miners.utils.constants import NOT_ENOUGH_ATOMS_MESSAGE, TOO_MUCH_RESIDUES_MESSAGE, LIGAND_RESIDUE_IS_MISSED_MESSAGE, N_ATOMS_RATIO_MESSAGE, LIGAND_OVERLAP_MESSAGE, ResultHolder
@@ -65,7 +65,7 @@ class ProteinPair:
         self._mov_model_idx = mov_model_idx
         self._save_transformed_models = save_transformed_models
         
-        self._base_dir = f'{ligand_dir}/{ligand_name}/{self._mov_protein._pdb_name}_to_{self._ref_protein._pdb_name}'
+        self._base_dir = f'{ligand_dir}/{ligand_name}/{self._mov_protein._pdb_name}{self._mov_protein._chain_id}_to_{self._ref_protein._pdb_name}{self._ref_protein._chain_id}'
         os.makedirs(self._base_dir, exist_ok=True)
         
         self._ref_model, self._mov_model = self._init_models()
@@ -129,7 +129,7 @@ class ProteinPair:
         
         return bbr, bbc
     
-    def find_ligand_transformations(self, holder: ResultHolder, aligner, min_ligand_atoms: int = 3) -> None:
+    def find_ligand_transformations(self, holder: ResultHolder, aligner, min_ligand_atoms: int = 10) -> None:
         ref_ligand: list[list[Atom]] = self._ref_protein.get_ligand_residues()
         mov_ligand: list[list[Atom]] = self._mov_protein.get_ligand_residues()
         holder.n_residues_ref_ligand = len(ref_ligand)
@@ -138,7 +138,7 @@ class ProteinPair:
         if n_ligand_pairs == 0:
             holder.failure_message =  LIGAND_RESIDUE_IS_MISSED_MESSAGE
             return
-        if n_ligand_pairs > 20:
+        if n_ligand_pairs > 1:
             holder.failure_message = TOO_MUCH_RESIDUES_MESSAGE
             return
         error_message = ""
@@ -185,15 +185,17 @@ class ProteinPair:
         if len(all_R) == 0:
             holder.failure_message = error_message
     
-    def find_protein_transformations(self, holder: ResultHolder, aligner) -> tuple[tuple, tuple, tuple, tuple, str]:
+    def find_protein_transformations(self, holder: BaselineHolder, aligner) -> None:
         
         ref_chain = self._ref_protein.get_model(self._ref_model_idx, True)
         mov_chain = self._mov_protein.get_model(self._mov_model_idx, True)
         ref_coord, seq1, _ = Protein.get_residue_data(ref_chain)
         mov_coord, seq2, _ = Protein.get_residue_data(mov_chain)
-    
-        if aligner.name ==  "DaliAligner":
+        if aligner.name in  ["DaliAligner"]:
             R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, f'{self._ligand_dir}/{self._ligand_name}')
+        elif aligner.name in ["SoftAlignAligner"]:
+            R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, ref_coord, mov_coord,f'{self._ligand_dir}/{self._ligand_name}')
+
         else:
             R, t, rmsd, _ = aligner.impose_structure(ref_coord, mov_coord, seq1, seq2, self._base_dir)
 
@@ -227,8 +229,7 @@ class ProteinPair:
         
         holder.__setattr__(f"{aligner.name}_rotations", R)
         holder.__setattr__(f"{aligner.name}_translations", t)
-        holder.__setattr__(f"{aligner.name}_protein_rmsd", rmsd)
-        holder.__setattr__(f"{aligner.name}_rmsd", ligand_rmsd)
+        holder.__setattr__(f"{aligner.name}_ligand_rmsd", ligand_rmsd)
         # holder.__setattr__(f"{aligner.name}_bbr", all_bbr)
         # holder.__setattr__(f"{aligner.name}_bbc", all_bbc)
 

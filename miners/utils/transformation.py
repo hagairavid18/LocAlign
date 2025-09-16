@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 
-from utils.metrics import rigid_transformation_mse
+from miners.utils.metrics import rigid_transformation_mse
 
 
 def create_transformation_mse_matrix(transformations: list[np.ndarray], points: np.ndarray) -> np.ndarray:

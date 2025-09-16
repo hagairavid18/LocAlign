@@ -1,12 +1,12 @@
 trainer:
-  exp_name: delete-corr-rmsd-loss-lambda-015-recycle2-scale
+  exp_name: pocket-aligner-1708-scannet1509-0gnn-recycling0-lambda05-lr0005
   tags: ["atom", "esm"]
   max_epochs: 30
   validate_only: false
   check_val_every_n_epoch: 1
   gradient_clipping: 30
   # profiler: true
-  # ckpt_path: "checkpoints/recycle-3iter-new-dataset-loss-each-iter/epoch=5-step=25896.ckpt"
+  # ckpt_path: "checkpoints/corr-rmsd-loss-lambda-015/epoch=29-step=71970.ckpt"
 model:
   name: VirtualSoftBB
   args:
@@ -19,7 +19,7 @@ model:
         EmbeddingBlock
       args:
         n_blocks: 3
-        input_dim: 768
+        input_dim: 1004
         hidden_dim: 256
         output_dim: 256
         dropout: 0.1
@@ -72,9 +72,10 @@ dataset:
   train:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/homology_0507_05/train.csv
-      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
+      df_path: datasets/csv_files/homology_1708_05/train.csv
+      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1509'
       esm_model: "esm2_t30_150M_UR50D"
+      use_esm: true
       esm_layer: 30
       # n_samples: 3000
       seed: 41
@@ -86,9 +87,10 @@ dataset:
   validation:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/homology_0507_05/val.csv
-      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs'
+      df_path: datasets/csv_files/homology_1708_05/val.csv
+      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1509'
       esm_model: "esm2_t30_150M_UR50D"
+      use_esm: true
       esm_layer: 30
       # n_samples: 15
       seed: 81

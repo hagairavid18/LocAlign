@@ -1,13 +1,14 @@
 trainer:
-  exp_name: "baseline-1708-TMalign"
+  exp_name: "baseline-1708-dali"
   tags: ["baseline"]
   max_epochs: 30
   validate_only: true
-  profiler: false
+  profiler: false,
+  
 model:
   name: Baseline
   args:
-  model_name: "TMAligner"
+    model_name: "DaliAligner"
  
 dataset:
   validation:
@@ -17,7 +18,7 @@ dataset:
       esm_model: "esm2_t30_150M_UR50D"
       df_path: datasets/csv_files/homology_1708_05/val_baseline.csv
       seed: 81
-      level: "atom"
+      level: "residue"
       # n_samples: 100
       min_cath: 0
       max_cath: 4

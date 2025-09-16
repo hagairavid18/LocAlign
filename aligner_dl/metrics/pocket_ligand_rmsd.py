@@ -53,10 +53,11 @@ class PocketRMSD(Module):
             self.pocket_rmsd_per_degree_protein[cath_degree].append(pocket_rmsd.cpu())
 
             # update corr_rmsd per degree
-            corr_rmsd = outputs['transformation_dict']['corr_rmsd'][batch_id].cpu()
-            self.sample_metrics['corr_rmsd_per_sample'].append(corr_rmsd)
-            self.corr_rmsd_per_degree[cath_degree] += corr_rmsd
-            self.corr_rmsd_per_degree_protein[cath_degree].append(corr_rmsd)
+            if 'corr_rmsd' in outputs['transformation_dict']:
+                corr_rmsd = outputs['transformation_dict']['corr_rmsd'][batch_id].cpu()
+                self.sample_metrics['corr_rmsd_per_sample'].append(corr_rmsd)
+                self.corr_rmsd_per_degree[cath_degree] += corr_rmsd
+                self.corr_rmsd_per_degree_protein[cath_degree].append(corr_rmsd)
 
         self.total_count += batch_size
 

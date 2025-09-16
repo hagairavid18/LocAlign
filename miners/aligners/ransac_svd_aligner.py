@@ -7,8 +7,8 @@ from scipy.cluster import hierarchy
 from scipy.cluster.hierarchy import fcluster, ClusterWarning
 
 from aligners import BaseStructureAligner
-from utils.transformation import create_transformation_mse_matrix
-from utils.plots import plot_mse_matrix, plot_hierarchical_clustering, plot_clustered_rmse_fitness
+from miners.utils.transformation import create_transformation_mse_matrix
+from miners.utils.plots import plot_mse_matrix, plot_hierarchical_clustering, plot_clustered_rmse_fitness
 
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
@@ -59,8 +59,8 @@ class RANSACAligner(BaseStructureAligner):
         unique_clusters = unique_clusters[cluster_counts >= np.sum(cluster_counts) * 0.1]
 
         cluster_representative = np.zeros(len(unique_clusters))
-        if len(unique_clusters) > 1:
-            print(plot_save_dir)
+        # if len(unique_clusters) > 1:
+        #     print(plot_save_dir)
         for i, cluster in enumerate(unique_clusters):
             representative_idx = np.argmax(np.add(1 - rmse[cluster_assignments == cluster], fitness[cluster_assignments == cluster]))
             cluster_representative[i] = np.where(cluster_assignments == cluster)[0][representative_idx]

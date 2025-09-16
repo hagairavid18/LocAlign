@@ -3,40 +3,47 @@ import json
 import logging
 import os
 from datetime import datetime
-import multiprocessing
+import multiprocessing as mp
 from typing import Any
 import pandas as pd
 
-from utils.misc import build_object, save_results_to_csv
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
+from miners.utils.misc import build_object, save_results_to_csv
 from aligners import *
-from utils.process_pair import align_pair
+from miners.utils.process_pair import align_pair
 from parsers.pair import parse_protein_pairs
+
+# multiprocessing.set_start_method("spawn")
 
 CHUNK_SIZE = 5000
 
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-logging.basicConfig(filename=os.path.join("logs", 'align', start_time + ".log"), level=logging.INFO, format='%(message)s')
+os.makedirs(os.path.join("miners", "logs", 'align'), exist_ok=True)
+logging.basicConfig(filename=os.path.join("miners", "logs", 'align', start_time + ".log"), level=logging.INFO, format='%(message)s')
 
 logger = logging.getLogger(__name__)
 
 
-def run(pairs_df: pd.DataFrame, ligand_aligner_config: dict[str, Any], protein_aligner_config: dict[str, Any],
+def run(pairs_df: pd.DataFrame, ligand_aligner_config: dict[str, Any],
          debug: bool = False, save_transformed_models: bool = False, prev_df: pd.DataFrame | None = None) -> None:
      
     ligand_aligner = build_object(ligand_aligner_config, "aligners")
-    protein_aligners = [build_object(aligner_config, "aligners") for aligner_config in protein_aligner_config]
     result_list = []
-    pool = multiprocessing.Pool(30)
+    pool = mp.Pool(mp.cpu_count())
     
     ligand_pairs: list[dict[str, str]] = parse_protein_pairs(pairs_df, prev_df)
 
     for i in range(0, len(ligand_pairs), CHUNK_SIZE):
         chunk = ligand_pairs[i:i + CHUNK_SIZE]
         if not debug:
-            results_async = [pool.apply_async(align_pair, (pair_dict, ligand_aligner, protein_aligners, save_transformed_models)) for pair_dict in chunk]
+            results_async = [pool.apply_async(align_pair, (pair_dict, ligand_aligner, save_transformed_models)) for pair_dict in chunk]
             result_list += [result.get() for result in results_async]
         else:
-            result_list += [align_pair(pair_dict, ligand_aligner, protein_aligners, save_transformed_models) for pair_dict in chunk]
+            result_list += [align_pair(pair_dict, ligand_aligner, save_transformed_models) for pair_dict in chunk]
         save_results_to_csv(result_list, start_time, "alignment_temp_results", prev_df)
     
     pool.close()
@@ -45,6 +52,7 @@ def run(pairs_df: pd.DataFrame, ligand_aligner_config: dict[str, Any], protein_a
 
 
 if __name__ == "__main__":
+    mp.set_start_method("spawn", force=True)
 
     parser = argparse.ArgumentParser(description='alignment parser')
     parser.add_argument('-c', '--config')
@@ -65,4 +73,4 @@ if __name__ == "__main__":
     else:
         prev_df = None
 
-    run(pairs_df, config['ligand_aligner'], config['protein_aligner'], args.debug, config['save_transformed_models'], prev_df)
+    run(pairs_df, config['ligand_aligner'], args.debug, config['save_transformed_models'], prev_df)

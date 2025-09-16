@@ -42,17 +42,19 @@ def main():
         config = yaml.safe_load(f)
 
     # Setup datasets and data loaders
-    train_dataset = build_object(config['dataset']['train'], 'datasets')
+    if 'train' in config['dataset']:
+        train_dataset = build_object(config['dataset']['train'], 'datasets')
+        train_loader = DataLoader(
+            train_dataset, 
+            batch_size=config['dataloader']['train_batch_size'], 
+            collate_fn=custom_collate_fn, 
+            num_workers=config['dataloader']['n_workers'],
+            shuffle=True,
+            pin_memory=True,
+            # sampler=RandomSampler(train_dataset, num_samples=10000, replacement=True)
+        )
+    
     valid_dataset = build_object(config['dataset']['validation'], 'datasets')
-    train_loader = DataLoader(
-        train_dataset, 
-        batch_size=config['dataloader']['train_batch_size'], 
-        collate_fn=custom_collate_fn, 
-        num_workers=config['dataloader']['n_workers'],
-        shuffle=True,
-        pin_memory=True,
-        # sampler=RandomSampler(train_dataset, num_samples=10000, replacement=True)
-    )
     val_loader = DataLoader(
         valid_dataset, 
         batch_size=config['dataloader']['valid_batch_size'], 
@@ -146,7 +148,7 @@ def main():
     trainer = L.Trainer(
         logger=comet_logger if log_exp else None,
         max_epochs=config['trainer']['max_epochs'],
-        check_val_every_n_epoch=config['trainer']['check_val_every_n_epoch'],
+        check_val_every_n_epoch=config['trainer'].pop('check_val_every_n_epoch', 1),
         callbacks=[checkpoint_callback],
         gradient_clip_val=config['trainer'].pop('gradient_clipping', None),
         log_every_n_steps=100,

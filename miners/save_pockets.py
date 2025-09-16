@@ -5,8 +5,8 @@ import logging
 import os
 import pandas as pd
 
-from utils.loading import deserialize_nested_lists
-from utils.process_pair import save_pockets, save_pockets_pdb
+from miners.utils.loading import deserialize_nested_lists
+from miners.utils.process_pair import save_pockets, save_pockets_pdb
 
 # Setup logging
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -27,6 +27,10 @@ def run(pairs_df: pd.DataFrame, debug: bool = False) -> None:
 
         for row_idx, row in ligand_pairs.iterrows():
             logging.info(f"Processing: ref: {row['ref_protein']} mov: {row['mov_protein']}")
+            n_trans = row['n_transformations']
+            if n_trans != 1:
+                logging.warning(f"Skipping {row['ref_protein']} and {row['mov_protein']}. had {n_trans}")
+                continue
 
             try:
                 # Save pocket for each protein

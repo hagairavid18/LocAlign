@@ -3,7 +3,9 @@ import numpy as np
 
 
 
-LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_02_01_2025'
+# LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_02_01_2025'
+# LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_10_08_2025'
+LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_17_08_2025'
 RESULTS_COLUMNS = ['Ligand_ID', 'ref_protein', 'mov_protein', 'ref_chain', 'mov_chain',
                     'n_transformations','rotations', 'translations', 'rmse', 'coverage', 'cath_degree',
                      'ref_ligand_n_atoms', 'mov_ligand_n_atoms', "failure_message", 'p_rotations', 'p_translations', 'p_rmsd', "p_coverage", "p_message"]
@@ -33,4 +35,14 @@ class ResultHolder:
         self.mov_ligand_n_atoms: int = -1
         self.n_residues_ref_ligand: int = -1
         self.n_residues_mov_ligand: int = -1
+        self.failure_message: str = ""
+
+class BaselineHolder:
+    def __init__(self, pair_dict: dict[str, Any], ligand: str):
+        self.Ligand_ID: str = ligand
+        self.ref_protein: str = pair_dict['ref_name']
+        self.mov_protein: str = pair_dict['mov_name']
+        self.ref_chain: str = pair_dict['ref_chain']
+        self.mov_chain: str = pair_dict['mov_chain']
+        self.cath_degree: int = pair_dict['cath_level']
         self.failure_message: str = ""

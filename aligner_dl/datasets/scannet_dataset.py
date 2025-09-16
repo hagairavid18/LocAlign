@@ -26,10 +26,9 @@ class ScannetDataset(BasePairDataset):
     def __init__(
             self, 
             df_path: str, 
-            base_embedding_path: str, 
+            base_embedding_path: str = None, 
             base_data_path: str = LIGAND_DIR, 
-            infer_baseline: bool = False, 
-            level: str = 'residue', 
+            level: str = 'atom', 
             n_samples: int | None = None, 
             min_cath: int = 0, 
             max_cath: int = 8, 
@@ -39,6 +38,7 @@ class ScannetDataset(BasePairDataset):
             inference: bool = False, 
             ligand_column: str = 'Ligand_ID',
             esm_model: str = None,
+            use_esm: bool = True,
             esm_layer: int = 28
             ) -> None:
         """
@@ -48,7 +48,6 @@ class ScannetDataset(BasePairDataset):
             df_path (str): _path to the CSV file containing the dataset metadata.
             base_embedding_path (str): 
             base_data_path (str, optional): _description_. Defaults to LIGAND_DIR.
-            infer_baseline (bool, optional): _description_. Defaults to False.
             level (str, optional): _description_. Defaults to 'residue'.
             n_samples (int | None, optional): _description_. Defaults to None.
             min_cath (int, optional): _description_. Defaults to 0.
@@ -58,6 +57,9 @@ class ScannetDataset(BasePairDataset):
             max_length (int, optional): _description_. Defaults to None.
             inference (bool, optional): _description_. Defaults to False.
             ligand_column (str, optional): _description_. Defaults to 'Ligand_ID'.
+            esm_model (str, optional): Name of the ESM model to use. Defaults to None.
+            use_esm (bool, optional): Whether to use ESM embeddings. Defaults to True.
+            esm_layer (int, optional): Layer of the ESM model to extract embeddings from.
         """        
         super().__init__(
             df_path, 
@@ -73,9 +75,7 @@ class ScannetDataset(BasePairDataset):
         
         self.MAX_LENGTH_DICT = {'residue': 1000, 'atom': 5000, 'pocket': 800}
         self._mmcif_parser = PDBParser()
-        
-        self._infer_baseline = infer_baseline
-        
+                
         if max_length is not None:
             # self.MAX_LENGTH_DICT['residue'] = max_length
             self.MAX_LENGTH_DICT[level] = max_length
@@ -83,6 +83,7 @@ class ScannetDataset(BasePairDataset):
         assert level in ['residue', 'atom', 'pocket'], "level must be one of ['residue', 'atom', 'pocket']"
         self._level = level
 
+        self._with_esm = use_esm
         if esm_model is not None:
             self._esm_layer= esm_layer
             self._init_esm_model(esm_model)
@@ -98,20 +99,13 @@ class ScannetDataset(BasePairDataset):
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
         row = self._df.iloc[idx]
 
-        # if self._infer_baseline:
-        #     return {
-        #         'metadata': row.to_dict(),
-        #         'gt_R': torch.Tensor(row['rotations'][0][0]),
-        #         'gt_t': torch.Tensor(row['translations'][0][0]),
-        #     }
-
         try:
             esm_embeddings_tar = self.extract_esm_embeddings(
-                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['ref_protein'] + '_non_ligand.ent'),
+                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['ref_protein'] + row['ref_chain'] + '_non_ligand_.ent'),
                 chain_name=row['ref_protein'] + '_' + row['ref_chain']
             )
             esm_embeddings_src = self.extract_esm_embeddings(
-                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['mov_protein'] + '_non_ligand.ent'),
+                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['mov_protein'] + row['mov_chain'] + '_non_ligand_.ent'),
                 chain_name=row['mov_protein'] + '_' + row['mov_chain']
             ) 
             embedding_dicts = {
@@ -120,8 +114,8 @@ class ScannetDataset(BasePairDataset):
             }
             # print(f"Read embeddings for {row[self._ligand_column]} {row['mov_protein']} {row['ref_protein']}")
             if not self.inference:
-                src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['mov_protein'])
-                tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['ref_protein'])
+                src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['mov_protein'] + row['mov_chain'])
+                tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['ref_protein'] + row['ref_chain'])
                 if not src_atom_ids == tar_atom_ids:
                     shared_atom_ids = set(src_atom_ids).intersection(tar_atom_ids)
                     src_ligand_coordinates = src_ligand_coordinates[torch.tensor([src_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
@@ -129,15 +123,15 @@ class ScannetDataset(BasePairDataset):
                     assert src_ligand_coordinates.shape == tar_ligand_coordinates.shape
 
         except Exception as e:
-            # print(f"Error reading embeddings for {row[ligand_column]} {row[ligand_column]} {row[ligand_column]}: {e}")
+            print(f"Error reading embeddings for {row['ref_protein']} {row['mov_protein']}: {e}")
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
         
         if not self.inference:
             try:
                 pocket_data = {
-                    "src": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['mov_protein']),
-                    "tar": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['ref_protein'])
+                    "src": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['mov_protein'] + row['mov_chain']),
+                    "tar": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['ref_protein'] + row['ref_chain']),
                 }
                 
             except Exception as e:
@@ -198,14 +192,15 @@ class ScannetDataset(BasePairDataset):
         # embedding_path = os.path.join(self._base_embedding_path, ligand_id,  chain + '.pkl')
         if not os.path.exists(embedding_path):
             logger.info(f"Can't find embedding path for ligand: {ligand_id} protein: {chain}")
-            raise ValueError
+            raise ValueError(
+                f"Can't find scannet embedding path for ligand: {ligand_id} protein: {chain}"
+            )
         with open(embedding_path, 'rb') as f:
             data = pickle.load(f)
         # Example data
         residue_embeddings = data["residue_embeddings"]
-        residue_frames = data["residue_frames"]
         residue_ids = data["residue_ids"]
-        atom_embeddings = data["atomic_embeddings"]
+        atom_embeddings = data["atomic_plus_residue_embedding"]
         atom_residue_index = data["sequence_indices_atom"]  # Residue index for each atom
         atom_frames = data["atomic_frames"]
 
@@ -217,26 +212,14 @@ class ScannetDataset(BasePairDataset):
         atom_frames = np.stack([atom_frames[i] for i in range(len(atom_frames)) if atom_residue_index[i] in valid_residue_indices])
         atom_residue_index = np.array([atom_residue_index[i] for i in range(len(atom_residue_index)) if atom_residue_index[i] in valid_residue_indices])
 
+        if self._with_esm:
+            esm_per_atom = np.stack([esm_embedding_dict[int(id)] for id in atom_residue_index])
 
-        # residue_embeddings_up_pooled = residue_embeddings[atom_residue_index]
-        # atomic_plus_residue_embedding = np.concatenate((atom_embeddings, residue_embeddings_up_pooled),axis=-1)
+            # === Concatenate ===
+            atomic_plus_residue_embedding = np.concatenate([atom_embeddings, esm_per_atom], axis=-1)
+        else:
+            atomic_plus_residue_embedding = atom_embeddings
         
-
-
-        # try:
-        #     esm_vectors = np.stack([
-        #         esm_embedding_dict[res_id] for res_id in valid_residue_indices
-        #     ])  # shape: [num_residues, 1280]
-        # except KeyError as e:
-        #     raise ValueError(f"Missing ESM embedding for residue {e} in ligand {ligand_id}, chain {chain}")
-
-        # === Map ESM embeddings to atoms ===
-        esm_per_atom = np.stack([esm_embedding_dict[int(id)] for id in atom_residue_index])
-        # esm_per_atom = esm_vectors[data["sequence_indices_atom"]]
-
-        # === Concatenate ===
-        atomic_plus_residue_embedding = np.concatenate([atom_embeddings, esm_per_atom], axis=-1)
-        # atomic_plus_residue_embedding = esm_per_atom
         if self._level == 'atom':
             atom_sampled_indices = np.random.choice(len(atom_embeddings), size=min(len(atom_embeddings), self.MAX_LENGTH_DICT['atom']), replace=False)
             atom_embeddings = atom_embeddings[atom_sampled_indices]
@@ -246,7 +229,6 @@ class ScannetDataset(BasePairDataset):
 
         ret_dict = {
             'atom_frames': atom_frames,
-            'residue_frames': residue_frames,
             'atom_embeddings': atomic_plus_residue_embedding,
             'residue_embeddings': residue_embeddings,
             'residue_residue_indices': residue_indices,

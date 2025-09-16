@@ -11,43 +11,49 @@
             "program": "${file}",
             "console": "integratedTerminal"
         },
-        {
-            "name": "align",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "scripts/align.py",
-            "console": "integratedTerminal",
-            "justMyCode": false, 
-            "args": [
-                "--config" ,
-                "configs/align_config.json",
-                "--debug",
-            ]
-        },
+       {
+        "name": "align",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "miners/scripts/align.py",
+        "console": "integratedTerminal",
+        "justMyCode": false,
+        "args": [
+            "--config",
+            "miners/configs/align_config.json",
+            "--debug"
+        ],
+        "env": {
+            "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/miners"
+        }
+    },
+
         {
             "name": "baseline",
             "type": "debugpy",
             "request": "launch",
-            "program": "baseline.py",
+            "program": "miners/scripts/baseline.py",
             "console": "integratedTerminal",
             "justMyCode": false, 
             "args": [
                 "--config" ,
-                "rmsd_config.json",
-                "--debug",
+                "miners/configs/baseline_config.json",
+                "--save_path",
+                "datasets/csv_files/homology_1708_05/val_baseline.csv",
+                // "--debug",
             ]
         },
         {
             "name": "save pockets",
             "type": "debugpy",
             "request": "launch",
-            "program": "save_pockets.py",
+            "program": "miners/save_pockets.py",
             "console": "integratedTerminal",
             "justMyCode": false, 
             "args": [
                 "--config" ,
-                "configs/save_pockets_config.json",
-                "--debug",
+                "miners/configs/save_pockets_config.json",
+                // "--debug",
             ]
         },
         {
@@ -73,6 +79,34 @@
             "args": [
                 "--config" ,
                 "aligner_dl/configs/tm_align.yaml",
+                "--validate_only",
+             
+            ]
+        },
+        {
+            "name": "infer dali",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "aligner_dl/trainers/lightning_trainer.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+                "--config" ,
+                "aligner_dl/configs/dali.yaml",
+                "--validate_only",
+             
+            ]
+        },
+        {
+            "name": "infer softalign",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "aligner_dl/trainers/lightning_trainer.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+                "--config" ,
+                "aligner_dl/configs/softalign.yaml",
                 "--validate_only",
              
             ]
@@ -114,20 +148,7 @@
                 "/home/iscb/wolfson/hagairavid/scannet_outputs",
             ]
         },
-       {
-            "name": "creae chimera",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "miners/scripts/create_dirs_for_plots_inference.py",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "args": [
-                "--pickle_dir", "results/triads",
-                "--output_dir", "results/triads",
-                "--ligand_dir", "/home/iscb/wolfson/hagairavid/triads",
-                "--base_path", "/home/iscb/wolfson/hagairavid/ligand_alligner"
-            ],
-        },
+       
 
         
         {
@@ -140,14 +161,16 @@
             "args": [
                 "--input_csv", 
                 // "results/alignment_temp_results/2025-02-01_17-48-34_3000.csv",
-                "results/alignment_results/2025-02-04_09-07-32_106886.csv",
+                // "results/alignment_results/2025-02-04_09-07-32_106886.csv",
+                "results/alignment_results/2025-08-17_11-19-35_146827.csv",
                 "--output_dir", 
-                "datasets/csv_files/protein_grouping_1206",       // Directory to save the train, val, and test CSVs
+                // "datasets/csv_files/protein_grouping_1206",       // Directory to save the train, val, and test CSVs
+                "datasets/csv_files/ligand_1708",       // Directory to save the train, val, and test CSVs
                 "--test_size", 
                 "0.0",               // Optional: Adjust the test set size (default 0.2)
                 "--val_size", 
                 "0.2",
-                // "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
+                "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
             ]
         }
     ]

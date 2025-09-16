@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from utils.loading import serialize_nested_lists
+from miners.utils.loading import serialize_nested_lists
 
 
 def build_object(config: dict, default_module: str|None = None) -> Any:
@@ -25,9 +25,7 @@ def build_object(config: dict, default_module: str|None = None) -> Any:
          return None
     return getattr(importlib.import_module(module_name), config['name'])(**config.get('args', {}))
 
-def save_results_to_csv(results: list[tuple] | pd.DataFrame, start_time: str, base_dir: str = "temp_results", prev_results: pd.DataFrame |  None = None) -> None:
-    save_dir = os.path.join("results", base_dir)
-    os.makedirs(save_dir , exist_ok=True)
+def save_results_to_csv(results: list[tuple] | pd.DataFrame, start_time: str, base_dir: str = "temp_baseline", prev_results: pd.DataFrame |  None = None, save_path: str = None) -> None:
     df = results if isinstance(results, pd.DataFrame) else  pd.DataFrame([obj.__dict__ for obj in results])
     
     for col in df.columns:
@@ -36,7 +34,12 @@ def save_results_to_csv(results: list[tuple] | pd.DataFrame, start_time: str, ba
             
     if prev_results is not None:
         df = pd.concat([prev_results, df], ignore_index=True)
-    df.to_csv(f'{save_dir}/{start_time}_{df.shape[0]}.csv', index=False)
+    if save_path is None:
+        save_dir = os.path.join("results", base_dir)
+        os.makedirs(save_dir , exist_ok=True)
+        save_path = f'{save_dir}/{start_time}_{df.shape[0]}.csv'
+    df.to_csv(save_path, index=False)
+    return df
 
 
 def flatten_dict(d, parent_key='', sep='_'):

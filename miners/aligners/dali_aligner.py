@@ -52,8 +52,8 @@ class DaliAligner():
        
         mov_name, mov_chain = mov_protein._pdb_name, mov_protein._chain_id
         ref_name, ref_chain = ref_protein._pdb_name, ref_protein._chain_id
-        mov_path = os.path.join('..', mov_name + '_non_ligand.ent')
-        ref_path = os.path.join('..', ref_name + '_non_ligand.ent')
+        mov_path = os.path.join('..', mov_name + mov_chain + '_non_ligand_.ent')
+        ref_path = os.path.join('..', ref_name + ref_chain + '_non_ligand_.ent')
         try:
             temp_dir = tempfile.mkdtemp(prefix=os.path.join(self.HOME_PATH, "ligand_aligner", ligand_dir + '/'))
             os.makedirs(temp_dir, exist_ok=True)
@@ -66,7 +66,7 @@ class DaliAligner():
                                               ], capture_output=True, text=True, check=True)
 
             matrix, rmsd, _ = DaliAligner.extract_matrices_combined(f'{ref_name}{ref_chain}.txt')
-            os.chdir('/home/iscb/wolfson/hagairavid/ligand_aligner')
+            os.chdir('/home/iscb/wolfson/hagairavid/ligand_alligner')
             try:
                 shutil.rmtree(temp_dir)
             except OSError as e:

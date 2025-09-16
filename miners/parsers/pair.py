@@ -9,12 +9,12 @@ def parse_protein_pairs(pairs_df: pd.DataFrame, prev_df: pd.DataFrame | None = N
     for _, line in pairs_df.iterrows():
         pairs.append(
             dict(
-                ligand_id = line['ligand_id'],
+                ligand_id = line['Ligand_ID'],
                 ref_name = line['ref_protein'],
                 ref_chain = line['ref_chain'],
                 mov_name = line['mov_protein'],
                 mov_chain = line['mov_chain'],
-                cath_level = line['CATH_degree'],
+                cath_level = line['cath_degree'],
             ))
     # logging.info(f"found {len(pairs)} pairs for {ligand}")
     if prev_df is None:

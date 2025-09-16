@@ -15,12 +15,16 @@ from Bio.PDB.PDBIO import PDBIO
 from Bio.PDB.Structure import Structure
 from Bio.PDB.Atom import Atom
 import numpy as np
-from Bio.PDB.Polypeptide import protein_letters_3to1
+# from Bio.PDB.Polypeptide import protein_letters_3to1
 
-from utils.constants import LIGAND_DIR
+from miners.utils.constants import LIGAND_DIR
 
 
 logger = logging.getLogger(__name__)
+
+protein_letters_3to1 = {'ALA':'A','ARG':'R','ASN':'N','ASP':'D','CYS':'C','GLN':'Q','GLU':'E',
+                  'GLY':'G','HIS':'H','ILE':'I','LEU':'L','LYS':'K','MET':'M','PHE':'F',
+                  'PRO':'P','SER':'S','THR':'T','TRP':'W','TYR':'Y','VAL':'V','MSE':'M'}
 
 
 warnings.filterwarnings("ignore", category=PDBConstructionWarning)
@@ -90,7 +94,7 @@ class Protein:
             save_dir = f'{self._ligand_dir}/{self._ligand_name}'
             io = PDBIO()
             io.set_structure(ligand_model)
-            io.save(os.path.join(save_dir, f"{self._pdb_name}_ligand.pdb"))
+            io.save(os.path.join(save_dir, f"{self._pdb_name}{self._chain_id}_ligand.pdb"))
         return ligand_model, num_of_ligand_atoms
     
     def _get_non_ligand_model(self, save: bool = True) -> tuple[Model, int]:
@@ -111,7 +115,7 @@ class Protein:
             os.makedirs(save_dir, exist_ok=True)
             io = PDBIO()
             io.set_structure(non_ligand_model)
-            io.save(os.path.join(save_dir, f"{self._pdb_name}_non_ligand.ent"))
+            io.save(os.path.join(save_dir, f"{self._pdb_name}{self._chain_id}_non_ligand_.ent"))
 
         return non_ligand_model, sum(num_of_ligand_atoms)
     
@@ -295,6 +299,8 @@ class Protein:
         num_atoms = [len(residue) for residue in ligand_chain]
         logger.debug(f"Ligand has {num_atoms} atoms")
         ligand_model.add(ligand_chain)
+        if len(ligand_model) == 0:
+            raise ValueError(f"Ligand {ligand_name} not found in the model.")
         return ligand_model, num_atoms
    
     @staticmethod

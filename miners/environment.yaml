@@ -1,4 +1,4 @@
-name: aligner
+name: miner
 
 channels:
   - defaults  # Add more channels if needed
@@ -24,3 +24,5 @@ dependencies:
  
 pip:
   - tmtools
+  - jax[cpu]
+  - git+https://github.com/deepmind/dm-haiku

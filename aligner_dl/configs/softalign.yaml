@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "baseline-1708-TMalign"
+  exp_name: "baseline-1708-Softalign-sw"
   tags: ["baseline"]
   max_epochs: 30
   validate_only: true
@@ -7,7 +7,7 @@ trainer:
 model:
   name: Baseline
   args:
-  model_name: "TMAligner"
+    model_name: "SoftAlignAligner"
  
 dataset:
   validation:

@@ -4,91 +4,66 @@ import logging
 import os
 from datetime import datetime
 import multiprocessing
-import numpy as np
+from typing import Any
 import pandas as pd
 
-from utils.misc import save_results_to_csv
-from utils.loading import deserialize_nested_lists
-from aligners import *
-from utils.process_pair import transformations_rmsd
+from miners.utils.misc import build_object, save_results_to_csv
+from miners.utils.process_pair import baseline_pair
+from parsers.pair import parse_protein_pairs
+
+CHUNK_SIZE = 50
 
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-log_dir = os.path.join("logs", "baseline")
-os.makedirs(log_dir, exist_ok=True)
-logging.basicConfig(filename=os.path.join(log_dir, start_time + ".log"), level=logging.INFO, format='%(message)s')
+os.makedirs(os.path.join("miners", "logs", 'baseline'), exist_ok=True)
+logging.basicConfig(filename=os.path.join("miners", "logs", 'baseline', start_time + ".log"), level=logging.INFO, format='%(message)s')
 
 logger = logging.getLogger(__name__)
 
 
-def run(pairs_df: pd.DataFrame, aligners: list[str], debug: bool = False) -> None:
+def run(pairs_df: pd.DataFrame, protein_aligner_config: dict[str, Any], save_path: str,
+         debug: bool = False, prev_df: pd.DataFrame | None = None) -> None:
      
-    pool = multiprocessing.Pool()
+    protein_aligners = [build_object(aligner_config, "aligners") for aligner_config in protein_aligner_config]
+    result_list = []
+    pool = multiprocessing.Pool(30)
     
-    logging.info(f"\compute rmsd for: {aligners}\n")
+    ligand_pairs: list[dict[str, str]] = parse_protein_pairs(pairs_df, prev_df)
+
+    for i in range(0, len(ligand_pairs), CHUNK_SIZE):
+        chunk = ligand_pairs[i:i + CHUNK_SIZE]
+        if not debug:
+            results_async = [pool.apply_async(baseline_pair, (pair_dict, protein_aligners)) for pair_dict in chunk]
+            result_list += [result.get() for result in results_async]
+        else:
+            result_list += [baseline_pair(pair_dict, protein_aligners) for pair_dict in chunk]
+        save_results_to_csv(result_list, start_time, "baseline_temp_results_sw", prev_df)
     
-    for ligand_idx, (ligand, ligand_pairs) in enumerate(pairs_df.groupby('Ligand_ID')):
-        logging.info(f"\nProcess ligand: {ligand}\n")
-
-        for row_idx, row in ligand_pairs.iterrows():
-            logging.info(f"ref: {row['ref_protein']} mov: {row['mov_protein']}")
-
-            gt_T, pred_T = np.eye(4), np.eye(4)
-            for aligner in aligners:
-                if len(row[f'{aligner}_rotations']) < 1:
-                    pairs_df.at[row_idx, 'rmsd'] = -1
-                    continue
-                results_async, row_rmsd = [], []
-                try:
-                    pred_T[:3, :3] = row[f'{aligner}_rotations']
-                    pred_T[:3, 3] = row[f'{aligner}_translations']
-                except:
-                    pred_T[:3, :3] = row[f'{aligner}_rotations'][0]
-                    pred_T[:3, 3] = row[f'{aligner}_translations'][0]
-
-                # logging.info(f"{aligner}: \n{pred_T}")
-                for ligand_res_idx, residue_rotations in enumerate(row['rotations']):
-                    for j, rotation in enumerate(residue_rotations):
-                        # logging.info(f"ligand_res_idx: {ligand_res_idx}")
-                        gt_T[:3, :3] = rotation
-                        gt_T[:, 3] = row['translations'][ligand_res_idx][j]
-                        # logging.info(f"GT: \n{gt_T}")
-                        # logging.info(f"{aligner}: \n{pred_T}")
-                        
-                        if not debug:
-                            results_async.append(pool.apply_async(transformations_rmsd, (row['mov_protein'], row['mov_chain'], gt_T.copy(), pred_T.copy() , ligand, ligand_res_idx // row['n_residues_ref_ligand'])))
-                        else:
-                            row_rmsd.append(transformations_rmsd(row['mov_protein'], row['mov_chain'], gt_T.copy(), pred_T.copy() , ligand, ligand_res_idx // row['n_residues_ref_ligand'], save_pocket=True))
-                if not debug:
-                    row_rmsd = [result.get() for result in results_async]
-                    row_rmsd = [rmsd for rmsd in row_rmsd if rmsd[0] is not None]
-                logging.info(f"{aligner} pocket_rmsd: {[rmsd[0] for rmsd in row_rmsd]} ligand_rmsd: {[rmsd[1] for rmsd in row_rmsd]} cath: {row['cath_degree']}")
-                pairs_df.at[row_idx, f'{aligner}_pocket_rmsd'] = min([rmsd[0] for rmsd in row_rmsd]) if len(row_rmsd) > 0 else 0
-                pairs_df.at[row_idx, f'{aligner}_ligand_rmsd'] = min([rmsd[1] for rmsd in row_rmsd]) if len(row_rmsd) > 0 else 0
-        
     pool.close()
     pool.join()
-    save_results_to_csv(pairs_df, start_time, 'baseline_results')
+    df = save_results_to_csv(result_list, start_time, "baseline_results_sw", prev_df)
+    # pairs_df = pairs_df.drop(['TMAligner_protein_rmsd', 'TMAligner_rmsd', 'TMAligner_rotations', 'TMAligner_translations'], axis=1)
+    merged_df = pd.merge(pairs_df, df, on=['Ligand_ID', 'ref_protein', 'ref_chain', 'mov_protein', 'mov_chain', 'cath_degree'], how='left')
+    merged_df.to_csv(save_path, index=False)
+    logging.info(f"Saved results to {save_path} {len(merged_df)} rows.")
 
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description='RMSD parser')
-
+    parser = argparse.ArgumentParser(description='alignment parser')
     parser.add_argument('-c', '--config')
-    parser.add_argument('-d', '--debug', action='store_true', help='In debug mode, multiprocessing is disabled')
-
+    parser.add_argument('-d', '--debug', action='store_true', help='In debug mode, multiprocess is disabled')
+    parser.add_argument('-p', '--save_path', type=str, default=None, help='Path to save the results CSV file')
 
     args = parser.parse_args()
     
     with open(args.config) as f:
         config = json.load(f)
     
-    pairs = pd.read_csv(config['pairs_df'])
-    for col in pairs.columns:
-        if pairs[col].apply(lambda x: isinstance(x, str) and x.startswith('[') and x.endswith(']')).any():
-            pairs[col] = pairs[col].fillna('[]')
-            
-            pairs[col] = pairs[col].apply(lambda x: json.loads(x))
-            pairs[col] = pairs[col].apply(lambda x: deserialize_nested_lists(x, col))
+    pairs_df = pd.read_csv(config['df_path'])
 
-    run(pairs, config['protein_aligner'], args.debug)
+    if config['prev_df_path']:
+        prev_df = pd.read_csv(config['prev_df_path'])
+    else:
+        prev_df = None
+
+    run(pairs_df, config['protein_aligner'], args.save_path, args.debug, prev_df)

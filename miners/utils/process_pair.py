@@ -5,11 +5,11 @@ import pickle
 
 from aligners import *
 from objects import ProteinPair, Protein
-from utils.constants import ResultHolder, LIGAND_DIR
+from miners.utils.constants import BaselineHolder, ResultHolder, LIGAND_DIR
 
 logger = logging.getLogger(__name__)
 
-def align_pair(pair_dict: dict, ligand_aligner: BaseStructureAligner, protein_aligners: list[BaseStructureAligner],
+def align_pair(pair_dict: dict, ligand_aligner: BaseStructureAligner,
              save_transformed_models: bool = False, min_ligand_atoms: int = 3) -> None:
     ligand = pair_dict['ligand_id']
     holder = ResultHolder(pair_dict, ligand)
@@ -31,6 +31,26 @@ def align_pair(pair_dict: dict, ligand_aligner: BaseStructureAligner, protein_al
     holder.mov_ligand_n_atoms = mov_ligand_n_atoms
                 
     pair.find_ligand_transformations(holder, ligand_aligner, min_ligand_atoms=min_ligand_atoms)
+    print(f"finished aligning {pair_dict['ref_name']} to {pair_dict['mov_name']} for ligand {ligand}")
+
+    return holder
+
+
+def baseline_pair(pair_dict: dict, protein_aligners: list[BaseStructureAligner]) -> None:
+    ligand = pair_dict['ligand_id']
+    holder = BaselineHolder(pair_dict, ligand)
+    logging.info(f"{pair_dict['ref_name']} {pair_dict['mov_name']}")
+    if len(pair_dict['ref_chain']) != 1 or len(pair_dict['mov_chain']) != 1:
+        holder.failure_message = "invalid chain given"
+        return holder
+    try:
+        ref_protein = Protein(pair_dict["ref_name"], pair_dict["ref_chain"], ligand, save_models=True)
+        mov_protein = Protein(pair_dict["mov_name"], pair_dict["mov_chain"], ligand, save_models=True)
+        pair = ProteinPair(ref_protein, mov_protein, ligand, save_transformed_models=False)
+    except Exception as e:
+        logging.error(f"Error loading proteins: {e}")
+        holder.failure_message = str(type(e))
+        return holder
     
     for aligner in protein_aligners:
         pair.find_protein_transformations(holder, aligner)
@@ -69,7 +89,7 @@ def save_pockets(mov_name: str, mov_chain: str, ligand: str, ligand_res_idx: int
         ligand_res_idx (int): Ligand residue index.
     """
     # Define path for saving the combined data
-    pocket_data_path = f'{LIGAND_DIR}/{ligand}/{mov_name}_pocket_data.pkl'
+    pocket_data_path = f'{LIGAND_DIR}/{ligand}/{mov_name}{mov_chain}_pocket_data.pkl'
     if not os.path.exists(pocket_data_path):
 
         # Load protein object

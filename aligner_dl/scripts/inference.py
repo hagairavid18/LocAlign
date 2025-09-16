@@ -31,7 +31,7 @@ def parse_args():
 
 def save_non_ligand_models(df, output_dir) -> None:
     for _, row in df.iterrows():
-        for protein, chain, ligand in [(row['ref_protein'], 'A', row['ligand']), (row['mov_protein'], 'A', row['ligand'])]:
+        for protein, chain, ligand in [(row['ref_protein'], 'A', row['ligand']), (row['mov_protein'], 'A', row['ligand'])]: # TODO: handle multiple chains
             Protein(pdb_name=protein, chain_id=chain, ligand_name=ligand, save_models=True, ligand_dir=output_dir)
 
 def run_scannet(df, output_dir: str, scannet_dir: str) -> None:
@@ -44,10 +44,10 @@ def run_scannet(df, output_dir: str, scannet_dir: str) -> None:
 
     all_paths = []
     for idx, row in df.iterrows():
-        if not os.path.exists(os.path.join(scannet_dir, row['ligand'], f"{row['ref_protein']}_scannet_atoms.pkl")):
-            all_paths.append(os.path.join(output_dir, row['ligand'], f"{row['ref_protein']}_non_ligand.ent"))
-        if not os.path.exists(os.path.join(scannet_dir,row['ligand'], f"{row['mov_protein']}_scannet_atoms.pkl")):
-            all_paths.append(os.path.join(output_dir, row['ligand'], f"{row['mov_protein']}_non_ligand.ent"))
+        if not os.path.exists(os.path.join(scannet_dir, row['ligand'], f"{row['ref_protein']}{row['ref_chain']}_scannet_atoms.pkl")):
+            all_paths.append(os.path.join(output_dir, row['ligand'], f"{row['ref_protein']}{row['ref_chain']}_non_ligand_.ent"))
+        if not os.path.exists(os.path.join(scannet_dir,row['ligand'], f"{row['mov_protein']}{row['mov_chain']}_scannet_atoms.pkl")):
+            all_paths.append(os.path.join(output_dir, row['ligand'], f"{row['mov_protein']}{row['mov_chain']}_non_ligand_.ent"))
 
     cmd = [
         scannet_python,
