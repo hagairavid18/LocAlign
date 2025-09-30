@@ -1,6 +1,6 @@
 trainer:
-  exp_name: "baseline-1708-Softalign-sw"
-  tags: ["baseline"]
+  exp_name: "baseline-2409-Softalign-sw-ligand_split"
+  tags: ["baseline", "ligand_split"]
   max_epochs: 30
   validate_only: true
   profiler: false
@@ -13,9 +13,9 @@ dataset:
   validation:
     name: ScannetDataset
     args:
-      base_embedding_path: /home/iscb/wolfson/hagairavid/scannet_outputs
+      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1709'
       esm_model: "esm2_t30_150M_UR50D"
-      df_path: datasets/csv_files/homology_1708_05/val_baseline.csv
+      df_path: datasets/csv_files/ligand_1708/val_baseline.csv
       seed: 81
       level: "atom"
       # n_samples: 100

@@ -25,13 +25,14 @@ def parse_args():
     parser.add_argument("--ligand_id", type=str, default="general", help="Ligand ID to use for non-ligand models.")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--csv_path", type=str, help="Path to CSV file with ref/mov chains.")
-    group.add_argument("--protein_pair", nargs=2, metavar=("REF_PROTEIN", "MOV_PROTEIN"),
+    group.add_argument("--protein_pair", nargs=4, metavar=("REF_PROTEIN", "REF_CHAIN", "MOV_PROTEIN", "MOV_CHAIN"),
                        help="Specify a single protein pair instead of a CSV.")
+    parser.add_argument("--base_save_dir", type=str, default="inference_results", help="Directory to save inference results.")
     return parser.parse_args()
 
 def save_non_ligand_models(df, output_dir) -> None:
     for _, row in df.iterrows():
-        for protein, chain, ligand in [(row['ref_protein'], 'A', row['ligand']), (row['mov_protein'], 'A', row['ligand'])]: # TODO: handle multiple chains
+        for protein, chain, ligand in [(row['ref_protein'], row['ref_chain'], row['ligand']), (row['mov_protein'],row['mov_chain'], row['ligand'])]: # TODO: handle multiple chains
             Protein(pdb_name=protein, chain_id=chain, ligand_name=ligand, save_models=True, ligand_dir=output_dir)
 
 def run_scannet(df, output_dir: str, scannet_dir: str) -> None:
@@ -39,7 +40,7 @@ def run_scannet(df, output_dir: str, scannet_dir: str) -> None:
     Runs ScanNet feature extraction using hardcoded Python from the 'py_scannet' conda environment.
     """
     script_path = "/home/iscb/wolfson/hagairavid/ScanNet_Ub/run_scannet.py"
-    scannet_python = "/home/iscb/wolfson/hagairavid/miniforge3/envs/py_scannet/bin/python"  # Adjust to your system
+    scannet_python = "/home/iscb/wolfson/hagairavid/miniforge3/envs/miner/envs/py_scannet_keras3/bin/python"  # Adjust to your system
     os.makedirs(scannet_dir, exist_ok=True)
 
     all_paths = []
@@ -75,24 +76,22 @@ def main():
         df = pd.read_csv(args.csv_path)
         csv_path = args.csv_path
         # rename columns to match expected format
-        df.rename(columns={'tar protein': 'ref_protein', 'src protein': 'mov_protein'}, inplace=True)
-        df['ref_chain'] = df.get('ref_chain', 'A')
-        df['mov_chain'] = df.get('mov_chain', 'A')
+        df.rename(columns={'Ligand_ID': 'ligand'}, inplace=True)
     else:
         # Build DataFrame manually from provided pair
-        ref, mov = args.protein_pair
+        ref, ref_chain, mov, mov_chain = args.protein_pair
         df = pd.DataFrame([{
         "ref_protein": ref,
         "mov_protein": mov,
-        "ref_chain": "A",  # Default chain, modify as needed
-        "mov_chain": "A",  # Default chain, modify as needed
+        "ref_chain": ref_chain, 
+        "mov_chain": mov_chain,
         "ligand": args.ligand_id  # Or modify as needed
     }])
     csv_path = "temp_csv.csv"
     df.to_csv(csv_path, index=False)
 
     experiment_name = args.checkpoint.split('/')[1]
-    output_dir = os.path.join("inference_results", experiment_name)
+    output_dir = os.path.join(args.base_save_dir, experiment_name)
     os.makedirs(output_dir, exist_ok=True)
     # Step 1: Save non-ligand models
     print("Saving non-ligand models...")
@@ -131,7 +130,7 @@ def main():
     model.to(device)
     model.eval()
 
-    scannet_python = "/home/iscb/wolfson/hagairavid/miniforge3/envs/py_scannet/bin/python"
+    python_path = "/home/iscb/wolfson/hagairavid/miniforge3/envs/miner/envs/py_scannet_keras3/bin/python"  # Adjust to your system"
     script_path = "miners/scripts/chimera_pocket_viz.py"
 
     with torch.no_grad():
@@ -142,6 +141,7 @@ def main():
             top_k_corr_indices= torch.topk(preds["corr_values"][0], 10)[1]
             top_corr_values = preds["corr_values"][0][top_k_corr_indices]  # Get top 10 correlation values
             top_corr_indices = preds["corr_indices"][0][top_k_corr_indices]  # Get top 10 correlation values]
+            top_corr_indices_atom = preds["corr_atom_indices"][0][top_k_corr_indices]  # Get top 10 correlation values]
             ref = metadata["ref_protein"]
             mov = metadata["mov_protein"]
             ligand = metadata.get("ligand", "general")
@@ -150,24 +150,29 @@ def main():
                 print(f"⚠️ Skipping visualization for batch {idx} due to missing metadata")
                 continue
 
-            base_folder = os.path.join('inference_results', experiment_name, f"{ref}_{mov}")
+            base_folder = os.path.join(output_dir, f"{ref}_{mov}_cath{metadata['cath_degree']}_{ligand}_rmsd{metadata['Pocket RMSD']:.1f}")
             os.makedirs(base_folder, exist_ok=True)
 
             trans_dict = preds["transformation_dict"]
 
             # correspondences handling
             model_output_path = os.path.join(base_folder, f"{mov}_{ref}_output.npz")
-            np.savez_compressed(model_output_path, top_corr_values=top_corr_values.numpy(), top_corr_indices=top_corr_indices.numpy(), R=trans_dict['pred_R'][0].numpy(), t=trans_dict['pred_t'][0].numpy())
+            np.savez_compressed(model_output_path, 
+                                top_corr_values=top_corr_values.numpy(), 
+                                top_corr_indices=top_corr_indices.numpy(), 
+                                top_corr_indices_atom=top_corr_indices_atom.numpy(),
+                                R=trans_dict['pred_R'][0].numpy(), t=trans_dict['pred_t'][0].numpy())
 
             # Build the command
             cmd = [
-                scannet_python,
+                python_path,
                 script_path,
                 "--base_folder", base_folder,
+                "--scannet_dir", args.scannet_dir,
                 "--model_output_path", model_output_path,
-                "--template", ref + "_A" ,
+                "--template", ref + metadata['ref_chain'],
                 "--template_ligand", ligand,
-                "--query", mov + "_A" ]
+                "--query", mov + metadata['mov_chain'] ]
           
             print(f"Running visualization: {' '.join(cmd)}")
             subprocess.run(cmd, check=True, text=True, stdout=sys.stdout, stderr=sys.stderr)

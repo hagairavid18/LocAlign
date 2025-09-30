@@ -64,6 +64,7 @@ if __name__ == "__main__":
         config = json.load(f)
     
     pairs_df = pd.read_csv(config['df_path'], index_col=0)
+    pairs_df = pairs_df.sample(frac=0.005, random_state=42).reset_index(drop=True)  # shuffle
     
     if config['ligand']:
         pairs_df = pairs_df[pairs_df['ligand_id'] == config['ligand']]

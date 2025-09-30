@@ -172,6 +172,8 @@ class ProteinPair:
                     holder.failure_message = "Failed to compute in bbr"
 
                 if self._save_transformed_models:
+                    if len(R) > 1:
+                        print(f"saving {len(R)} models for ligand {self._ligand_name} for pair {self._ref_protein._pdb_name}{self._ref_protein._chain_id} to {self._mov_protein._pdb_name}{self._mov_protein._chain_id}")
                     self._apply_transformations_and_save_transformed_models(R, t, aligner, i, j)
                 curr_pair_idx +=1
         
@@ -191,11 +193,8 @@ class ProteinPair:
         mov_chain = self._mov_protein.get_model(self._mov_model_idx, True)
         ref_coord, seq1, _ = Protein.get_residue_data(ref_chain)
         mov_coord, seq2, _ = Protein.get_residue_data(mov_chain)
-        if aligner.name in  ["DaliAligner"]:
+        if aligner.name in  ["DaliAligner", "SoftAlignAligner"]:
             R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, f'{self._ligand_dir}/{self._ligand_name}')
-        elif aligner.name in ["SoftAlignAligner"]:
-            R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, ref_coord, mov_coord,f'{self._ligand_dir}/{self._ligand_name}')
-
         else:
             R, t, rmsd, _ = aligner.impose_structure(ref_coord, mov_coord, seq1, seq2, self._base_dir)
 

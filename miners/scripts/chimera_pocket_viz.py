@@ -1,3 +1,4 @@
+import pickle
 import os,sys,warnings
 import numpy as np
 path2libraries = '/home/iscb/wolfson/hagairavid/ScanNet_Ub'
@@ -5,6 +6,72 @@ sys.path.append(path2libraries)
 from preprocessing import PDBio, PDB_processing
 import Bio.PDB
 
+amino_acid_3to_1 = {
+    'ALA': 'A',
+    'CYS': 'C',
+    'ASP': 'D',
+    'GLU': 'E',
+    'PHE': 'F',
+    'GLY': 'G',
+    'HIS': 'H',
+    'ILE': 'I',
+    'LYS': 'K',
+    'LEU': 'L',
+    'MET': 'M',
+    'ASN': 'N',
+    'PRO': 'P',
+    'GLN': 'Q',
+    'ARG': 'R',
+    'SER': 'S',
+    'THR': 'T',
+    'VAL': 'V',
+    'TRP': 'W',
+    'TYR': 'Y'
+}
+
+amino_acid_atom_order = {
+
+    'A': ['N', 'CA', 'C', 'O', 'CB'],  # Alanine
+
+    'C': ['N', 'CA', 'C', 'O', 'CB', 'SG'],  # Cysteine
+
+    'D': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'OD1', 'OD2'],  # Aspartic Acid
+
+    'E': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD', 'OE1', 'OE2'],  # Glutamic Acid
+
+    'F': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD1', 'CD2', 'CE1', 'CE2', 'CZ'],  # Phenylalanine
+
+    'G': ['N', 'CA', 'C', 'O'],  # Glycine (no side chain)
+
+    'H': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'ND1', 'CD2', 'CE1', 'NE2'],  # Histidine
+
+    'I': ['N', 'CA', 'C', 'O', 'CB', 'CG1', 'CG2', 'CD1'],  # Isoleucine
+
+    'K': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD', 'CE', 'NZ'],  # Lysine
+
+    'L': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD1', 'CD2'],  # Leucine
+
+    'M': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'SD', 'CE'],  # Methionine
+
+    'N': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'OD1', 'ND2'],  # Asparagine
+
+    'P': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD'],  # Proline
+
+    'Q': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD', 'OE1', 'NE2'],  # Glutamine
+
+    'R': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD', 'NE', 'CZ', 'NH1', 'NH2'],  # Arginine
+
+    'S': ['N', 'CA', 'C', 'O', 'CB', 'OG'],  # Serine
+
+    'T': ['N', 'CA', 'C', 'O', 'CB', 'OG1', 'CG2'],  # Threonine
+
+    'V': ['N', 'CA', 'C', 'O', 'CB', 'CG1', 'CG2'],  # Valine
+
+    'W': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD1', 'CD2', 'NE1', 'CE2', 'CE3', 'CZ2', 'CZ3', 'CH2'],  # Tryptophan
+
+    'Y': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD1', 'CD2', 'CE1', 'CE2', 'CZ', 'OH']  # Tyrosine
+
+}
 
 def extract_chains_andor_ligand_and_apply_transform(file, chain_ids, ligand_id,final_file,mode='without_ligand',
                                                     transformation=None):
@@ -174,6 +241,7 @@ def make_pseudo_bond_file_from_residue_indices(
     transformed_query_receptor_file: str,
     corr_residue_indices: np.ndarray,  # shape: (N, 2)
     corr_values: np.ndarray,           # shape: (N,)
+    atom_indexes_list: np.ndarray | None = None
 ):
     """
     Create Chimera pseudobond file from residue correspondences.
@@ -206,14 +274,16 @@ def make_pseudo_bond_file_from_residue_indices(
                 return residue
         return None
 
-    for (query_idx, template_idx), score in zip(corr_residue_indices, corr_values):
+    for (query_idx, template_idx), score, (query_atom_index, template_atom_index) in zip(corr_residue_indices, corr_values, atom_indexes_list):
         try:
             template_residue = get_residue_by_number(template_chain, template_idx)
             query_residue = get_residue_by_number(query_chain, query_idx)
 
             # Pick CA atoms (or fallback to first atom)
-            template_atom = template_residue["CA"] if "CA" in template_residue else list(template_residue.get_atoms())[0]
-            query_atom = query_residue["CA"] if "CA" in query_residue else list(query_residue.get_atoms())[0]
+            template_atom_type = amino_acid_atom_order[amino_acid_3to_1.get(template_residue.get_resname())][template_atom_index]
+            query_atom_type = amino_acid_atom_order[amino_acid_3to_1.get(query_residue.get_resname())][query_atom_index]
+            template_atom = template_residue[template_atom_type]
+            query_atom = query_residue[query_atom_type]
 
             t_chain_id = template_atom.get_parent().get_parent().id  # Correct chain ID
             q_chain_id = query_atom.get_parent().get_parent().id
@@ -242,7 +312,8 @@ def process_alignment(
         query: str, 
         query_transformation: tuple[np.ndarray, np.ndarray] | None = None,
         corr_values: np.ndarray | None = None,
-        corr_indices: np.ndarray | None = None
+        corr_indices: np.ndarray | None = None,
+        atom_indexes_list: np.ndarray | None = None
         ):
     query_ligand = template_ligand
 
@@ -251,8 +322,8 @@ def process_alignment(
     output_folder = folder
     os.makedirs(output_folder, exist_ok = True)
 
-    template_file, template_chain_id = PDBio.getPDB(template, biounit=False)
-    query_file,query_chain_id = PDBio.getPDB(query, biounit=False)
+    template_file, template_chain_id = PDBio.getPDB(template[:-1] + '_' + template[-1], biounit=False)
+    query_file,query_chain_id = PDBio.getPDB(query[:-1] + '_' + query[-1], biounit=False)
 
     extract_chains_andor_ligand_and_apply_transform(template_file, template_chain_id, template_ligand,
                                 os.path.join(output_folder, 'template_receptor.pdb')
@@ -287,6 +358,7 @@ def process_alignment(
             os.path.join(output_folder, 'transformed_query_receptor.pdb'),
             corr_residue_indices=corr_indices,  # shape: (N, 2)
             corr_values= corr_values,  # shape: (N,
+            atom_indexes_list=atom_indexes_list
         )
     else:
         make_pseudo_bond_files(
@@ -355,6 +427,14 @@ def process_alignment(
     list_commands.append('lighting soft')
     list_commands.append('set bgColor white')
     list_commands.append('open correspondences.pb')
+    for file in ['template_receptor','transformed_query_receptor']:
+            list_commands.append( f'open {file}.pdb' )
+    list_commands.append("sel #6")
+    list_commands.append("color sel blue")
+    list_commands.append("sel clear")
+    list_commands.append("sel #7")
+    list_commands.append("color sel red")
+    list_commands.append("sel clear")
 
     chimera_file = os.path.join(output_folder,'chimera_script.cxc')
     with open(chimera_file,'w') as f:
@@ -365,16 +445,44 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Process protein alignment and visualize pockets.")
     parser.add_argument("--base_folder", type=str, required=True, help="Base folder for output files.")
+    parser.add_argument("--scannet_dir", type=str, default=None, help="Directory containing ScanNet features.")
     parser.add_argument("--model_output_path", type=str, default=None, help="Path to model output for correspondences.")
     parser.add_argument("--template", type=str, required=True, help="Template protein identifier.")
     parser.add_argument("--template_ligand", type=str, required=True, help="Ligand identifier for the template.")
     parser.add_argument("--query", type=str, required=True, help="Query protein identifier.")
     
     args = parser.parse_args()
+
+    
+            
+    ref_scannet_path = os.path.join(args.scannet_dir, args.template_ligand, f"{args.template}_scannet_atoms.pkl")
+    mov_scannet_path = os.path.join(args.scannet_dir, args.template_ligand, f"{args.query}_scannet_atoms.pkl")
+    
+    # load ref and mov scannet features
+    with open(ref_scannet_path, 'rb') as f:
+        ref_scannet = pickle.load(f)
+    with open(mov_scannet_path, 'rb') as f:
+        mov_scannet = pickle.load(f)
+    
     if args.model_output_path:
         output_dict = np.load(args.model_output_path, allow_pickle=True)
         corr_values = output_dict.get('top_corr_values', None)
         corr_indices = output_dict.get('top_corr_indices', None)
+        corr_indices_atom = output_dict.get('top_corr_indices_atom', None)
+        atom_indexes_list = np.zeros((corr_indices_atom.shape[0],2),dtype=int)
+        for i in range(corr_indices.shape[0]):
+            ref_res_idx = ref_scannet['sequence_indices_atom'][corr_indices_atom[i,1]]
+            mov_res_idx = mov_scannet['sequence_indices_atom'][corr_indices_atom[i,0]]
+
+            ref_atom_list = ref_scannet['aa_to_atom_indices'][ref_res_idx]
+            mov_atom_list = mov_scannet['aa_to_atom_indices'][mov_res_idx]
+
+            ref_atom_index = np.where(ref_atom_list == corr_indices_atom[i,1])[0][0]
+            mov_atom_index = np.where(mov_atom_list == corr_indices_atom[i,0])[0][0]
+
+            atom_indexes_list[i,0] = mov_atom_index
+            atom_indexes_list[i,1] = ref_atom_index
+
         R = output_dict['R']
         t = output_dict['t']
         process_alignment(
@@ -384,6 +492,8 @@ if __name__ == "__main__":
             args.query,
             query_transformation=(R, t),
             corr_values=corr_values,
-            corr_indices=corr_indices)
+            corr_indices=corr_indices,
+            atom_indexes_list=atom_indexes_list
+            )
     else:
         process_alignment(args.base_folder, args.template, args.template_ligand, args.query)

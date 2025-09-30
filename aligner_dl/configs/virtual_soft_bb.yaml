@@ -1,19 +1,19 @@
 trainer:
-  exp_name: pocket-aligner-1708-scannet1509-0gnn-recycling0-lambda05-lr0005
-  tags: ["atom", "esm"]
+  exp_name: delete-split7-10gnn-recycling2-lambda0-ligand_split-fixlr-2
+  tags: ["atom", "esm", "ligand_split"]
   max_epochs: 30
   validate_only: false
   check_val_every_n_epoch: 1
   gradient_clipping: 30
   # profiler: true
-  # ckpt_path: "checkpoints/corr-rmsd-loss-lambda-015/epoch=29-step=71970.ckpt"
+  # ckpt_path: "checkpoints/split7-10gnn-recycling2-lambda05/epoch=29-step=76440.ckpt"
 model:
   name: VirtualSoftBB
   args:
     # plot_dir: "plots/maskedln-atom-256-.a?KB6Pea3Pq%_pocketloss-dp002/val"
     top_k: 1000
     n_iter_recycling: 2
-    corr_rmsd_lambda: 0.15
+    corr_rmsd_lambda: 0.0
     input_layer:
       name: 
         EmbeddingBlock
@@ -36,7 +36,7 @@ model:
       
     denoiser:
       name: 
-        CorrespondenceDenoisingModule
+        CDM
       args:
         n_nodes: 400
         n_gnn_layers: 10
@@ -64,7 +64,7 @@ model:
 
             max_lr: 0.0002
             epochs: 30
-            steps_per_epoch: 2399
+            steps_per_epoch: 3341
             div_factor: 25
             # final_div_factor: 1e4
 
@@ -72,8 +72,8 @@ dataset:
   train:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/homology_1708_05/train.csv
-      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1509'
+      df_path: datasets/csv_files/ligand_1708/train.csv
+      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1709'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       esm_layer: 30
@@ -82,21 +82,18 @@ dataset:
       # min_cath: 3
       max_cath: 8
       bbc_filter_ratio: 20
-      level: "atom"
       max_length: 2000
   validation:
     name: ScannetDataset
     args:
-      df_path: datasets/csv_files/homology_1708_05/val.csv
-      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1509'
+      df_path: datasets/csv_files/ligand_1708/val.csv
+      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1709'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       esm_layer: 30
-      # n_samples: 15
       seed: 81
       max_cath: 4
       # bbr_filter_ratio: 0.3
-      level: "atom"
       max_length: 5000
 dataloader:
   train_batch_size: 8

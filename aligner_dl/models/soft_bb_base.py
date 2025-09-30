@@ -99,10 +99,7 @@ class SoftBBBase(L.LightningModule, ABC):
             
             for pair_info, pocket_rmsd, corr_rmsd in zip(pair_infos, pocket_rmsd_values, corr_rmsd_values):
                 protein_rmsd_data.append({
-                    'ligand': pair_info[0],
-                    'src protein': pair_info[1],
-                    'tar protein': pair_info[2],
-                    'CATH Degree': cath_degree,
+                    **pair_info,
                     'Pocket RMSD': pocket_rmsd.item(),
                     'Corr RMSD': corr_rmsd.item(),
                 })

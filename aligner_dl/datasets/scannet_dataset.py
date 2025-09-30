@@ -109,8 +109,8 @@ class ScannetDataset(BasePairDataset):
                 chain_name=row['mov_protein'] + '_' + row['mov_chain']
             ) 
             embedding_dicts = {
-                "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['ref_protein'], esm_embedding_dict=esm_embeddings_tar),
-                "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['mov_protein'], esm_embedding_dict=esm_embeddings_src),
+                "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['ref_protein'] + row['ref_chain'], esm_embedding_dict=esm_embeddings_tar),
+                "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['mov_protein'] + row['mov_chain'], esm_embedding_dict=esm_embeddings_src),
             }
             # print(f"Read embeddings for {row[self._ligand_column]} {row['mov_protein']} {row['ref_protein']}")
             if not self.inference:
@@ -147,6 +147,7 @@ class ScannetDataset(BasePairDataset):
             ret[f'{key}_embedding'] = F.pad(embedding_dict[f'{self._level}_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
             ret[f'{key}_frames'] = F.pad(embedding_dict[f'{self._level}_frames'], (0, 0, 0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
             ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'{self._level}_residue_indices'], (0, self.MAX_LENGTH_DICT[self._level] - length))
+            ret[f'{key}_atom_original_indices'] = F.pad(embedding_dict[f'atom_original_indices'], (0, self.MAX_LENGTH_DICT[self._level] - length))
             ret[f'{key}_mask'] = F.pad(torch.ones(length), (0, self.MAX_LENGTH_DICT[self._level] - length), value=0).bool()
             if self.inference:
                 continue
@@ -197,7 +198,7 @@ class ScannetDataset(BasePairDataset):
             )
         with open(embedding_path, 'rb') as f:
             data = pickle.load(f)
-        # Example data
+        
         residue_embeddings = data["residue_embeddings"]
         residue_ids = data["residue_ids"]
         atom_embeddings = data["atomic_plus_residue_embedding"]
@@ -232,7 +233,8 @@ class ScannetDataset(BasePairDataset):
             'atom_embeddings': atomic_plus_residue_embedding,
             'residue_embeddings': residue_embeddings,
             'residue_residue_indices': residue_indices,
-            'atom_residue_indices': atom_residue_index
+            'atom_residue_indices': atom_residue_index,
+            "atom_original_indices": atom_sampled_indices
         }
         return {key: torch.tensor(value) for key, value in ret_dict.items()}
 

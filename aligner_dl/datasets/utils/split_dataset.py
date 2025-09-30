@@ -221,50 +221,54 @@ def split_csv(
         df['mov_cluster'] = df['mov_cluster'].astype(int)
 
         # Group by clusters
-        cluster_to_proteins = defaultdict(set)
+        cluster_to_proteins_and_chains = defaultdict(set)
         for (ligand_id, protein_id, chain_id), cluster_id in triple_to_cluster.items():
-            cluster_to_proteins[cluster_id].add(protein_id)
+            cluster_to_proteins_and_chains[cluster_id].add((protein_id, chain_id))
 
         # Shuffle clusters for random splitting
-        cluster_ids_unique = list(cluster_to_proteins.keys())
-        random.shuffle(cluster_ids_unique)
+        cluster_ids_unique = list(cluster_to_proteins_and_chains.keys())
+        total_examples = 0
+        while total_examples< 39000:
+            random.shuffle(cluster_ids_unique)
 
-        # Split clusters
-        total = len(cluster_ids_unique)
-        n_test = int(test_size * total)
-        n_val = int(val_size * total)
+            # Split clusters
+            total = len(cluster_ids_unique)
+            n_test = int(test_size * total)
+            n_val = int(val_size * total)
 
-        test_clusters = set(cluster_ids_unique[:n_test])
-        val_clusters = set(cluster_ids_unique[n_test:n_test + n_val])
-        train_clusters = set(cluster_ids_unique[n_test + n_val:])
+            test_clusters = set(cluster_ids_unique[:n_test])
+            val_clusters = set(cluster_ids_unique[n_test:n_test + n_val])
+            train_clusters = set(cluster_ids_unique[n_test + n_val:])
 
-        # Assign proteins to splits
-        protein_to_split = {}
-        for cluster in train_clusters:
-            for protein in cluster_to_proteins[cluster]:
-                protein_to_split[protein] = 'train'
-        for cluster in val_clusters:
-            for protein in cluster_to_proteins[cluster]:
-                protein_to_split[protein] = 'val'
-        for cluster in test_clusters:
-            for protein in cluster_to_proteins[cluster]:
-                protein_to_split[protein] = 'test'
+            # Assign proteins to splits
+            protein_to_split = {}
+            for cluster in train_clusters:
+                for protein, chain in cluster_to_proteins_and_chains[cluster]:
+                    protein_to_split[protein + chain] = 'train'
+            for cluster in val_clusters:
+                for protein, chain in cluster_to_proteins_and_chains[cluster]:
+                    protein_to_split[protein + chain] = 'val'
+            for cluster in test_clusters:
+                for protein,chain in cluster_to_proteins_and_chains[cluster]:
+                    protein_to_split[protein + chain] = 'test'
 
-        # Only keep rows where both proteins are from same split
-        split_dfs = {'train': [], 'val': [], 'test': []}
-        for _, row in df.iterrows():
-            ref_split = protein_to_split.get(row['ref_protein'])
-            mov_split = protein_to_split.get(row['mov_protein'])
-            if ref_split is not None and ref_split == mov_split:
-                split_dfs[ref_split].append(row)
+            # Only keep rows where both proteins are from same split
+            split_dfs = {'train': [], 'val': [], 'test': []}
+            for _, row in df.iterrows():
+                ref_split = protein_to_split.get(row['ref_protein'] + row['ref_chain'])
+                mov_split = protein_to_split.get(row['mov_protein'] + row['mov_chain'])
+                if ref_split is not None and ref_split == mov_split:
+                    split_dfs[ref_split].append(row)
 
-        train_df = pd.DataFrame(split_dfs['train'])
-        val_df = pd.DataFrame(split_dfs['val'])
-        test_df = pd.DataFrame(split_dfs['test'])
+            train_df = pd.DataFrame(split_dfs['train'])
+            val_df = pd.DataFrame(split_dfs['val'])
+            test_df = pd.DataFrame(split_dfs['test'])
 
-        print(f"Train clusters: {len(train_clusters)}, rows: {len(train_df)}")
-        print(f"Val clusters: {len(val_clusters)}, rows: {len(val_df)}")
-        print(f"Test clusters: {len(test_clusters)}, rows: {len(test_df)}")
+            print(f"Train clusters: {len(train_clusters)}, rows: {len(train_df)}")
+            print(f"Val clusters: {len(val_clusters)}, rows: {len(val_df)}")
+            print(f"Test clusters: {len(test_clusters)}, rows: {len(test_df)}")
+            total_examples = len(train_df) + len(val_df) + len(test_df)
+            print(f"Total examples after split: {total_examples}")
 
     # Save the splits into CSV files
     train_df.to_csv(os.path.join(output_dir, "train.csv"), index=False)

@@ -5,7 +5,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GraphConv
 
 #update_i = MLP { s_i,   sum_j[ MLP ( s_i | s_j | w_{ij}) ] }
-class CorrespondenceDenoisingModule(nn.Module):
+class CDM(nn.Module):
 
     def __init__(
         self, 
@@ -14,7 +14,7 @@ class CorrespondenceDenoisingModule(nn.Module):
         n_rbf_functions: int = 16, 
         with_angles: bool = True
         ):
-        super(CorrespondenceDenoisingModule, self).__init__()
+        super(CDM, self).__init__()
         self._n_nodes = n_nodes  # Number of top correspondences to keep
         self._n_gnn_layers = n_gnn_layers  # Number of GNN layers
         self._gnn_layer = GraphConv(1, 1, aggr='sum')

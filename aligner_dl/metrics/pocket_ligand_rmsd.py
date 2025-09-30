@@ -31,7 +31,10 @@ class PocketRMSD(Module):
         for batch_id in range(batch_size):
             metadata = batch['metadata'][batch_id]
             cath_degree = metadata['cath_degree']
-            pair_info = (batch['metadata'][0]['Ligand_ID'], batch['metadata'][0]['mov_protein'], batch['metadata'][0]['ref_protein'], batch['metadata'][0]['bbr'])
+            pair_info = batch['metadata'][batch_id].copy()  # Make a copy to avoid modifying the original
+            for key in ['rotations', 'translations', 'rmse', 'coverage']:
+                pair_info.pop(key)
+            # pair_info.pop([['rotations', 'translations', 'rmse', 'coverage']])
 
             # Compute RMSDs
             pocket_coordinates = batch['src_pocket_frames'][:, :, 0, :]
