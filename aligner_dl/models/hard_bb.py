@@ -77,8 +77,8 @@ if __name__ == "__main__":
 
     logger = logging.getLogger(__name__)
 
-    data_path = '/home/iscb/wolfson/hagairavid/ligand_alligner/results/baseline_results/2024-07-11_10-55-38_57.csv'
-    # data_path = '/home/iscb/wolfson/hagairavid/ligand_alligner/results/baseline_results/2024-07-17_16-01-08_3000.csv'
+    data_path = '/home/iscb/wolfson/hagairavid/LocAlign/results/baseline_results/2024-07-11_10-55-38_57.csv'
+    # data_path = '/home/iscb/wolfson/hagairavid/LocAlign/results/baseline_results/2024-07-17_16-01-08_3000.csv'
     # data_path = 'results/soft_bbs_results/2024-08-14_09-48-38_500.csv'
     data_path = 'results/soft_bbs_results/2024-08-14_22-22-35_2000.csv'
     base_data_path = os.path.join('/home/iscb/wolfson/hagairavid/ligands')

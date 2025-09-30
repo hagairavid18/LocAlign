@@ -1,6 +1,6 @@
 trainer:
   exp_name: "infer-virtual-bbs"
-  # ckpt_path: "/home/iscb/wolfson/hagairavid/ligand_alligner/checkpoints/maskedln-atom-256-dp000-no-div-dist-tis10-b8/epoch=7-step=20200.ckpt"
+  # ckpt_path: "/home/iscb/wolfson/hagairavid/LocAlign/checkpoints/maskedln-atom-256-dp000-no-div-dist-tis10-b8/epoch=7-step=20200.ckpt"
 model:
   name: VirtualSoftBB
   args:
@@ -55,7 +55,7 @@ dataset:
   validation:
     name: ScannetDataset
     args:
-      df_path: /home/iscb/wolfson/hagairavid/ligand_alligner/aligner_dl/datasets/csv_files/grouping_1302/val.csv
+      df_path: /home/iscb/wolfson/hagairavid/LocAlign/aligner_dl/datasets/csv_files/grouping_1302/val.csv
       n_samples: 15
       seed: 81
       max_cath: 8

@@ -2,7 +2,7 @@ import sys
 import pandas as pd
 import os
 import shutil
-sys.path.append("/home/iscb/wolfson/hagairavid/ligand_alligner")
+sys.path.append("/home/iscb/wolfson/hagairavid/LocAlign")
 
 from utils.constants import LIGAND_DIR
 from scripts.chimera_pocket_viz  import process_alignment  # Import the function from the first script

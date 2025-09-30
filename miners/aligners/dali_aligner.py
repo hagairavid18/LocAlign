@@ -66,7 +66,7 @@ class DaliAligner():
                                               ], capture_output=True, text=True, check=True)
 
             matrix, rmsd, _ = DaliAligner.extract_matrices_combined(f'{ref_name}{ref_chain}.txt')
-            os.chdir('/home/iscb/wolfson/hagairavid/ligand_alligner')
+            os.chdir('/home/iscb/wolfson/hagairavid/LocAlign')
             try:
                 shutil.rmtree(temp_dir)
             except OSError as e:

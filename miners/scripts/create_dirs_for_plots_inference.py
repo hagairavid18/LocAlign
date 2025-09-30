@@ -6,10 +6,10 @@ from glob import glob
 import numpy as np
 import sys
 
-sys.path.append("/home/iscb/wolfson/hagairavid/ligand_alligner/aligner_dl")
+sys.path.append("/home/iscb/wolfson/hagairavid/LocAlign/aligner_dl")
 
 from utils.constants import LIGAND_DIR
-sys.path.append("/home/iscb/wolfson/hagairavid/ligand_alligner")
+sys.path.append("/home/iscb/wolfson/hagairavid/LocAlign")
 from miners.scripts.chimera_pocket_viz import process_alignment
 
 # === CONFIG ===
