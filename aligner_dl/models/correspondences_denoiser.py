@@ -57,6 +57,7 @@ class CDM(nn.Module):
             graph_data.x = self._gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
 
         graph_data.x = graph_data.x.relu()
+        graph_data.x = (graph_data.x.reshape(B, self._n_nodes) / graph_data.x.reshape(B,self._n_nodes).sum(1, keepdim=True)).reshape(B *self._n_nodes,1)
         # Step 4: Update soft correspondences
         updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
 

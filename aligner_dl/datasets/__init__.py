@@ -1,2 +1,2 @@
 from .base_pair_dataset import BasePairDataset
-from .scannet_dataset import ScannetDataset
+from .scannet_dataset import ScanNetDataset

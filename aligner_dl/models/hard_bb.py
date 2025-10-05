@@ -67,7 +67,7 @@ class HardBB(L.LightningModule):
     
 
 if __name__ == "__main__":
-    from datasets import ScannetDataset
+    from datasets import ScanNetDataset
     from utils.misc import save_results_to_csv
     import logging
     start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     # data_path = 'results/soft_bbs_results/2024-08-14_09-48-38_500.csv'
     data_path = 'results/soft_bbs_results/2024-08-14_22-22-35_2000.csv'
     base_data_path = os.path.join('/home/iscb/wolfson/hagairavid/ligands')
-    dataset = ScannetDataset(data_path, base_data_path, 2000)
+    dataset = ScanNetDataset(data_path, base_data_path, 2000)
     val_loader  = DataLoader(dataset, batch_size=1, collate_fn=custom_collate_fn, num_workers=20)
     model = HardBB()
 

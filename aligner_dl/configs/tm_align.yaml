@@ -11,7 +11,7 @@ model:
  
 dataset:
   validation:
-    name: ScannetDataset
+    name: ScanNetDataset
     args:
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1709'
       esm_model: "esm2_t30_150M_UR50D"

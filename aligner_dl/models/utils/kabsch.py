@@ -60,20 +60,17 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
 
     zero_mask = (weights.sum(dim=(1), keepdim=True) == 0)  # Shape: (B, 1, 1)
     weights = weights + zero_mask * 1e-6  # Avoid zero weights
-    # Normalize weights per batch (optional but stable)
-    weights_sum = weights.sum(dim=1, keepdim=True) + 1e-8
-    norm_weights = weights / weights_sum  # [B, K]
 
     # Compute weighted centroids
-    centroid_P = torch.sum(P * norm_weights.unsqueeze(-1), dim=1)  # [B, 3]
-    centroid_Q = torch.sum(Q * norm_weights.unsqueeze(-1), dim=1)  # [B, 3]
+    centroid_P = torch.sum(P * weights.unsqueeze(-1), dim=1)  # [B, 3]
+    centroid_Q = torch.sum(Q * weights.unsqueeze(-1), dim=1)  # [B, 3]
 
     # Center the point clouds
     P_centered = P - centroid_P.unsqueeze(1)  # [B, K, 3]
     Q_centered = Q - centroid_Q.unsqueeze(1)  # [B, K, 3]
 
     # Compute covariance matrix: H = Q^T * W * P
-    H = torch.bmm(Q_centered.transpose(1, 2), P_centered * norm_weights.unsqueeze(-1))  # [B, 3, 3]
+    H = torch.bmm(Q_centered.transpose(1, 2), P_centered * weights.unsqueeze(-1))  # [B, 3, 3]
 
     # SVD
     dtype = H.dtype
@@ -97,7 +94,7 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
         diff = (torch.bmm(P, R) + t[:, None, :]) - Q
         sq_dist = torch.sum(diff ** 2, dim=2)
         weighted_sq = weights * sq_dist
-        rmsd = torch.sqrt(weighted_sq.sum(dim=1) / weights.sum(dim=1))
+        weighted_corr_rmsd = torch.sqrt(weighted_sq.sum(dim=1) / weights.sum(dim=1))
         # print(f"rmsd: {rmsd}")
 
-    return R.to(dtype), t.to(dtype), rmsd
+    return R.to(dtype), t.to(dtype), weighted_corr_rmsd

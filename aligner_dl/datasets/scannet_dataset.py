@@ -21,20 +21,21 @@ warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 logger = logging.getLogger(__name__)
 
 
-class ScannetDataset(BasePairDataset):
+class ScanNetDataset(BasePairDataset):
+    _MAX_POCKET_LENGTH = 1000
+    _MAX_LIGAND_LENGTH = 500
 
     def __init__(
             self, 
             df_path: str, 
             base_embedding_path: str = None, 
             base_data_path: str = LIGAND_DIR, 
-            level: str = 'atom', 
             n_samples: int | None = None, 
             min_cath: int = 0, 
             max_cath: int = 8, 
             bbc_filter_ratio: float = 0.0, 
+            max_length: int = 2000, 
             seed: int| None = None, 
-            max_length: int = None, 
             inference: bool = False, 
             ligand_column: str = 'Ligand_ID',
             esm_model: str = None,
@@ -42,21 +43,20 @@ class ScannetDataset(BasePairDataset):
             esm_layer: int = 28
             ) -> None:
         """
-        Initializes the ScannetDataset.
+        Initializes the ScanNetDataset.
 
         Args:
             df_path (str): _path to the CSV file containing the dataset metadata.
             base_embedding_path (str): 
             base_data_path (str, optional): _description_. Defaults to LIGAND_DIR.
-            level (str, optional): _description_. Defaults to 'residue'.
             n_samples (int | None, optional): _description_. Defaults to None.
             min_cath (int, optional): _description_. Defaults to 0.
             max_cath (int, optional): _description_. Defaults to 8.
             bbc_filter_ratio (float, optional): _description_. Defaults to 0.0.
-            seed (int | None, optional): _description_. Defaults to None.
-            max_length (int, optional): _description_. Defaults to None.
-            inference (bool, optional): _description_. Defaults to False.
-            ligand_column (str, optional): _description_. Defaults to 'Ligand_ID'.
+            seed (int | None, optional): _seed for random operations. Defaults to None.
+            max_length (int, optional): _maximum number of atoms to consider. Defaults to 2000.
+            inference (bool, optional): Whether the dataset is used for inference. Defaults to False.
+            ligand_column (str, optional): Column name for ligand IDs in the dataframe. Defaults to 'Ligand_ID'.
             esm_model (str, optional): Name of the ESM model to use. Defaults to None.
             use_esm (bool, optional): Whether to use ESM embeddings. Defaults to True.
             esm_layer (int, optional): Layer of the ESM model to extract embeddings from.
@@ -73,16 +73,9 @@ class ScannetDataset(BasePairDataset):
             bbc_filter_ratio=bbc_filter_ratio, 
             inference=inference)
         
-        self.MAX_LENGTH_DICT = {'residue': 1000, 'atom': 5000, 'pocket': 800}
         self._mmcif_parser = PDBParser()
+        self._max_atoms = max_length 
                 
-        if max_length is not None:
-            # self.MAX_LENGTH_DICT['residue'] = max_length
-            self.MAX_LENGTH_DICT[level] = max_length
-            # self.MAX_LENGTH_DICT['pocket'] = max_length
-        assert level in ['residue', 'atom', 'pocket'], "level must be one of ['residue', 'atom', 'pocket']"
-        self._level = level
-
         self._with_esm = use_esm
         if esm_model is not None:
             self._esm_layer= esm_layer
@@ -142,13 +135,13 @@ class ScannetDataset(BasePairDataset):
         ret = {}
         for key in ["src", "tar"]:
             embedding_dict = embedding_dicts[key]
-            length = embedding_dict[f'{self._level}_embeddings'].shape[0]
+            n_atoms = embedding_dict['atom_embeddings'].shape[0]
 
-            ret[f'{key}_embedding'] = F.pad(embedding_dict[f'{self._level}_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
-            ret[f'{key}_frames'] = F.pad(embedding_dict[f'{self._level}_frames'], (0, 0, 0, 0, 0, self.MAX_LENGTH_DICT[self._level] - length))
-            ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'{self._level}_residue_indices'], (0, self.MAX_LENGTH_DICT[self._level] - length))
-            ret[f'{key}_atom_original_indices'] = F.pad(embedding_dict[f'atom_original_indices'], (0, self.MAX_LENGTH_DICT[self._level] - length))
-            ret[f'{key}_mask'] = F.pad(torch.ones(length), (0, self.MAX_LENGTH_DICT[self._level] - length), value=0).bool()
+            ret[f'{key}_pretrained_embeddings'] = F.pad(embedding_dict[f'atom_embeddings'], (0, 0, 0, self._max_atoms - n_atoms))
+            ret[f'{key}_frames'] = F.pad(embedding_dict[f'atom_frames'], (0, 0, 0, 0, 0, self._max_atoms - n_atoms))
+            ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'atom_residue_indices'], (0, self._max_atoms - n_atoms))
+            ret[f'{key}_atom_original_indices'] = F.pad(embedding_dict[f'atom_original_indices'], (0, self._max_atoms - n_atoms))
+            ret[f'{key}_mask'] = F.pad(torch.ones(n_atoms), (0, self._max_atoms - n_atoms), value=0).bool()
             if self.inference:
                 continue
           
@@ -158,16 +151,12 @@ class ScannetDataset(BasePairDataset):
                 print(f"Error: {indices_for_pocket.sum()} indices for pocket")
                 idx = torch.randint(0, len(self), (1,)).item()
                 return self.__getitem__(idx)
-            embedding_dict['pocket_embeddings'] = embedding_dict['atom_embeddings'][indices_for_pocket]
             embedding_dict['pocket_frames'] = embedding_dict['atom_frames'][indices_for_pocket]
-            pocket_length = embedding_dict['pocket_frames'].shape[0]
-            ret[f'{key}_pocket_embedding'] = F.pad(embedding_dict['pocket_embeddings'], (0, 0, 0, self.MAX_LENGTH_DICT['pocket'] - pocket_length))
-            ret[f'{key}_pocket_frames'] = F.pad(embedding_dict['pocket_frames'], (0, 0, 0, 0, 0, self.MAX_LENGTH_DICT['pocket'] - pocket_length))
-            ret[f'{key}_pocket_mask'] = F.pad(torch.ones(pocket_length), (0, self.MAX_LENGTH_DICT['pocket'] - pocket_length), value=0).bool()
+            n_pocket_atoms = embedding_dict['pocket_frames'].shape[0]
+            ret[f'{key}_pocket_frames'] = F.pad(embedding_dict['pocket_frames'], (0, 0, 0, 0, 0, self._MAX_POCKET_LENGTH - n_pocket_atoms))
+            ret[f'{key}_pocket_mask'] = F.pad(torch.ones(n_pocket_atoms), (0, self._MAX_POCKET_LENGTH - n_pocket_atoms), value=0).bool()
 
-        ret['max_length'] = max(embedding_dicts['src'][f'{self._level}_embeddings'].shape[0], embedding_dicts['tar'][f'{self._level}_embeddings'].shape[0])
         ret['metadata'] = row.to_dict()
-        ret['metadata']['idx'] = idx
         if self.inference:
             return ret
         
@@ -175,11 +164,11 @@ class ScannetDataset(BasePairDataset):
         ret['gt_t'] = torch.Tensor(row['translations'][0][0])
         
         # ret['sample_weight'] = torch.tensor(row['sample_weight'])
-        ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self.MAX_LENGTH_DICT['residue'] - len(src_ligand_coordinates)))
-        ret['tar_ligand_coordinates'] = F.pad(tar_ligand_coordinates, (0, 0, 0, self.MAX_LENGTH_DICT['residue'] - len(tar_ligand_coordinates)))
+        ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self._MAX_LIGAND_LENGTH - len(src_ligand_coordinates)))
+        ret['tar_ligand_coordinates'] = F.pad(tar_ligand_coordinates, (0, 0, 0, self._MAX_LIGAND_LENGTH - len(tar_ligand_coordinates)))
 
-        ret['src_ligand_mask'] = F.pad(torch.ones(len(src_ligand_coordinates)), (0, self.MAX_LENGTH_DICT['residue'] - len(src_ligand_coordinates)), value=0).bool()
-        ret['tar_ligand_mask'] = F.pad(torch.ones(len(tar_ligand_coordinates)), (0, self.MAX_LENGTH_DICT['residue'] - len(tar_ligand_coordinates)), value=0).bool()
+        ret['src_ligand_mask'] = F.pad(torch.ones(len(src_ligand_coordinates)), (0, self._MAX_LIGAND_LENGTH - len(src_ligand_coordinates)), value=0).bool()
+        ret['tar_ligand_mask'] = F.pad(torch.ones(len(tar_ligand_coordinates)), (0, self._MAX_LIGAND_LENGTH - len(tar_ligand_coordinates)), value=0).bool()
         
         return ret
 
@@ -221,12 +210,11 @@ class ScannetDataset(BasePairDataset):
         else:
             atomic_plus_residue_embedding = atom_embeddings
         
-        if self._level == 'atom':
-            atom_sampled_indices = np.random.choice(len(atom_embeddings), size=min(len(atom_embeddings), self.MAX_LENGTH_DICT['atom']), replace=False)
-            atom_embeddings = atom_embeddings[atom_sampled_indices]
-            atom_residue_index = atom_residue_index[atom_sampled_indices]
-            atom_frames = atom_frames[atom_sampled_indices]
-            atomic_plus_residue_embedding = atomic_plus_residue_embedding[atom_sampled_indices]
+        atom_sampled_indices = np.random.choice(len(atom_embeddings), size=min(len(atom_embeddings), self._max_atoms), replace=False)
+        atom_embeddings = atom_embeddings[atom_sampled_indices]
+        atom_residue_index = atom_residue_index[atom_sampled_indices]
+        atom_frames = atom_frames[atom_sampled_indices]
+        atomic_plus_residue_embedding = atomic_plus_residue_embedding[atom_sampled_indices]
 
         ret_dict = {
             'atom_frames': atom_frames,
@@ -364,7 +352,7 @@ if __name__ == "__main__":
 
 
     # Create dataset and DataLoader
-    dataset = ScannetDataset(data_path, base_data_path)
+    dataset = ScanNetDataset(data_path, base_data_path)
     dataloader = DataLoader(dataset, batch_size=2, shuffle=True)
 
     # Iterate through the DataLoader

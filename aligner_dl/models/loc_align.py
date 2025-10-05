@@ -8,7 +8,7 @@ from models.utils import move_batch_to_device, build_object, compute_transformat
 from models.utils.plots import plot_correspondences
 
 
-class VirtualSoftBB(SoftBBBase):
+class LocAlign(SoftBBBase):
     def __init__(
         self, 
         loss: dict[str, Any], 
@@ -16,15 +16,14 @@ class VirtualSoftBB(SoftBBBase):
         input_layer: dict[str, Any], 
         scalar_layer: dict, 
         denoiser: dict, 
-        max_iter: int = 1, 
-        n_iter_train: int = 1, 
         top_k: int = 1200,
         corr_rmsd_lambda: float = 0.2,
+        embedding_cosine_lambda: float = 0.1,
         n_iter_recycling: int = 3,
         plot_dir: str | None = None
         ) -> None:
        
-        super().__init__(loss=loss, optimizer=optimizer, max_iter=max_iter, n_iter_train=n_iter_train, plot_dir=plot_dir, corr_rmsd_lambda=corr_rmsd_lambda)
+        super().__init__(loss=loss, optimizer=optimizer, plot_dir=plot_dir, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda)
         self._input_block = build_object(input_layer, 'models.layers')
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
         self._denoiser = build_object(denoiser, 'models')
@@ -33,12 +32,29 @@ class VirtualSoftBB(SoftBBBase):
 
         self._n_recycling_iterations = n_iter_recycling
         # self.automatic_optimization = False  # We will handle the optimization manually
+
+    def _compute_embedding_similarity(
+        self,
+        top_corr_values: torch.Tensor, 
+        top_corr_indices: torch.Tensor, 
+        top_tar_embedding: torch.Tensor, 
+        top_src_embedding: torch.Tensor
+        ) -> torch.Tensor:
+        """
+        Computes the weighted cosine similarity between the embeddings of the corresponding atoms.
+        """
+        batch_indices = torch.arange(top_corr_indices.shape[0], device=top_corr_indices.device).unsqueeze(-1).expand(-1, top_corr_indices.shape[1])
+        gathered_embedd_tar = top_tar_embedding[batch_indices, top_corr_indices[:, :, 0]]  # [B, K', dim]
+        gathered_embedd_src = top_src_embedding[batch_indices, top_corr_indices[:, :, 1]]  # [B, K', dim]
+        cosine_similarities = torch.sum(gathered_embedd_tar * gathered_embedd_src, dim=-1) / (torch.norm(gathered_embedd_tar, dim=-1) * torch.norm(gathered_embedd_src, dim=-1) + 1e-8)
+        weighted_cosine_similarities = ((cosine_similarities -1 /top_corr_values.shape[1]) * top_corr_values)
+        return weighted_cosine_similarities
     
     def _get_atom_importance(
-            self, 
-            embedding: torch.Tensor, 
-            mask:torch.Tensor
-            ) -> torch.Tensor:
+        self, 
+        embedding: torch.Tensor, 
+        mask:torch.Tensor
+        ) -> torch.Tensor:
         return self._linear(embedding, mask=mask).squeeze(-1)
     
     def _get_rectified_top_k(
@@ -122,74 +138,76 @@ class VirtualSoftBB(SoftBBBase):
         Returns:
             dict[str, torch.Tensor]: Dictionary containing the predicted transformation matrices and other intermediate results.
         """
-        input_dtype = batch['tar_embedding'].dtype
 
         # Gather the top k embeddings and their indices
-        orig_tar_embedding, orig_src_embedding  = self._input_block(batch['tar_embedding'], mask=batch['tar_mask']).to(input_dtype), self._input_block(batch['src_embedding'], mask =batch['src_mask']).to(input_dtype)
-        tar_atom_importance = self._get_atom_importance(orig_tar_embedding, batch['tar_mask'])
-        src_atom_importance = self._get_atom_importance(orig_src_embedding, batch['src_mask'])
+        tar_embedding, src_embedding  = self._input_block(batch['tar_pretrained_embeddings'], mask=batch['tar_mask']), self._input_block(batch['src_pretrained_embeddings'], mask =batch['src_mask'])
+        src_atom_importance = self._get_atom_importance(src_embedding, batch['src_mask'])
+        tar_atom_importance = self._get_atom_importance(tar_embedding, batch['tar_mask'])
 
-        top_tar_indices, top_tar_values = self._get_rectified_top_k(tar_atom_importance, batch['tar_mask'])
-        top_src_indices, top_src_values = self._get_rectified_top_k(src_atom_importance, batch['src_mask'])
+        topk_src_indices, topk_src_values = self._get_rectified_top_k(src_atom_importance, batch['src_mask'])
+        topk_tar_indices, topk_tar_values = self._get_rectified_top_k(tar_atom_importance, batch['tar_mask'])
 
         # Now gather        
-        top_src_embedding_orig = orig_src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 256))
-        top_tar_embedding_orig = orig_tar_embedding.gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
+        keypoints_src_embedding = src_embedding.gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, 256))
+        keypoints_tar_embedding = tar_embedding.gather(1, topk_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
         
-        top_src_frames = batch['src_frames'].gather(1, top_src_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
-        top_tar_frames = batch['tar_frames'].gather(1, top_tar_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
+        keypoints_src_frames = batch['src_frames'].gather(1, topk_src_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
+        keypoints_tar_frames = batch['tar_frames'].gather(1, topk_tar_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
         
-        top_src_mask = batch['src_mask'].gather(1, top_src_indices)
-        top_tar_mask = batch['tar_mask'].gather(1, top_tar_indices)
+        keypoints_src_mask = batch['src_mask'].gather(1, topk_src_indices)
+        keypoints_tar_mask = batch['tar_mask'].gather(1, topk_tar_indices)
 
-        optimal_transformations = []
+        all_iter_results = []
         for i in range(self._n_recycling_iterations +1):
-            src_frames, tar_frames = top_src_frames, top_tar_frames 
+            src_frames, tar_frames = keypoints_src_frames, keypoints_tar_frames 
             if i == 0:
-                top_src_embedding = top_src_embedding_orig
-                top_tar_embedding = top_tar_embedding_orig
-            soft_correspondences = self._get_soft_correspondences(top_src_embedding, top_tar_embedding, top_src_values, top_tar_values, top_src_mask, top_tar_mask).to(input_dtype)  
+                top_src_embedding = keypoints_src_embedding
+                top_tar_embedding = keypoints_tar_embedding
+            soft_correspondences = self._get_soft_correspondences(top_src_embedding, top_tar_embedding, topk_src_values, topk_tar_values, keypoints_src_mask, keypoints_tar_mask)
             
-            top_corr_values, top_corr_indices, orig_corr_values = self._denoiser(soft_correspondences, src_frames, tar_frames)
-            # plot_correspondences(batch,src_frames[:, :, 0, :], tar_frames[:, :, 0, :], top_corr_values, top_corr_indices, orig_corr_values)
+            top_corr_values, top_corr_indices, _ = self._denoiser(soft_correspondences, src_frames, tar_frames)
 
             # Gather coordinates
             batch_indices = torch.arange(top_corr_indices.shape[0], device=top_corr_indices.device).unsqueeze(-1).expand(-1, top_corr_indices.shape[1])
-            gathered_coord_tar = top_tar_frames[:, :, 0, :][batch_indices, top_corr_indices[:, :, 0]]  # [B, K, 3]
-            gathered_coord_src = top_src_frames[:, :, 0, :][batch_indices, top_corr_indices[:, :, 1]]  # [B, K, 3]
+            gathered_coord_src = keypoints_src_frames[:, :, 0, :][batch_indices, top_corr_indices[:, :, 1]]  # [B, K', 3]
+            gathered_coord_tar = keypoints_tar_frames[:, :, 0, :][batch_indices, top_corr_indices[:, :, 0]]  # [B, K', 3]
+
+            step_results: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(top_corr_values, gathered_coord_src, gathered_coord_tar)
             
-            optimal_transformation: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(batch['max_length'], top_corr_values, gathered_coord_src, gathered_coord_tar, iter_limit=self._max_iter if not self.training else self._n_iter_train)
-            optimal_transformations.append(optimal_transformation)
-            transformed_src_coord = torch.matmul(batch['src_frames'][:, :, 0, :], optimal_transformation['pred_R']) + optimal_transformation['pred_t'][:,:3].unsqueeze(1)
+            step_results['embedding_similarity'] = self._compute_embedding_similarity(top_corr_values, top_corr_indices, top_tar_embedding, top_src_embedding).sum(1)
+            
+            all_iter_results.append(step_results)
+            
             if i < self._n_recycling_iterations - 1:
+                transformed_src_coord = torch.matmul(batch['src_frames'][:, :, 0, :], step_results['pred_R']) + step_results['pred_t'][:,:3].unsqueeze(1)
                 recycled_tar_embedding, recycled_src_embedding = self._recycling(transformed_src_coord, batch['tar_frames'][:, :, 0, :])
-                top_src_embedding = rescale_and_concat(top_src_embedding_orig, recycled_src_embedding.gather(1, top_src_indices.unsqueeze(-1).expand(-1, -1, 1022)))
-                top_tar_embedding = rescale_and_concat(top_tar_embedding_orig, recycled_tar_embedding.gather(1, top_tar_indices.unsqueeze(-1).expand(-1, -1, 1022)))
+                top_src_embedding = rescale_and_concat(keypoints_src_embedding, recycled_src_embedding.gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, 1022)))
+                top_tar_embedding = rescale_and_concat(keypoints_tar_embedding, recycled_tar_embedding.gather(1, topk_tar_indices.unsqueeze(-1).expand(-1, -1, 1022)))
             
         if return_correspondences:
-            top_corr_residue_idx_tar = batch['tar_residue_indices'].gather(1, top_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
-            top_corr_residue_idx_src = batch['src_residue_indices'].gather(1, top_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
+            top_corr_residue_idx_tar = batch['tar_residue_indices'].gather(1, topk_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
+            top_corr_residue_idx_src = batch['src_residue_indices'].gather(1, topk_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
             corr_residue_indices = torch.stack([top_corr_residue_idx_src, top_corr_residue_idx_tar], dim=-1)  # [B, K, 2]
 
             # find the original atom indices corresponding to the top correspondences. just take the indices of the atoms used for the correspondences
             # there is no src_atom_indices in the batch, only residue indices
-            corr_atom_indices_tar = batch['tar_atom_original_indices'].gather(1, top_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
-            corr_atom_indices_src = batch['src_atom_original_indices'].gather(1, top_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
-            corr_atom_indices = torch.stack([corr_atom_indices_src, corr_atom_indices_tar  ], dim=-1)  # [B, K, 2]
-            return optimal_transformations, top_corr_values, corr_residue_indices, corr_atom_indices
-        return optimal_transformations
+            corr_atom_indices_tar = batch['tar_atom_original_indices'].gather(1, topk_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
+            corr_atom_indices_src = batch['src_atom_original_indices'].gather(1, topk_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
+            corr_atom_indices = torch.stack([corr_atom_indices_src, corr_atom_indices_tar], dim=-1)  # [B, K, 2]
+            return all_iter_results, top_corr_values, corr_residue_indices, corr_atom_indices
+        
+        return all_iter_results
 
     def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         batch = move_batch_to_device(batch, self.device)
-        # print((batch['metadata'][0]['Ligand_ID'], batch['metadata'][0]['mov_protein'], batch['metadata'][0]['ref_protein'], batch['metadata'][0]['idx']))
-        transformation_dicts = self._compute_soft_bb_algorithm(batch)
-        loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_embedding'].dtype)
-        for transformation_dict in transformation_dicts:
-            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'],  transformation_dict['corr_rmsd'])
+        all_iter_results = self._compute_soft_bb_algorithm(batch)
+        loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_pretrained_embeddings'].dtype)
+        for iter_results in all_iter_results:
+            curr_loss, loss_dict = self._compute_loss(batch, iter_results['pred_R'], iter_results['pred_t'],  iter_results['corr_rmsd'], iter_results['embedding_similarity'])
             loss += curr_loss
-        loss /= len(transformation_dicts)  # Average loss over all iterations
+        loss /= len(all_iter_results)  # Average loss over all iterations
         
-        outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict' :transformation_dict}    
+        outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': iter_results}    
         return outputs
 
     def validation_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -204,18 +222,18 @@ class VirtualSoftBB(SoftBBBase):
         """
         # print(f"tar protein: {batch['metadata'][0]['ref_protein']}{batch['metadata'][0]['ref_chain']} src protein: {batch['metadata'][0]['mov_protein']}{batch['metadata'][0]['mov_chain']}")
         batch = move_batch_to_device(batch, self.device)
-        transformation_dicts = self._compute_soft_bb_algorithm(batch)
-        loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_embedding'].dtype)
-        for transformation_dict in transformation_dicts:
-            curr_loss, loss_dict = self._compute_loss(batch, transformation_dict['pred_R'], transformation_dict['pred_t'], transformation_dict['corr_rmsd'])
+        all_iter_results = self._compute_soft_bb_algorithm(batch)
+        loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_pretrained_embeddings'].dtype)
+        for iter_results in all_iter_results:
+            curr_loss, loss_dict = self._compute_loss(batch, iter_results['pred_R'], iter_results['pred_t'], iter_results['corr_rmsd'], iter_results['embedding_similarity'])
             loss += curr_loss
-        loss /= len(transformation_dicts)  # Average loss over all iterations
+        loss /= len(all_iter_results)  # Average loss over all iterations
         if self._plot:
-            loss_iter1, _ = self._compute_loss(batch, transformation_dict['all_R'][0].detach(), transformation_dict['all_t'][0].detach())
-            plot_correspondences(transformation_dict['all_gamma'], batch['metadata'], [loss_iter1, loss], self._plot_dir)
+            loss_iter1, _ = self._compute_loss(batch, iter_results['all_R'][0].detach(), iter_results['all_t'][0].detach())
+            plot_correspondences(iter_results['all_gamma'], batch['metadata'], [loss_iter1, loss], self._plot_dir)
             print(f"Loss: {loss.item()}")            
         
-        outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': transformation_dict}
+        outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': iter_results}
         self._metrics.update(batch, outputs)
         return outputs
     
@@ -231,7 +249,7 @@ class VirtualSoftBB(SoftBBBase):
         """
         # print(f"tar protein: {batch['metadata'][0]['ref_protein']}{batch['metadata'][0]['ref_chain']} src protein: {batch['metadata'][0]['mov_protein']}{batch['metadata'][0]['mov_chain']}")
         batch = move_batch_to_device(batch, self.device)
-        transformation_dicts, corr_values, corr_residue_indices, corr_atom_indices = self._compute_soft_bb_algorithm(batch, return_correspondences=True)
+        all_iter_results, corr_values, corr_residue_indices, corr_atom_indices = self._compute_soft_bb_algorithm(batch, return_correspondences=True)
         
-        outputs = {'transformation_dict': transformation_dicts[-1], 'metadata': batch['metadata'], 'corr_values': corr_values, 'corr_indices': corr_residue_indices, 'corr_atom_indices': corr_atom_indices}
+        outputs = {'transformation_dict': all_iter_results[-1], 'metadata': batch['metadata'], 'corr_values': corr_values, 'corr_indices': corr_residue_indices, 'corr_atom_indices': corr_atom_indices}
         return outputs

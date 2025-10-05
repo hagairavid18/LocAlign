@@ -19,10 +19,9 @@ class SoftBBBase(L.LightningModule, ABC):
             self, 
             loss: dict[str, Any] | None, 
             optimizer: dict[str, Any] | None, 
-            max_iter: int = 5, 
-            n_iter_train: int = 2, 
             plot_dir : str | None = None,
-            corr_rmsd_lambda: float = 0.2
+            corr_rmsd_lambda: float = 0.2,
+            embedding_cosine_lambda: float = 0.1,
             ) -> None:
         """
         Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of 
@@ -32,19 +31,17 @@ class SoftBBBase(L.LightningModule, ABC):
         Args:
             loss (dict[str, Any]): loss functions to be used in the model.
             optimizer (dict[str, Any]): optimizer configuration.
-            max_iter (int, optional): Since the process is iterative, we define max iterations. Defaults to 5.
-            n_iter_train (int, optional): Number of weighted kabsch iterations to train. Defaults to 2.
             plot_dir (str | None, optional): Directory to save plots. Defaults to None.,
             corr_rmsd_lambda (float, optional): Weight for the Kabsch RMSD loss in the total loss. Defaults to 0.2.
+            embedding_cosine_lambda (float, optional): Weight for the embedding cosine similarity loss in the total loss. Defaults to 0.1.
         """        
         super().__init__()
         self._pocket_loss = build_object(loss['pocket'], 'losses') if loss is not None else None
         self._transformation_loss = build_object(loss['transformation'], 'losses') if loss is not None else None
         self._ligand_loss = build_object(loss['ligand'], 'losses') if loss is not None else None
         self._metrics = PocketRMSD()
-        self._max_iter = max_iter
-        self._n_iter_train = n_iter_train
         self._corr_rmsd_lambda = corr_rmsd_lambda
+        self._embedding_cosine_lambda = embedding_cosine_lambda
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
         self._plot = False
@@ -54,7 +51,7 @@ class SoftBBBase(L.LightningModule, ABC):
             self._plot_dir = plot_dir
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
-        batch_size = batch['tar_embedding'].shape[0]
+        batch_size = batch['tar_pretrained_embeddings'].shape[0]
 
         loss_logs = {f"train_{k}_loss": v for k, v in outputs['loss_dict'].items()}
         loss_logs["train_loss"] = outputs['loss']
@@ -117,7 +114,7 @@ class SoftBBBase(L.LightningModule, ABC):
     def on_validation_batch_end(self, outputs, batch, batch_idx):
         if 'loss_dict' not in outputs:
             return
-        batch_size = batch['tar_embedding'].shape[0]
+        batch_size = batch['tar_pretrained_embeddings'].shape[0]
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
@@ -125,7 +122,7 @@ class SoftBBBase(L.LightningModule, ABC):
         # if batch_idx % 10 == 0 and self._plot:
         #     plot_transformed_point_clouds_interactive(self.logger, batch, outputs['transformation_dict'], epoch=self.current_epoch, step=batch_idx)
 
-    def _compute_loss(self, batch, R_total, t_total, corr_rmsd: torch.Tensor):
+    def _compute_loss(self, batch, R_total, t_total, corr_rmsd: torch.Tensor, embedding_similarity: torch.Tensor = None):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
         loss = loss_dict['pocket_rmsd']
         loss_dict.update(self._transformation_loss(batch, R_total, t_total))
@@ -134,6 +131,12 @@ class SoftBBBase(L.LightningModule, ABC):
         loss_dict['corr_rmsd'] = corr_rmsd_loss
         print(f"corr_rmsd: {corr_rmsd_loss.item()}")
         loss = loss + self._corr_rmsd_lambda * corr_rmsd_loss
+        if embedding_similarity is not None:
+            embedding_similarity = embedding_similarity.mean()
+            loss_dict['embedding_cosine_similarity'] = embedding_similarity
+            loss_dict['embedding_loss'] = -embedding_similarity
+            loss = loss + self._embedding_cosine_lambda * -embedding_similarity  # Maximize cosine similarity
+            print(f"embedding_loss: {-embedding_similarity.item()}")
         loss_dict['loss'] = loss
         return loss, loss_dict
 

@@ -1,5 +1,5 @@
 trainer:
-  exp_name: delete-10gnn-recycling2-lambda05-discrepency05-homology
+  exp_name: 10gnn-recycling2-lambda05-discrepency1-homology
   tags: ["atom", "esm", "homology_split"]
   max_epochs: 30
   validate_only: false
@@ -14,7 +14,7 @@ model:
     top_k: 1000
     n_iter_recycling: 2
     corr_rmsd_lambda: 0.05
-    embedding_cosine_lambda: 0.5
+    embedding_cosine_lambda: 1.0
     input_layer:
       name: 
         EmbeddingBlock

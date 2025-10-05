@@ -27,21 +27,21 @@ model:
         learning_rate: 0.001
 dataset:
   train:
-    name: ScannetDataset
+    name: ScanNetDataset
     args:
       df_path: datasets/csv_files/no_grouping/train.csv
       # n_samples: 100
       seed: 81
       min_cath: 1
   validation:
-    name: ScannetDataset
+    name: ScanNetDataset
     args:
       df_path: datasets/csv_files/no_grouping/val.csv
       seed: 81
       # n_samples: 100
       min_cath: 1
   test:
-    name: ScannetDataset
+    name: ScanNetDataset
     args:
       df_path: datasets/csv_files/no_grouping/test.csv
       seed: 81

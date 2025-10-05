@@ -57,7 +57,7 @@
             ]
         },
         {
-            "name": "virtual softBBS",
+            "name": "train LocAlign",
             "type": "debugpy",
             "request": "launch",
             "program": "aligner_dl/trainers/lightning_trainer.py",
@@ -65,7 +65,7 @@
             "justMyCode": false, 
             "args": [
                 "--config" ,
-                "aligner_dl/configs/virtual_soft_bb.yaml",
+                "aligner_dl/configs/loc_align.yaml",
              
             ]
         },

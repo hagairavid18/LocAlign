@@ -16,7 +16,7 @@ sys.path.append('/home/iscb/wolfson/hagairavid/ScanNet_Ub')
 from models.utils.collate import custom_collate_fn
 from models.utils.misc import build_object
 from miners.objects import Protein  # Adjust path if necessary
-from datasets import ScannetDataset  # Ensure this is in your PYTHONPATH
+from datasets import ScanNetDataset  # Ensure this is in your PYTHONPATH
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run inference using a trained model.")
@@ -103,7 +103,7 @@ def main():
 
     # Step 3: Build dataset and dataloader
     print("Preparing dataset and dataloader...")
-    dataset = ScannetDataset(df_path=csv_path, base_data_path=output_dir, base_embedding_path=args.scannet_dir, level='atom', inference=True, ligand_column='ligand', esm_layer=30, esm_model="esm2_t30_150M_UR50D")
+    dataset = ScanNetDataset(df_path=csv_path, base_data_path=output_dir, base_embedding_path=args.scannet_dir, level='atom', inference=True, ligand_column='ligand', esm_layer=30, esm_model="esm2_t30_150M_UR50D")
     dataloader = DataLoader(dataset, batch_size=1, num_workers=0, collate_fn=custom_collate_fn, pin_memory=True)
 
     # Step 4: Build model and load checkpoint
