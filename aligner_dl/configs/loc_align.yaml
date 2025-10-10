@@ -24,7 +24,7 @@ model:
         hidden_dim: 256
         output_dim: 256
         dropout: 0.1
-        norm_in_last_layer: false
+        norm_in_last_layer: true
     scalar_layer:
       name: 
         EmbeddingBlock

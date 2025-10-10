@@ -102,15 +102,15 @@ def main():
             comet_logger = CometLogger(
                 api_key="9ydBzigeK75Z6RhAiX63xGdsg",
                 workspace=workspace,
-                project_name=project,
-                experiment_name=experiment_name,
+                project=project,
+                name=experiment_name,
             )
             # Manually replace internal experiment object
             comet_logger._experiment = ExistingExperiment(
                 api_key="9ydBzigeK75Z6RhAiX63xGdsg",
                 previous_experiment=experiment_id,
                 workspace=workspace,
-                project_name=project,
+                project=project,
             )
 
         else:
@@ -118,8 +118,8 @@ def main():
             comet_logger = CometLogger(
                 api_key="9ydBzigeK75Z6RhAiX63xGdsg",
                 workspace=workspace,
-                project_name=project,
-                experiment_name=experiment_name,
+                project=project,
+                name=experiment_name,
             )
             
 

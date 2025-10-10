@@ -147,9 +147,10 @@ class LocAlign(SoftBBBase):
         topk_src_indices, topk_src_values = self._get_rectified_top_k(src_atom_importance, batch['src_mask'])
         topk_tar_indices, topk_tar_values = self._get_rectified_top_k(tar_atom_importance, batch['tar_mask'])
 
-        # Now gather        
-        keypoints_src_embedding = src_embedding.gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, 256))
-        keypoints_tar_embedding = tar_embedding.gather(1, topk_tar_indices.unsqueeze(-1).expand(-1, -1, 256))
+        # Now gather
+        hidden_dim = src_embedding.shape[-1]        
+        keypoints_src_embedding = src_embedding.gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, hidden_dim))
+        keypoints_tar_embedding = tar_embedding.gather(1, topk_tar_indices.unsqueeze(-1).expand(-1, -1, hidden_dim))
         
         keypoints_src_frames = batch['src_frames'].gather(1, topk_src_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
         keypoints_tar_frames = batch['tar_frames'].gather(1, topk_tar_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4, 3))
