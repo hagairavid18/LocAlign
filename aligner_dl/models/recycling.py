@@ -8,8 +8,8 @@ class RecyclingModule(nn.Module):
                  fourier_grid_size: int = 8,
                  fourier_min_length: float = 5.0,
                  fourier_n_rbf_functions: int = 8,
-                 recycle_scalar: bool = True,
-                 recycle_graph: bool = True,
+                 recycle_scalar: bool = False,
+                 recycle_graph: bool = False,
                  recycle_coords: bool = True):
 
         super(RecyclingModule, self).__init__()
@@ -35,9 +35,11 @@ class RecyclingModule(nn.Module):
         self.rbf_weights = nn.Parameter(torch.full((fourier_n_rbf_functions,), 1.))
 
         # Flags
-        self.recycle_graph = recycle_graph
         self.recycle_scalar = recycle_scalar
+        self.recycle_graph = recycle_graph
         self.recycle_coords = recycle_coords
+        if self.recycle_scalar:
+            self.scalar_scale = nn.Parameter(torch.full((1,), 1.))
 
         
         
@@ -63,7 +65,8 @@ class RecyclingModule(nn.Module):
         return (torch.exp(-0.5*self.fourier_vector_norms.unsqueeze(1)**2 * self.rbf_scales.relu().unsqueeze(0) ) * self.rbf_weights.relu().unsqueeze(0) ).mean(1)
     
     
-    def forward(self, src_coords: torch.Tensor, tgt_coords: torch.Tensor):
+    def forward(self, src_coords: torch.Tensor, tgt_coords: torch.Tensor,
+                top_corr_values: torch.Tensor | None = None, top_corr_indices: torch.Tesnro | None=None):
                 
         tgt_frame = self._build_reference_frame(tgt_coords)        
         tgt_coords_local = self._global_to_local(tgt_coords, tgt_frame)
@@ -73,8 +76,17 @@ class RecyclingModule(nn.Module):
         src_fourier_embeddings = self._fourier_encode(src_coords_local).detach() # Detach to stop backpropagation here.                        
         fourier_scalings = self._get_decay_function_in_fourier_space()
         tgt_fourier_embeddings *= fourier_scalings.unsqueeze(0).unsqueeze(0)
-        src_fourier_embeddings *= fourier_scalings.unsqueeze(0).unsqueeze(0)        
-        return tgt_fourier_embeddings, src_fourier_embeddings # Per-atom embeddings to be concatenated with the previous ones.
+        src_fourier_embeddings *= fourier_scalings.unsqueeze(0).unsqueeze(0)
+        
+        if self.recycle_scalar & (top_corr_values is not None) & (top_corr_indices is not None):
+            B,N = src_coords.shape[:-1]
+            batch_indices = torch.arange(B, device=top_corr_indices.device).unsqueeze(-1).expand(-1, N)
+            src_scalar, tgt_scalar = torch.zeros([B,N],device=top_corr_indices.device), torch.zeros([B,N],device=top_corr_indices.device)
+            tgt_scalar[batch_indices , top_corr_indices[:,:,0]] = self.scalar_scale * top_corr_values.sum(2).detach() # Detach to stop backpropagation here.
+            src_scalar[batch_indices , top_corr_indices[:,:,1]] = self.scalar_scale * top_corr_values.sum(1).detach() # Detach to stop backpropagation here.
+            return tgt_fourier_embeddings, src_fourier_embeddings, tgt_scalar,src_scalar
+        else:
+            return tgt_fourier_embeddings, src_fourier_embeddings # Per-atom embeddings to be concatenated with the previous ones.
     
 
 def scaled_dot_product(keys, queries):    
