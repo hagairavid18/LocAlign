@@ -45,29 +45,29 @@ class KeypointsSelection(nn.Module):
         K = neighbors.shape[-1] # Number of neigbhors
         assert embedding_size == self._embedding_size
         
-        local_coordinates = self._get_local_coordinates(frames,neighbors) # B X N X K X [3 or 1]
-        local_coordinates = local_coordinates.view(B,N*K,3) # r [,theta,phi]        
-        local_distances = local_coordinates[:,:,0]                        
-        local_edges = self._rbf_encoder(local_distances)#.view(B, N*K, -1)        
+        local_coordinates = self._get_local_coordinates(frames,neighbors) # B X N X K X 3 [3,theta,phi]
+        local_coordinates = local_coordinates.view(B,N*K,3) # Reshape before passing to edge learner.
+        local_distances = local_coordinates[:,:,0]
+        local_edges = self._rbf_encoder(local_distances) # Calculate scalar edges; same code as in correspondence solver module.
         if self._add_angle_features:
             local_angles = local_coordinates[:,:,1:]
             local_edges = torch.cat([local_edges, self._encode_angles(local_angles)], dim=-1)
         local_scalar_edges = self._edge_learner(local_edges).view(B,N,K)
                 
-        value_key_query = self._embedding_block(embeddings,mask) # Here, the value, query and key are scalars.
+        value_key_query = self._embedding_block(embeddings,mask) # value,key,queries for attention. Here, the value, query and key are scalars.
         value = value_key_query[:,:,0]
-        if previous_importance is not None:
+        if previous_importance is not None: # Previous importance, (either recycled from previous iteration or user-provided if using input motif)
             value += previous_importance
         key = value_key_query[:,:,1]
         query = value_key_query[:,:,2]
-        query = query.masked_fill(~mask, -float('inf'))
+        query = query.masked_fill(~mask, -float('inf')) # Make sure that masked positions have no role in attention.
         local_value = value.gather(1, neighbors.view(B,N*K) ).view(B,N,K)
         local_query = query.gather(1, neighbors.view(B,N*K) ).view(B,N,K)
-        local_attention = torch.softmax( key.unsqueeze(-1) * local_query + local_scalar_edges,axis=-1)
+        local_attention = torch.softmax( key.unsqueeze(-1) * local_query + local_scalar_edges,axis=-1) # Scalar attention over neighbors.
         output_score = torch.sum(local_value * local_attention,axis=-1)
-        output_score = output_score.masked_fill(~mask, -float('inf'))
-        top_k_indices, top_k_scalar = self._get_rectified_top_k(output_score, mask)
-        return top_k_indices, top_k_scalar
+        output_score = output_score.masked_fill(~mask, -float('inf'))  # Make sure that masked positions have no output_score.
+        top_k_indices, top_k_score = self._get_rectified_top_k(output_score, mask)
+        return top_k_indices, top_k_score
     
     def _get_local_coordinates(
         self,
