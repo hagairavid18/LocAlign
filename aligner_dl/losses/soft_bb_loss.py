@@ -55,3 +55,23 @@ class LigandLoss(nn.Module):
 
         rmsd_value = torch.sqrt(masked_squared_diff.sum(dim=1) / valid_counts.clamp(min=1e-10))  
         return {"ligand_rmsd": rmsd_value.mean()}
+
+
+class CentroidLigandLoss(nn.Module):
+    def __init__(self):
+        super(CentroidLigandLoss, self).__init__()
+    
+    def forward(self, batch, rotation_ab_pred, translation_ab_pred):
+        src_ligand_coordiantes = batch['src_ligand_coordinates']
+        tar_ligand_coordiantes = batch['tar_ligand_coordinates']
+        mask = batch['src_ligand_mask']
+        src_transformed = torch.matmul(src_ligand_coordiantes, rotation_ab_pred) + translation_ab_pred[:,:3].unsqueeze(1)
+        
+        src_transformed_centroid = (src_transformed * mask.unsqueeze(2).float()).sum(dim=1) / mask.sum(dim=1, keepdim=True).clamp(min=1e-10)
+        tar_centroid = (tar_ligand_coordiantes * mask.unsqueeze(2).float()).sum(dim=1) / mask.sum(dim=1, keepdim=True).clamp(min=1e-10)
+        
+        
+        squared_diff = torch.sum((tar_centroid - src_transformed_centroid) ** 2, dim=1)
+        rmsd_value = torch.sqrt(squared_diff)
+        
+        return {"centroid_ligand_rmsd": rmsd_value.mean()}

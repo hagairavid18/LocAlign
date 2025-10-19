@@ -19,7 +19,7 @@ class PocketRMSD(Module):
         self.corr_rmsd_per_degree = {deg: 0 for deg in range(0, 9)}
         self.count_per_degree = {deg: 0 for deg in range(0, 9)}
         self.total_count = 0
-        self.sample_metrics = {'cath_degree_per_sample': [], 'pocket_rmsd_per_sample': [], "corr_rmsd_per_sample": [], 'pair_infos': []}
+        self.sample_metrics = {'cath_degree_per_sample': [], 'pocket_rmsd_per_sample': [], "ligand_rmsd_per_sample" : [], "corr_rmsd_per_sample": [], 'pair_infos': []}
 
         # Initialize a dictionary to store protein names and their pocket_rmsd per degree
         self.pair_infos_per_degree = {deg: [] for deg in range(0, 9)}
@@ -40,6 +40,8 @@ class PocketRMSD(Module):
             pocket_coordinates = batch['src_pocket_frames'][:, :, 0, :]
             pocket_rmsd = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_pocket_mask'])[batch_id]
             ligand_rmsd = compute_rmsd_torch(batch['src_ligand_coordinates'], batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_ligand_mask'])[batch_id]
+            pocket_rmsd = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_pocket_mask'])[batch_id]
+            ligand_rmsd = compute_rmsd_torch(batch['src_ligand_coordinates'], batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_ligand_mask'])[batch_id]
 
             # Update metrics
             self.pocket_rmsd_per_degree[cath_degree] += pocket_rmsd
@@ -48,6 +50,7 @@ class PocketRMSD(Module):
 
             self.sample_metrics['cath_degree_per_sample'].append(cath_degree)
             self.sample_metrics['pocket_rmsd_per_sample'].append(pocket_rmsd.cpu())
+            self.sample_metrics['ligand_rmsd_per_sample'].append(ligand_rmsd.cpu())
             
             self.sample_metrics['pair_infos'].append(pair_info)  # Store the protein name
 
@@ -82,22 +85,38 @@ class PocketRMSD(Module):
         }
 
         # Return both total and per-degree metrics, including protein names and pocket RMSD for each degree
-        rmsd_below_4_per_degree = {deg: 0 for deg in range(0, 9)}
-        total_rmsd_below_4 = 0
+        pocket_rmsd_below_4_per_degree = {deg: 0 for deg in range(0, 9)}
+        total_pocket_rmsd_below_4 = 0
         for rmsd, degree in zip(self.sample_metrics['pocket_rmsd_per_sample'], self.sample_metrics['cath_degree_per_sample']):
             if rmsd < 4:
-                rmsd_below_4_per_degree[degree] += 1
-                total_rmsd_below_4 += 1
+                pocket_rmsd_below_4_per_degree[degree] += 1
+                total_pocket_rmsd_below_4 += 1
 
-        proportion_below_4_per_degree = {
-            deg: (rmsd_below_4_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)
+        # same for ligand rmsd if needed
+        ligand_rmsd_below_2_per_degree = {deg: 0 for deg in range(0, 9)}
+        total_ligand_rmsd_below_2 = 0
+        for rmsd, degree in zip(self.sample_metrics['ligand_rmsd_per_sample'], self.sample_metrics['cath_degree_per_sample']):
+            if rmsd < 2:
+                ligand_rmsd_below_2_per_degree[degree] += 1
+                total_ligand_rmsd_below_2 += 1
+
+
+
+        proportion_below_4_per_degree_pocket = {
+            deg: (pocket_rmsd_below_4_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)
         }
-        total_proportion_below_4 = total_rmsd_below_4 / self.total_count if self.total_count > 0 else 0
+        proportion_below_2_per_degree_ligand = {
+            deg: (ligand_rmsd_below_2_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)
+        }
+
+        total_proportion_below_4_pocket = total_pocket_rmsd_below_4 / self.total_count if self.total_count > 0 else 0
         return {   # Calculate proportion of RMSD < 4 per degree and overall
             **total_metrics, **per_degree_metrics, **counts, **self.sample_metrics, 
             'pair_infos_per_degree': self.pair_infos_per_degree, 
             'pocket_rmsd_per_degree_protein': self.pocket_rmsd_per_degree_protein,
             'corr_rmsd_per_degree_protein': self.corr_rmsd_per_degree_protein,
-            'rmsd_below_4_proportion_per_degree': proportion_below_4_per_degree,
-            'rmsd_below_4_total_proportion': total_proportion_below_4,
+            'pocket_rmsd_below_4_proportion_per_degree': proportion_below_4_per_degree_pocket,
+            'pocket_rmsd_below_4_total_proportion': total_proportion_below_4_pocket,
+            'ligand_rmsd_below_2_proportion_per_degree': proportion_below_2_per_degree_ligand,
+            'ligand_rmsd_below_2_total_proportion': total_ligand_rmsd_below_2
         }

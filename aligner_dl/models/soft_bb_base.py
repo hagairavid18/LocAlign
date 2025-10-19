@@ -21,6 +21,7 @@ class SoftBBBase(L.LightningModule, ABC):
             optimizer: dict[str, Any] | None, 
             plot_dir : str | None = None,
             corr_rmsd_lambda: float = 0.2,
+            gap_lambda: float = 1.0,
             embedding_cosine_lambda: float = 0.1,
             ) -> None:
         """
@@ -39,9 +40,11 @@ class SoftBBBase(L.LightningModule, ABC):
         self._pocket_loss = build_object(loss['pocket'], 'losses') if loss is not None else None
         self._transformation_loss = build_object(loss['transformation'], 'losses') if loss is not None else None
         self._ligand_loss = build_object(loss['ligand'], 'losses') if loss is not None else None
+        self._centroid_ligand_loss = build_object(loss['centroid_ligand'], 'losses') if loss is not None else None
         self._metrics = PocketRMSD()
         self._corr_rmsd_lambda = corr_rmsd_lambda
         self._embedding_cosine_lambda = embedding_cosine_lambda
+        self._gap_lambda = gap_lambda
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
         self._plot = False
@@ -68,12 +71,13 @@ class SoftBBBase(L.LightningModule, ABC):
             'pocket_rmsd': 'valid_pocket_rmsd',
             'ligand_rmsd': 'valid_ligand_rmsd',
             'corr_rmsd': 'valid_corr_rmsd',
-            'rmsd_below_4_proportion_per_degree': 'rmsd_below_4',
+            'pocket_rmsd_below_4_proportion_per_degree': 'rmsd_below_4',
+            'ligand_rmsd_below_2_proportion_per_degree': 'ligand_rmsd_below_2',
         }
         
         # Log total metrics
         for metric_key, log_name in metric_types.items():
-            total_value = sum(metrics[metric_key].values()) / len(metrics[metric_key])
+            total_value = sum(torch.tensor(list(metrics[metric_key].values())) * torch.tensor(list(metrics['counts_per_degree'].values()))) / metrics['total_count']
             self.log(log_name, total_value, on_epoch=True)
         
         # Log each metric type per `cath_degree`
@@ -107,7 +111,7 @@ class SoftBBBase(L.LightningModule, ABC):
             df = pd.DataFrame(protein_rmsd_data)
             df.to_csv(os.path.join(dir_path, f"Protein_RMSD_Results_{self.current_epoch}.csv"))
             self.logger.experiment.log_table(f"Protein_RMSD_Results_{self.current_epoch}.csv", df)
-            self.logger.experiment.log_image(generate_and_log_scatter_plot(metrics))
+            # self.logger.experiment.log_image(generate_and_log_scatter_plot(metrics))
       
         self._metrics.reset()
     
@@ -122,21 +126,27 @@ class SoftBBBase(L.LightningModule, ABC):
         # if batch_idx % 10 == 0 and self._plot:
         #     plot_transformed_point_clouds_interactive(self.logger, batch, outputs['transformation_dict'], epoch=self.current_epoch, step=batch_idx)
 
-    def _compute_loss(self, batch, R_total, t_total, corr_rmsd: torch.Tensor, embedding_similarity: torch.Tensor = None):
+    def _compute_loss(self, batch, R_total, t_total, corr_rmsd: torch.Tensor, embedding_similarity: torch.Tensor = None, gap: torch.Tensor = None):
         loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
         loss = loss_dict['pocket_rmsd']
         loss_dict.update(self._transformation_loss(batch, R_total, t_total))
         loss_dict.update(self._ligand_loss(batch, R_total, t_total))
+        loss_dict.update(self._centroid_ligand_loss(batch, R_total, t_total))
         corr_rmsd_loss = corr_rmsd.mean()
         loss_dict['corr_rmsd'] = corr_rmsd_loss
         print(f"corr_rmsd: {corr_rmsd_loss.item()}")
-        loss = loss + self._corr_rmsd_lambda * corr_rmsd_loss
-        if embedding_similarity is not None:
-            embedding_similarity = embedding_similarity.mean()
-            loss_dict['embedding_cosine_similarity'] = embedding_similarity
-            loss_dict['embedding_loss'] = -embedding_similarity
-            loss = loss + self._embedding_cosine_lambda * -embedding_similarity  # Maximize cosine similarity
-            print(f"embedding_loss: {-embedding_similarity.item()}")
+        
+        # embedding_similarity = embedding_similarity.mean()
+        # loss_dict['embedding_cosine_similarity'] = -embedding_similarity
+        loss_dict['embedding_loss'] = embedding_similarity.mean()
+        loss_dict['gap_loss'] = gap.mean()
+        loss = self._corr_rmsd_lambda * corr_rmsd_loss  -self._embedding_cosine_lambda * embedding_similarity.mean() -self._gap_lambda * gap.mean()
+
+        loss = loss + 1.0 * loss_dict['centroid_ligand_rmsd']
+        print(f"centroid_ligand_rmsd: {loss_dict['centroid_ligand_rmsd'].item()}")
+        print(f"ligand_rmsd: {loss_dict['ligand_rmsd'].item()}")
+        # print(f"embedding_loss: {-embedding_similarity.item()}")
+        print(f"gap_loss: {gap.mean().item()}")
         loss_dict['loss'] = loss
         return loss, loss_dict
 
