@@ -66,7 +66,7 @@ class RecyclingModule(nn.Module):
     
     
     def forward(self, src_coords: torch.Tensor, tgt_coords: torch.Tensor,
-                top_corr_values: torch.Tensor | None = None, top_corr_indices: torch.Tesnro | None=None):
+                top_corr_values: torch.Tensor | None = None, top_corr_indices: torch.Tensor | None=None):
                 
         tgt_frame = self._build_reference_frame(tgt_coords)        
         tgt_coords_local = self._global_to_local(tgt_coords, tgt_frame)

@@ -9,34 +9,35 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal"
-        },
-       {
-        "name": "align",
-        "type": "debugpy",
-        "request": "launch",
-        "program": "miners/scripts/align.py",
-        "console": "integratedTerminal",
-        "justMyCode": false,
-        "args": [
-            "--config",
-            "miners/configs/align_config.json",
-            // "--debug"
-        ],
-        "env": {
-            "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/miners"
-        }
-    },
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/aligner_dl/"
 
+        },
+        {
+            "name": "align",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "miners/scripts/align.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--config",
+                "miners/configs/align_config.json",
+                // "--debug"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/miners"
+            }
+        },
         {
             "name": "baseline",
             "type": "debugpy",
             "request": "launch",
             "program": "miners/scripts/baseline.py",
             "console": "integratedTerminal",
-            "justMyCode": false, 
+            "justMyCode": false,
             "args": [
-                "--config" ,
+                "--config",
                 "miners/configs/baseline_config.json",
                 "--save_path",
                 "datasets/csv_files/ligand_1708/val_baseline.csv",
@@ -49,9 +50,9 @@
             "request": "launch",
             "program": "miners/save_pockets.py",
             "console": "integratedTerminal",
-            "justMyCode": false, 
+            "justMyCode": false,
             "args": [
-                "--config" ,
+                "--config",
                 "miners/configs/save_pockets_config.json",
                 // "--debug",
             ]
@@ -62,11 +63,10 @@
             "request": "launch",
             "program": "aligner_dl/trainers/lightning_trainer.py",
             "console": "integratedTerminal",
-            "justMyCode": false, 
+            "justMyCode": false,
             "args": [
-                "--config" ,
+                "--config",
                 "aligner_dl/configs/loc_align.yaml",
-             
             ]
         },
         {
@@ -75,12 +75,11 @@
             "request": "launch",
             "program": "aligner_dl/trainers/lightning_trainer.py",
             "console": "integratedTerminal",
-            "justMyCode": false, 
+            "justMyCode": false,
             "args": [
-                "--config" ,
+                "--config",
                 "aligner_dl/configs/tm_align.yaml",
                 "--validate_only",
-             
             ]
         },
         {
@@ -89,12 +88,11 @@
             "request": "launch",
             "program": "aligner_dl/trainers/lightning_trainer.py",
             "console": "integratedTerminal",
-            "justMyCode": false, 
+            "justMyCode": false,
             "args": [
-                "--config" ,
+                "--config",
                 "aligner_dl/configs/dali.yaml",
                 "--validate_only",
-             
             ]
         },
         {
@@ -103,12 +101,11 @@
             "request": "launch",
             "program": "aligner_dl/trainers/lightning_trainer.py",
             "console": "integratedTerminal",
-            "justMyCode": false, 
+            "justMyCode": false,
             "args": [
-                "--config" ,
+                "--config",
                 "aligner_dl/configs/softalign.yaml",
                 "--validate_only",
-             
             ]
         },
         {
@@ -119,7 +116,7 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--csv", 
+                "--csv",
                 // "aligner_dl/Protein_RMSD_Results_29-71899.csv",
                 "aligner_dl/Protein_RMSD_Results_0_clean.csv",
                 // "--protein_pair",
@@ -143,7 +140,7 @@
                 // "1TRN", "1TRN",
                 "--ligand_id",
                 "SAH",
-                "--checkpoint", 
+                "--checkpoint",
                 // "checkpoints/corr-rmsd-loss-lambda-015/epoch=29-step=71970.ckpt",
                 // "checkpoints/corr-rmsd-loss-lambda-015-recycle2/epoch=29-step=71970.ckpt",
                 "checkpoints/split7-10gnn-recycling2-lambda05/epoch=29-step=76440.ckpt",
@@ -154,9 +151,6 @@
                 "inference_results_2509",
             ]
         },
-       
-
-        
         {
             "name": "Split CSV by Ligand",
             "type": "debugpy",
@@ -165,16 +159,16 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--input_csv", 
+                "--input_csv",
                 // "results/alignment_temp_results/2025-02-01_17-48-34_3000.csv",
                 // "results/alignment_results/2025-02-04_09-07-32_106886.csv",
                 "results/alignment_results/2025-08-17_11-19-35_146827.csv",
-                "--output_dir", 
+                "--output_dir",
                 // "datasets/csv_files/protein_grouping_1206",       // Directory to save the train, val, and test CSVs
-                "datasets/csv_files/homology_1708_05_split7",       // Directory to save the train, val, and test CSVs
-                "--test_size", 
-                "0.0",               // Optional: Adjust the test set size (default 0.2)
-                "--val_size", 
+                "datasets/csv_files/homology_1708_05_split7", // Directory to save the train, val, and test CSVs
+                "--test_size",
+                "0.0", // Optional: Adjust the test set size (default 0.2)
+                "--val_size",
                 "0.2",
                 // "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
             ]
