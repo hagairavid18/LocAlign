@@ -1,10 +1,11 @@
 from models.utils.math import euclidean_to_spherical
+from models.layers import MultiplicativeGraphConv
+
 import torch
 import torch.nn as nn
 from torch_geometric.data import Data
-from torch_geometric.nn import GraphConv
 
-#update_i = MLP { s_i,   sum_j[ MLP ( s_i | s_j | w_{ij}) ] }
+
 class CDM(nn.Module):
 
     def __init__(
@@ -17,7 +18,7 @@ class CDM(nn.Module):
         super(CDM, self).__init__()
         self._n_nodes = n_nodes  # Number of top correspondences to keep
         self._n_gnn_layers = n_gnn_layers  # Number of GNN layers
-        self._gnn_layer = GraphConv(1, 1, aggr='sum')
+        self._gnn_layer = MultiplicativeGraphConv(1, 1, aggr='sum', bias=False)  # GNN layer
         self._add_angle_features = with_angles  # Whether to include angle features
         
         pre_input_dim = 2 * n_rbf_functions + 8 if with_angles else 2 * n_rbf_functions
@@ -27,11 +28,8 @@ class CDM(nn.Module):
         self.apply(self.init_weights)
        
         with torch.no_grad():
-            self._gnn_layer.lin_rel.weight.fill_(0.05)
-            self._gnn_layer.lin_rel.bias.fill_(1.0)
-            self._gnn_layer.lin_root.weight.fill_(0.0)
-        self._gnn_layer.lin_root.weight.requires_grad = False
-        self._gnn_layer.lin_rel.bias.requires_grad = False
+            self._gnn_layer.lin_rel.weight.fill_(1/n_nodes)
+            self._gnn_layer.lin_root.weight.fill_(1.0)
          
     @staticmethod
     def init_weights(m):
@@ -40,7 +38,25 @@ class CDM(nn.Module):
             nn.init.xavier_uniform_(m.weight)
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
-        
+
+    def safe_softmax(
+        self, 
+        scores: torch.Tensor,
+        prev_scores: torch.Tensor, 
+        dim: int = -1
+        ) -> torch.Tensor:
+        """
+        Compute a numerically stable softmax.
+        """
+        # x = graph_data.x
+        x_exp = torch.exp(scores - scores.max(dim=-1, keepdim=True).values)  # prevent overflow
+        weights = prev_scores * x_exp
+        denom = weights.sum(dim=-1, keepdim=True)
+        denom = torch.clamp(denom, min=1e-6)  # avoid 0/0
+        res = weights / denom
+
+        return res
+
     def forward(
         self, 
         soft_correspondences: torch.Tensor, 
@@ -52,19 +68,26 @@ class CDM(nn.Module):
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
         graph_data = self.build_correspondence_graph(top_k_values, top_k_indices, src_frames, tgt_frames)
 
+        # print gnn weights before
+        # print("GNN weights before:", self._gnn_layer.lin_rel.weight.data, self._gnn_layer.lin_rel.bias.data)
         for i in range(self._n_gnn_layers):
-            graph_data.x = (graph_data.x.reshape(B, self._n_nodes) / graph_data.x.reshape(B,self._n_nodes).sum(1, keepdim=True)).reshape(B *self._n_nodes,1)
+            orig_x = graph_data.x.clone().reshape(B, self._n_nodes)
             graph_data.x = self._gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
-
-        graph_data.x = graph_data.x.relu()
-        graph_data.x = (graph_data.x.reshape(B, self._n_nodes) / graph_data.x.reshape(B,self._n_nodes).sum(1, keepdim=True)).reshape(B *self._n_nodes,1)
+            
+            # multiplicative softmax
+            graph_data.x = graph_data.x.reshape(B, self._n_nodes)
+            graph_data.x = self.safe_softmax(graph_data.x, orig_x, dim=-1)
+            graph_data.x = graph_data.x.reshape(B * self._n_nodes, 1)
+            
         # Step 4: Update soft correspondences
         updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
+        # print top k per batch
+        # print("Top k values after GNN:", torch.topk(updated_correspondences, 5, dim=-1)[0])
 
         return updated_correspondences, top_k_indices, top_k_values
 
     def extract_top_k_correspondences(
-        self, 
+        self,   
         soft_correspondences: torch.Tensor
         ) -> torch.Tensor:
         """

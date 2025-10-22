@@ -4,7 +4,7 @@ trainer:
   max_epochs: 30
   validate_only: false
   check_val_every_n_epoch: 3
-  gradient_clipping: 30
+  gradient_clipping: 5.0
   # profiler: true
   # ckpt_path: "checkpoints/split7-10gnn-recycling2-lambda05/epoch=29-step=76440.ckpt"
 model:
@@ -40,8 +40,8 @@ model:
       name: 
         CDM
       args:
-        n_nodes: 400
-        n_gnn_layers: 10
+        n_nodes: 100
+        n_gnn_layers: 5
         n_rbf_functions: 32
         with_angles: true
     loss:

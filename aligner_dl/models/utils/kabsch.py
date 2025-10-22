@@ -59,6 +59,7 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     B, K, _ = P.shape
 
     zero_mask = (weights.sum(dim=(1), keepdim=True) == 0)  # Shape: (B, 1, 1)
+    # print(f"Zero weight masks: {zero_mask.sum().item()} batches with zero weights")
     weights = weights + zero_mask * 1e-6  # Avoid zero weights
 
     # Compute weighted centroids
