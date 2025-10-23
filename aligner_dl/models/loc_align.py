@@ -19,11 +19,12 @@ class LocAlign(SoftBBBase):
         top_k: int = 1200,
         corr_rmsd_lambda: float = 0.2,
         embedding_cosine_lambda: float = 0.1,
+        gap_lambda: float = 1.0,
         n_iter_recycling: int = 3,
         plot_dir: str | None = None
         ) -> None:
        
-        super().__init__(loss=loss, optimizer=optimizer, plot_dir=plot_dir, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda)
+        super().__init__(loss=loss, optimizer=optimizer, plot_dir=plot_dir, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda)
         self._input_block = build_object(input_layer, 'models.layers')
         self._linear = build_object(scalar_layer, 'models.layers')  # Projects tar_embedding to a scalar
         self._denoiser = build_object(denoiser, 'models')
@@ -33,22 +34,61 @@ class LocAlign(SoftBBBase):
         self._n_recycling_iterations = n_iter_recycling
         # self.automatic_optimization = False  # We will handle the optimization manually
 
-    def _compute_embedding_similarity(
+    def _embedding_cov_term(
         self,
-        top_corr_values: torch.Tensor, 
-        top_corr_indices: torch.Tensor, 
-        top_tar_embedding: torch.Tensor, 
-        top_src_embedding: torch.Tensor
-        ) -> torch.Tensor:
+        top_corr_values: torch.Tensor,   # [B, K'] -> weights w_m
+        top_corr_indices: torch.Tensor,  # [B, K', 2] -> (idxA, idxB)
+        top_tar_embedding: torch.Tensor, # [B, N_A, D] -> E^A (unit norm)
+        top_src_embedding: torch.Tensor, # [B, N_B, D] -> E^B (unit norm)
+        lambda_emb: float = 1.0,
+    ) -> torch.Tensor:
+        B, Kp = top_corr_indices.shape[:2]
+        device = top_corr_indices.device
+        batch_idx = torch.arange(B, device=device).unsqueeze(-1).expand(B, Kp)
+
+        # Gather matched, already-normalized embeddings
+        EA = top_tar_embedding[batch_idx, top_corr_indices[:, :, 0]]  # [B, K', D]
+        EB = top_src_embedding[batch_idx, top_corr_indices[:, :, 1]]  # [B, K', D]
+        EA = EA / (EA.norm(dim=-1, keepdim=True) + 1e-8)
+        EB = EB / (EB.norm(dim=-1, keepdim=True) + 1e-8)
+        w  = top_corr_values                                          # [B, K']
+
+        # term1 = (1/K') * Σ_m w_m (EA_m · EB_m)
+        dot_per_m = (EA * EB).sum(dim=-1)                             # [B, K']
+        term1 = (w * dot_per_m).sum(dim=-1)                      # [B]
+
+        # μA = (1/K') Σ_m w_m EA_m ; μB similarly
+        w_exp = w.unsqueeze(-1)                                       # [B, K', 1]
+        muA = (w_exp * EA).sum(dim=1)                            # [B, D]
+        muB = (w_exp * EB).sum(dim=1)                            # [B, D]
+
+        term2 = (muA * muB).sum(dim=-1)                               # [B]
+
+        # Final: -λ_emb [ term1 - term2 ]
+        return  term1 - term2                          # [B]
+
+    def _embedding_entropy_term(
+        self,
+        top_corr_values: torch.Tensor,  # [B, K'] -> weights w_m
+        eps: float = 1e-12,
+    ) -> torch.Tensor:
         """
-        Computes the weighted cosine similarity between the embeddings of the corresponding atoms.
+        Entropy regularizer:
+            λ_gap * exp( - Σ_m w_m log w_m )
+
+        Args:
+            top_corr_values: [B, K'] nonnegative weights (w_m).
+            eps: small constant for numerical stability (avoids log(0)).
+
+        Returns:
+            Tensor of shape [B] with the entropy term per batch element.
         """
-        batch_indices = torch.arange(top_corr_indices.shape[0], device=top_corr_indices.device).unsqueeze(-1).expand(-1, top_corr_indices.shape[1])
-        gathered_embedd_tar = top_tar_embedding[batch_indices, top_corr_indices[:, :, 0]]  # [B, K', dim]
-        gathered_embedd_src = top_src_embedding[batch_indices, top_corr_indices[:, :, 1]]  # [B, K', dim]
-        cosine_similarities = torch.sum(gathered_embedd_tar * gathered_embedd_src, dim=-1) / (torch.norm(gathered_embedd_tar, dim=-1) * torch.norm(gathered_embedd_src, dim=-1) + 1e-8)
-        weighted_cosine_similarities = ((cosine_similarities -1 /top_corr_values.shape[1]) * top_corr_values)
-        return weighted_cosine_similarities
+        w = top_corr_values.clamp_min(eps)  # [B, K']
+
+
+        H = -(w * torch.log(w)).sum(dim=-1)  
+        return torch.exp(H)      # [B]
+        # return H
     
     def _get_atom_importance(
         self, 
@@ -175,8 +215,8 @@ class LocAlign(SoftBBBase):
 
             step_results: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(top_corr_values, gathered_coord_src, gathered_coord_tar)
             
-            step_results['embedding_similarity'] = self._compute_embedding_similarity(top_corr_values, top_corr_indices, top_tar_embedding, top_src_embedding).sum(1)
-            
+            step_results['embedding_similarity'] = self._embedding_cov_term(top_corr_values, top_corr_indices, top_tar_embedding, top_src_embedding)
+            step_results['gap'] = self._embedding_entropy_term(top_corr_values) / top_corr_values.shape[1]
             all_iter_results.append(step_results)
             
             if i < self._n_recycling_iterations - 1:
@@ -204,7 +244,7 @@ class LocAlign(SoftBBBase):
         all_iter_results = self._compute_soft_bb_algorithm(batch)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_pretrained_embeddings'].dtype)
         for iter_results in all_iter_results:
-            curr_loss, loss_dict = self._compute_loss(batch, iter_results['pred_R'], iter_results['pred_t'],  iter_results['corr_rmsd'], iter_results['embedding_similarity'])
+            curr_loss, loss_dict = self._compute_loss(batch, iter_results['pred_R'], iter_results['pred_t'],  iter_results['corr_rmsd'], iter_results['embedding_similarity'], iter_results['gap'])
             loss += curr_loss
         loss /= len(all_iter_results)  # Average loss over all iterations
         
@@ -226,7 +266,7 @@ class LocAlign(SoftBBBase):
         all_iter_results = self._compute_soft_bb_algorithm(batch)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_pretrained_embeddings'].dtype)
         for iter_results in all_iter_results:
-            curr_loss, loss_dict = self._compute_loss(batch, iter_results['pred_R'], iter_results['pred_t'], iter_results['corr_rmsd'], iter_results['embedding_similarity'])
+            curr_loss, loss_dict = self._compute_loss(batch, iter_results['pred_R'], iter_results['pred_t'], iter_results['corr_rmsd'], iter_results['embedding_similarity'], iter_results['gap'])
             loss += curr_loss
         loss /= len(all_iter_results)  # Average loss over all iterations
         if self._plot:

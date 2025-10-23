@@ -1,5 +1,5 @@
 trainer:
-  exp_name: 10gnn-recycling2-lambda05-discrepency1-homology
+  exp_name: baseline-new-losses-fix-gap-ligand5
   tags: ["atom", "esm", "homology_split"]
   max_epochs: 30
   validate_only: false
@@ -12,9 +12,10 @@ model:
   args:
     # plot_dir: "plots/maskedln-atom-256-.a?KB6Pea3Pq%_pocketloss-dp002/val"
     top_k: 1000
-    n_iter_recycling: 2
-    corr_rmsd_lambda: 0.05
+    n_iter_recycling: 0
+    corr_rmsd_lambda: 0.2
     embedding_cosine_lambda: 1.0
+    gap_lambda: 1.00
     input_layer:
       name: 
         EmbeddingBlock
