@@ -48,7 +48,7 @@ class CDM(nn.Module):
         """
         Compute a numerically stable softmax.
         """
-        # x = graph_data.x
+        prev_scores = prev_scores + 1e-6  # avoid zero previous scores
         x_exp = torch.exp(scores - scores.max(dim=-1, keepdim=True).values)  # prevent overflow
         weights = prev_scores * x_exp
         denom = weights.sum(dim=-1, keepdim=True)
@@ -69,16 +69,25 @@ class CDM(nn.Module):
         graph_data = self.build_correspondence_graph(top_k_values, top_k_indices, src_frames, tgt_frames)
 
         # print gnn weights before
-        # print("GNN weights before:", self._gnn_layer.lin_rel.weight.data, self._gnn_layer.lin_rel.bias.data)
+        print("GNN weights before: rel, root", self._gnn_layer.lin_rel.weight.data, self._gnn_layer.lin_root.weight.data)
+        # print top edges 
+        # print("Top k edge weights before GNN:", torch.topk(graph_data.edge_attr, 5, dim=0).values)
         for i in range(self._n_gnn_layers):
             orig_x = graph_data.x.clone().reshape(B, self._n_nodes)
             graph_data.x = self._gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
+            # print(f"Top k values after gnn iter {i}:", torch.topk( graph_data.x.reshape(B, self._n_nodes), 5, dim=-1)[0])
             
             # multiplicative softmax
             graph_data.x = graph_data.x.reshape(B, self._n_nodes)
-            graph_data.x = self.safe_softmax(graph_data.x, orig_x, dim=-1)
+            graph_data.x = self.safe_softmax(graph_data.x, orig_x, dim=-1) + 1e-6  # avoid zero scores
             graph_data.x = graph_data.x.reshape(B * self._n_nodes, 1)
-            
+
+            # print top k values after each layer
+            # print(f"Top k values after softmax iter {i}:", torch.topk( graph_data.x.reshape(B, self._n_nodes), 5, dim=-1)[0])
+        if self._n_gnn_layers == 0:
+            graph_data.x = graph_data.x.reshape(B, self._n_nodes)
+            graph_data.x = self.safe_softmax(graph_data.x, top_k_values, dim=-1) + 1e-6  # avoid zero scores
+            graph_data.x = graph_data.x.reshape(B * self._n_nodes, 1) 
         # Step 4: Update soft correspondences
         updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
         # print top k per batch

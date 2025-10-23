@@ -10,7 +10,6 @@ import lightning as L
 import torch.optim as optim
 
 from metrics import PocketRMSD
-from models.utils.plots import generate_and_log_scatter_plot
 from models.utils.misc import build_object
 
 
@@ -134,7 +133,6 @@ class SoftBBBase(L.LightningModule, ABC):
         loss_dict.update(self._centroid_ligand_loss(batch, R_total, t_total))
         corr_rmsd_loss = corr_rmsd.mean()
         loss_dict['corr_rmsd'] = corr_rmsd_loss
-        print(f"corr_rmsd: {corr_rmsd_loss.item()}")
         
         # embedding_similarity = embedding_similarity.mean()
         # loss_dict['embedding_cosine_similarity'] = -embedding_similarity
@@ -142,11 +140,11 @@ class SoftBBBase(L.LightningModule, ABC):
         loss_dict['gap_loss'] = gap.mean()
         loss = self._corr_rmsd_lambda * corr_rmsd_loss  -self._embedding_cosine_lambda * embedding_similarity.mean() -self._gap_lambda * gap.mean()
 
-        loss = loss + 1.0 * loss_dict['centroid_ligand_rmsd']
-        print(f"centroid_ligand_rmsd: {loss_dict['centroid_ligand_rmsd'].item()}")
-        print(f"ligand_rmsd: {loss_dict['ligand_rmsd'].item()}")
-        # print(f"embedding_loss: {-embedding_similarity.item()}")
-        print(f"gap_loss: {gap.mean().item()}")
+        # loss = loss + 1.0 * loss_dict['centroid_ligand_rmsd']
+        loss = loss + 1.0 * loss_dict['ligand_rmsd']
+        # loss = loss + 5.0 * loss_dict['pocket_rmsd']
+        # print losses for debugging
+        # print("Losses:", {k: v.item() for k, v in loss_dict.items()})
         loss_dict['loss'] = loss
         return loss, loss_dict
 
