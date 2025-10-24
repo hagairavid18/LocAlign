@@ -80,10 +80,11 @@ class RecyclingModule(nn.Module):
         
         if self.recycle_scalar & (top_corr_values is not None) & (top_corr_indices is not None):
             B,N = src_coords.shape[:-1]
-            batch_indices = torch.arange(B, device=top_corr_indices.device).unsqueeze(-1).expand(-1, N)
-            src_scalar, tgt_scalar = torch.zeros([B,N],device=top_corr_indices.device), torch.zeros([B,N],device=top_corr_indices.device)
-            tgt_scalar[batch_indices , top_corr_indices[:,:,0]] = self.scalar_scale * top_corr_values.sum(2).detach() # Detach to stop backpropagation here.
-            src_scalar[batch_indices , top_corr_indices[:,:,1]] = self.scalar_scale * top_corr_values.sum(1).detach() # Detach to stop backpropagation here.
+            src_scalar, tgt_scalar = torch.zeros([B,N],device=top_corr_indices.device), torch.zeros([B,N],device=top_corr_indices.device)            
+            tgt_scalar.scatter_add(1,top_corr_indices[:,:,0], top_corr_values.detach()) # Detach to stop backpropagation here.
+            src_scalar.scatter_add(1,top_corr_indices[:,:,1], top_corr_values.detach()) # Detach to stop backpropagation here.
+            tgt_scalar *= self.scalar_scale
+            src_scalar *= self.scalar_scale
             return tgt_fourier_embeddings, src_fourier_embeddings, tgt_scalar,src_scalar
         else:
             return tgt_fourier_embeddings, src_fourier_embeddings # Per-atom embeddings to be concatenated with the previous ones.
