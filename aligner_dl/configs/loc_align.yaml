@@ -10,10 +10,8 @@ trainer:
 model:
   name: LocAlign
   args:
-    # plot_dir: "plots/maskedln-atom-256-.a?KB6Pea3Pq%_pocketloss-dp002/val"
-    top_k: 1000
-    n_iter_recycling: 0
-    corr_rmsd_lambda: 0.2
+    n_iter_recycling: 2
+    corr_rmsd_lambda: 0.1
     embedding_cosine_lambda: 1.0
     gap_lambda: 1.00
     input_layer:
@@ -26,16 +24,6 @@ model:
         output_dim: 256
         dropout: 0.1
         norm_in_last_layer: true
-    scalar_layer:
-      name: 
-        EmbeddingBlock
-      args:
-        n_blocks: 3
-        input_dim: 256
-        output_dim: 1
-        bias: false
-        dropout: 0.0
-      
     denoiser:
       name: 
         CDM
@@ -44,6 +32,12 @@ model:
         n_gnn_layers: 10
         n_rbf_functions: 32
         with_angles: true
+    keypoints_selection:
+      name: KeypointsSelection
+      args:
+        embedding_size: 256
+        n_rbf_functions: 16
+        top_k: 400
     loss:
       use_transformation: false
       pocket:
@@ -75,7 +69,7 @@ dataset:
     name: ScanNetDataset
     args:
       df_path: datasets/csv_files/homology_1708_05_split7/train.csv
-      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1709'
+      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_knn_23_10_2025'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       esm_layer: 30
@@ -89,7 +83,7 @@ dataset:
     name: ScanNetDataset
     args:
       df_path: datasets/csv_files/homology_1708_05_split7/val_baseline.csv
-      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1709'
+      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_knn_23_10_2025'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       # n_samples: 10

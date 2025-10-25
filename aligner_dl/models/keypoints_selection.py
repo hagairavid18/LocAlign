@@ -1,8 +1,10 @@
-from models.utils.math import euclidean_to_spherical
-from models.correspondences_denoiser import LearnableRBFEncoding,EdgeWeightLearner
-from models.layers.blocks import EmbeddingBlock
 import torch
 import torch.nn as nn
+
+from models.utils.math import euclidean_to_spherical
+from models.correspondences_denoiser import LearnableRBFEncoding, EdgeWeightLearner
+from models.layers.blocks import EmbeddingBlock
+
 
 class KeypointsSelection(nn.Module):
     def __init__(
@@ -18,12 +20,11 @@ class KeypointsSelection(nn.Module):
         self._top_k = top_k                                
         self._add_angle_features = with_angles  # Whether to include angle features                            
         pre_input_dim = n_rbf_functions + 4 if with_angles else n_rbf_functions
-        self._embedding_block = EmbeddingBlock(input_dim=embedding_size,output_dim=3,n_blocks=3,dropout=0.0,bias=False)
+        self._embedding_block = EmbeddingBlock(input_dim=embedding_size, output_dim=3, n_blocks=3, dropout=0.0, bias=False)
         self._rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 6.0), learn_gamma=True)
         self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=16)
         self.apply(self.init_weights)
                        
-         
     @staticmethod
     def init_weights(m):
         """Custom weight initialization for stability"""
@@ -43,10 +44,10 @@ class KeypointsSelection(nn.Module):
         
         B, N, embedding_size = embeddings.shape # Batch size, number of atoms, embedding size.
         K = neighbors.shape[-1] # Number of neigbhors
-        assert embedding_size == self._embedding_size
-        neighbors = torch.clip( neighbors.type(torch.int64),0,N-1) # Make sure that neighbors are not outside of max length.
-        local_coordinates = self._get_local_coordinates(frames,neighbors) # B X N X K X 3 [3,theta,phi]
-        local_coordinates = local_coordinates.view(B,N*K,3) # Reshape before passing to edge learner.
+        # assert embedding_size == self._embedding_size
+        neighbors = torch.clip(neighbors.type(torch.int64), 0, N-1) # Make sure that neighbors are not outside of max length.
+        local_coordinates = self._get_local_coordinates(frames, neighbors) # B X N X K X 3 [3,theta,phi]
+        local_coordinates = local_coordinates.view(B, N*K, 3) # Reshape before passing to edge learner.
         local_distances = local_coordinates[:,:,0]
         local_edges = self._rbf_encoder(local_distances) # Calculate scalar edges; same code as in correspondence solver module.
         if self._add_angle_features:
@@ -61,9 +62,9 @@ class KeypointsSelection(nn.Module):
         key = value_key_query[:,:,1]
         query = value_key_query[:,:,2]
         query = query.masked_fill(~mask, -float('inf')) # Make sure that masked positions have no role in attention.
-        local_value = value.gather(1, neighbors.view(B,N*K) ).view(B,N,K)
-        local_query = query.gather(1, neighbors.view(B,N*K) ).view(B,N,K)
-        local_attention = torch.softmax( key.unsqueeze(-1) * local_query + local_scalar_edges,axis=-1) # Scalar attention over neighbors.
+        local_value = value.gather(1, neighbors.view(B,N*K) ).view(B, N, K)
+        local_query = query.gather(1, neighbors.view(B,N*K) ).view(B, N, K)
+        local_attention = torch.softmax(key.unsqueeze(-1) * local_query + local_scalar_edges,axis=-1) # Scalar attention over neighbors.
         output_score = torch.sum(local_value * local_attention,axis=-1)
         output_score = output_score.masked_fill(~mask, -float('inf'))  # Make sure that masked positions have no output_score.
         top_k_indices, top_k_score = self._get_rectified_top_k(output_score, mask)

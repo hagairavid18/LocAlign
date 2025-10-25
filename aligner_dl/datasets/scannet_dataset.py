@@ -139,6 +139,7 @@ class ScanNetDataset(BasePairDataset):
 
             ret[f'{key}_pretrained_embeddings'] = F.pad(embedding_dict[f'atom_embeddings'], (0, 0, 0, self._max_atoms - n_atoms))
             ret[f'{key}_frames'] = F.pad(embedding_dict[f'atom_frames'], (0, 0, 0, 0, 0, self._max_atoms - n_atoms))
+            ret[f'{key}_neighbors'] = F.pad(embedding_dict[f'atom_neighbors'], (0, 0, 0, self._max_atoms - n_atoms), value=-1)
             ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'atom_residue_indices'], (0, self._max_atoms - n_atoms))
             ret[f'{key}_atom_original_indices'] = F.pad(embedding_dict[f'atom_original_indices'], (0, self._max_atoms - n_atoms))
             ret[f'{key}_mask'] = F.pad(torch.ones(n_atoms), (0, self._max_atoms - n_atoms), value=0).bool()
@@ -193,14 +194,41 @@ class ScanNetDataset(BasePairDataset):
         atom_embeddings = data["atomic_plus_residue_embedding"]
         atom_residue_index = data["sequence_indices_atom"]  # Residue index for each atom
         atom_frames = data["atomic_frames"]
+        atom_neighbors = data["atom_nearest_neighbors"]
+
+        # oringal_atom_indices = np.arange(len(atom_embeddings))
 
         residue_indices = residue_ids[:, -1].astype(int)  # Extract residue indices (last column of residue_ids)
         atom_residue_index = residue_indices[atom_residue_index]
         valid_residue_indices = set(atom_residue_index).intersection(set(esm_embedding_dict.keys()))
         
-        atom_embeddings = np.stack([atom_embeddings[i] for i in range(len(atom_embeddings)) if atom_residue_index[i] in valid_residue_indices])
-        atom_frames = np.stack([atom_frames[i] for i in range(len(atom_frames)) if atom_residue_index[i] in valid_residue_indices])
-        atom_residue_index = np.array([atom_residue_index[i] for i in range(len(atom_residue_index)) if atom_residue_index[i] in valid_residue_indices])
+        valid_mask = np.isin(atom_residue_index, list(valid_residue_indices))
+        kept_idx = np.nonzero(valid_mask)[0]  # original indices to keep
+
+        # --- Subsample to at most max_atoms ---
+        max_atoms = self._max_atoms 
+        if len(kept_idx) > max_atoms:
+            kept_idx = np.random.choice(kept_idx, size=max_atoms, replace=False)
+
+        # Now build the original->new index map for only those kept
+        N = len(atom_residue_index)
+        orig2new = np.full(N, -1, dtype=np.int32)
+        orig2new[kept_idx] = np.arange(len(kept_idx), dtype=np.int32)
+
+        # Filter per-atom arrays
+        atom_embeddings = atom_embeddings[kept_idx]
+        atom_frames = atom_frames[kept_idx]
+        atom_residue_index = atom_residue_index[kept_idx]
+
+        # Remap and filter neighbors
+        remapped_neighbors = orig2new[atom_neighbors]
+        remapped_neighbors = remapped_neighbors[kept_idx]
+
+        # Compact neighbors (valid first, -1s at the end)
+        valid = remapped_neighbors >= 0
+        order = np.argsort(~valid, axis=1)
+        atom_neighbors = np.take_along_axis(remapped_neighbors, order, axis=1)
+
 
         if self._with_esm:
             esm_per_atom = np.stack([esm_embedding_dict[int(id)] for id in atom_residue_index])
@@ -210,11 +238,6 @@ class ScanNetDataset(BasePairDataset):
         else:
             atomic_plus_residue_embedding = atom_embeddings
         
-        atom_sampled_indices = np.random.choice(len(atom_embeddings), size=min(len(atom_embeddings), self._max_atoms), replace=False)
-        atom_embeddings = atom_embeddings[atom_sampled_indices]
-        atom_residue_index = atom_residue_index[atom_sampled_indices]
-        atom_frames = atom_frames[atom_sampled_indices]
-        atomic_plus_residue_embedding = atomic_plus_residue_embedding[atom_sampled_indices]
 
         ret_dict = {
             'atom_frames': atom_frames,
@@ -222,7 +245,8 @@ class ScanNetDataset(BasePairDataset):
             'residue_embeddings': residue_embeddings,
             'residue_residue_indices': residue_indices,
             'atom_residue_indices': atom_residue_index,
-            "atom_original_indices": atom_sampled_indices
+            'atom_neighbors': atom_neighbors,
+            "atom_original_indices": kept_idx
         }
         return {key: torch.tensor(value) for key, value in ret_dict.items()}
 
