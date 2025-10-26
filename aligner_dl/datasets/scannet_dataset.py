@@ -120,17 +120,17 @@ class ScanNetDataset(BasePairDataset):
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
         
-        if not self.inference:
-            try:
-                pocket_data = {
-                    "src": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['mov_protein'] + row['mov_chain']),
-                    "tar": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['ref_protein'] + row['ref_chain']),
-                }
+        # if not self.inference:
+            # try:
+            #     pocket_data = {
+            #         "src": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['mov_protein'] + row['mov_chain']),
+            #         "tar": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['ref_protein'] + row['ref_chain']),
+            #     }
                 
-            except Exception as e:
-                print(f"Error reading pocket data: {e}")
-                idx = torch.randint(0, len(self), (1,)).item()
-                return self.__getitem__(idx)
+            # except Exception as e:
+            #     print(f"Error reading pocket data: {e}")
+            #     idx = torch.randint(0, len(self), (1,)).item()
+            #     return self.__getitem__(idx)
 
         ret = {}
         for key in ["src", "tar"]:
@@ -146,23 +146,23 @@ class ScanNetDataset(BasePairDataset):
             if self.inference:
                 continue
           
-            pocket_residue_indices = pocket_data[key]
-            indices_for_pocket = torch.isin(embedding_dict["atom_residue_indices"], pocket_residue_indices)
-            if indices_for_pocket.sum() < 10:
-                print(f"Error: {indices_for_pocket.sum()} indices for pocket")
-                idx = torch.randint(0, len(self), (1,)).item()
-                return self.__getitem__(idx)
-            embedding_dict['pocket_frames'] = embedding_dict['atom_frames'][indices_for_pocket]
-            n_pocket_atoms = embedding_dict['pocket_frames'].shape[0]
-            ret[f'{key}_pocket_frames'] = F.pad(embedding_dict['pocket_frames'], (0, 0, 0, 0, 0, self._MAX_POCKET_LENGTH - n_pocket_atoms))
-            ret[f'{key}_pocket_mask'] = F.pad(torch.ones(n_pocket_atoms), (0, self._MAX_POCKET_LENGTH - n_pocket_atoms), value=0).bool()
+            # pocket_residue_indices = pocket_data[key]
+            # indices_for_pocket = torch.isin(embedding_dict["atom_residue_indices"], pocket_residue_indices)
+            # if indices_for_pocket.sum() < 10:
+                # print(f"Error: {indices_for_pocket.sum()} indices for pocket")
+                # idx = torch.randint(0, len(self), (1,)).item()
+                # return self.__getitem__(idx)
+            # embedding_dict['pocket_frames'] = embedding_dict['atom_frames'][indices_for_pocket]
+            # n_pocket_atoms = embedding_dict['pocket_frames'].shape[0]
+            # ret[f'{key}_pocket_frames'] = F.pad(embedding_dict['pocket_frames'], (0, 0, 0, 0, 0, self._MAX_POCKET_LENGTH - n_pocket_atoms))
+            # ret[f'{key}_pocket_mask'] = F.pad(torch.ones(n_pocket_atoms), (0, self._MAX_POCKET_LENGTH - n_pocket_atoms), value=0).bool()
 
         ret['metadata'] = row.to_dict()
         if self.inference:
             return ret
         
-        ret['gt_R'] = torch.Tensor(row['rotations'][0][0])
-        ret['gt_t'] = torch.Tensor(row['translations'][0][0])
+        # ret['gt_R'] = torch.Tensor(row['rotations'][0][0])
+        # ret['gt_t'] = torch.Tensor(row['translations'][0][0])
         
         # ret['sample_weight'] = torch.tensor(row['sample_weight'])
         ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self._MAX_LIGAND_LENGTH - len(src_ligand_coordinates)))

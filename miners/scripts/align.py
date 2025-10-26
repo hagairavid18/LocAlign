@@ -4,9 +4,12 @@ import logging
 import os
 from datetime import datetime
 import multiprocessing as mp
+import sys
 from typing import Any
 import pandas as pd
 
+
+sys.path.append(os.path.join(os.path.dirname(__file__)))
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -64,7 +67,7 @@ if __name__ == "__main__":
         config = json.load(f)
     
     pairs_df = pd.read_csv(config['df_path'], index_col=0)
-    pairs_df = pairs_df.sample(frac=0.005, random_state=42).reset_index(drop=True)  # shuffle
+    # pairs_df = pairs_df.sample(frac=0.005, random_state=42).reset_index(drop=True)  # shuffle
     
     if config['ligand']:
         pairs_df = pairs_df[pairs_df['ligand_id'] == config['ligand']]

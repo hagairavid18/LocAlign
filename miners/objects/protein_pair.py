@@ -65,8 +65,8 @@ class ProteinPair:
         self._mov_model_idx = mov_model_idx
         self._save_transformed_models = save_transformed_models
         
-        self._base_dir = f'{ligand_dir}/{ligand_name}/{self._mov_protein._pdb_name}{self._mov_protein._chain_id}_to_{self._ref_protein._pdb_name}{self._ref_protein._chain_id}'
-        os.makedirs(self._base_dir, exist_ok=True)
+        # self._base_dir = f'{ligand_dir}/{ligand_name}/{self._mov_protein._pdb_name}{self._mov_protein._chain_id}_to_{self._ref_protein._pdb_name}{self._ref_protein._chain_id}'
+        # os.makedirs(self._base_dir, exist_ok=True)
         
         self._ref_model, self._mov_model = self._init_models()
         
@@ -146,35 +146,35 @@ class ProteinPair:
         curr_pair_idx = 0
         for i, ref_residue in enumerate(ref_ligand):
             for j, mov_residue in enumerate(mov_ligand):
-                if len(ref_residue) < min_ligand_atoms or len(mov_residue) < min_ligand_atoms:
-                    holder.failure_message = NOT_ENOUGH_ATOMS_MESSAGE
-                    continue
+                # if len(ref_residue) < min_ligand_atoms or len(mov_residue) < min_ligand_atoms:
+                #     holder.failure_message = NOT_ENOUGH_ATOMS_MESSAGE
+                #     continue
 
                 error_message: str = ProteinPair.validate_ligand_pair(ref_residue, mov_residue)
                 if len(error_message) > 1:
                     continue
             
-                R, t, rmse, coverage = aligner.impose_structure(ref_residue, mov_residue, self._base_dir)
-                if len(R) < 1:
-                    continue
+                # R, t, rmse, coverage = aligner.impose_structure(ref_residue, mov_residue, self._base_dir)
+                # if len(R) < 1:
+                #     continue
                 
-                all_R[curr_pair_idx] = [r.tolist() for r in R]
-                all_t[curr_pair_idx] = [tr.tolist() for tr in t]
-                all_rmse[curr_pair_idx] = rmse
-                all_coverage[curr_pair_idx] = coverage
-                try:
-                    for k in range(len(R)):
-                        bbr, bbc = self._get_best_buddy_ratio(R[k], t[k], j , i, bb_thresh=2.0)
-                        all_bbr[curr_pair_idx].append(bbr)
-                        all_bbc[curr_pair_idx].append(bbc)
-                except Exception as e:
-                    logging.info(e)
-                    holder.failure_message = "Failed to compute in bbr"
+                # all_R[curr_pair_idx] = [r.tolist() for r in R]
+                # all_t[curr_pair_idx] = [tr.tolist() for tr in t]
+                # all_rmse[curr_pair_idx] = rmse
+                # all_coverage[curr_pair_idx] = coverage
+                # try:
+                #     for k in range(len(R)):
+                #         bbr, bbc = self._get_best_buddy_ratio(R[k], t[k], j , i, bb_thresh=2.0)
+                #         all_bbr[curr_pair_idx].append(bbr)
+                #         all_bbc[curr_pair_idx].append(bbc)
+                # except Exception as e:
+                #     logging.info(e)
+                #     holder.failure_message = "Failed to compute in bbr"
 
-                if self._save_transformed_models:
-                    if len(R) > 1:
-                        print(f"saving {len(R)} models for ligand {self._ligand_name} for pair {self._ref_protein._pdb_name}{self._ref_protein._chain_id} to {self._mov_protein._pdb_name}{self._mov_protein._chain_id}")
-                    self._apply_transformations_and_save_transformed_models(R, t, aligner, i, j)
+                # if self._save_transformed_models:
+                #     if len(R) > 1:
+                #         print(f"saving {len(R)} models for ligand {self._ligand_name} for pair {self._ref_protein._pdb_name}{self._ref_protein._chain_id} to {self._mov_protein._pdb_name}{self._mov_protein._chain_id}")
+                #     self._apply_transformations_and_save_transformed_models(R, t, aligner, i, j)
                 curr_pair_idx +=1
         
         holder.rotations = all_R
@@ -196,7 +196,7 @@ class ProteinPair:
         if aligner.name in  ["DaliAligner", "SoftAlignAligner"]:
             R, t, rmsd, _ = aligner.impose_structure(self._ref_protein, self._mov_protein, f'{self._ligand_dir}/{self._ligand_name}')
         else:
-            R, t, rmsd, _ = aligner.impose_structure(ref_coord, mov_coord, seq1, seq2, self._base_dir)
+            R, t, rmsd, _ = aligner.impose_structure(ref_coord, mov_coord, seq1, seq2)
 
         if self._save_transformed_models:
             self._apply_transformations_and_save_transformed_models(R, t, aligner)

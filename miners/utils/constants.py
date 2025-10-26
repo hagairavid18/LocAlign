@@ -5,7 +5,8 @@ import numpy as np
 
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_02_01_2025'
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_10_08_2025'
-LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_17_08_2025'
+# LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_17_08_2025'
+LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_25_10_2025'
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_24_09_2025_examples'
 RESULTS_COLUMNS = ['Ligand_ID', 'ref_protein', 'mov_protein', 'ref_chain', 'mov_chain',
                     'n_transformations','rotations', 'translations', 'rmse', 'coverage', 'cath_degree',

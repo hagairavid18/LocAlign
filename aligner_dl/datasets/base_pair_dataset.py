@@ -64,14 +64,15 @@ class BasePairDataset(Dataset):
         if 'index' in pairs.columns:
             pairs = pairs.drop('index', axis=1)
         if not self.inference:
-            if self._only_one_transformation:
-                pairs = pairs[pairs['n_transformations'] == 1]
+            # if self._only_one_transformation:
+            #     pairs = pairs[pairs['n_transformations'] == 1]
             pairs = pairs[pairs['cath_degree'] >= self._min_cath].reset_index()
             pairs = pairs[pairs['cath_degree'] <= self._max_cath].reset_index()
 
             if self._n_samples:
                 pairs = pairs.sample(n=self._n_samples, random_state=42, replace=True)
-            pairs = pairs[(pairs['cath_degree'] >= 4) | ((pairs['cath_degree'] < 4) & (pairs['bbc'] > self._bbc_filter_ratio))]
+            # pairs = pairs[(pairs['cath_degree'] >= 4) | ((pairs['cath_degree'] < 4) & (pairs['bbc'] > self._bbc_filter_ratio))]
+            # pairs = pairs[(pairs['cath_degree'] >= 4) | ((pairs['cath_degree'] < 4)]
             print(f"Read df with {len(pairs)} pairs")
         
         for col in pairs.columns:
