@@ -21,6 +21,7 @@ class SoftBBBase(L.LightningModule, ABC):
             corr_rmsd_lambda: float = 0.2,
             gap_lambda: float = 1.0,
             embedding_cosine_lambda: float = 0.1,
+            ligand_rmsd_lambda: float = 1.0
             ) -> None:
         """
         Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of 
@@ -41,6 +42,7 @@ class SoftBBBase(L.LightningModule, ABC):
         self._corr_rmsd_lambda = corr_rmsd_lambda
         self._embedding_cosine_lambda = embedding_cosine_lambda
         self._gap_lambda = gap_lambda
+        self._ligand_rmsd_lambda = ligand_rmsd_lambda
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
         self._plot = False
@@ -128,7 +130,7 @@ class SoftBBBase(L.LightningModule, ABC):
         loss_dict['embedding_loss'] = embedding_similarity.mean()
         loss_dict['gap_loss'] = gap.mean()
         loss = self._corr_rmsd_lambda * corr_rmsd_loss  -self._embedding_cosine_lambda * embedding_similarity.mean() -self._gap_lambda * gap.mean()
-        loss = loss + 5.0 * loss_dict['ligand_rmsd']
+        loss = loss + self._ligand_rmsd_lambda * loss_dict['ligand_rmsd']
         # loss = loss + 5.0 * loss_dict['pocket_rmsd']
         # print losses for debugging
         loss_dict['loss'] = loss
