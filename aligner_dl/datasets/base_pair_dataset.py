@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset
 
 from utils.misc import deserialize_nested_lists
+from utils.constants import ALL_INVALID_LIGANDS
 
 import random
 import numpy as np
@@ -84,6 +85,12 @@ class BasePairDataset(Dataset):
              
 
         # pairs = self._calculate_sample_weights(pairs)
+        # test whether some ligands are invalid
+        invalid_ligands = set(pairs[self._ligand_column].unique()).intersection(ALL_INVALID_LIGANDS)
+        if invalid_ligands:
+            print(f"Warning: Found invalid ligands in the dataset: {invalid_ligands}")
+            pairs = pairs[~pairs[self._ligand_column].isin(invalid_ligands)].reset_index(drop=True)
+            print(f"After removing invalid ligands, {len(pairs)} pairs remain.")
 
         return pairs
 

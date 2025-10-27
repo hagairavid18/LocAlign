@@ -1,5 +1,5 @@
 trainer:
-  exp_name: only-ligand-dataset-test-recycling0-ligandrmsd1-400-100
+  exp_name: only-recycling0-ligandrmsd1-400-100-remove-invalid-esm20
   tags: ["atom", "esm", "homology_split"]
   max_epochs: 10
   validate_only: false
@@ -14,6 +14,7 @@ model:
     corr_rmsd_lambda: 0.1
     embedding_cosine_lambda: 1.0
     gap_lambda: 1.00
+    ligaud_rmsd_lambda: 1.0
     input_layer:
       name: 
         EmbeddingBlock
@@ -60,7 +61,7 @@ model:
 
             max_lr: 0.0002
             epochs: 10
-            steps_per_epoch: 9941
+            steps_per_epoch: 8712
             div_factor: 25
             # final_div_factor: 1e4
 
@@ -72,7 +73,7 @@ dataset:
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_knn_25_10_2025'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
-      esm_layer: 30
+      esm_layer: 20
       # n_samples: 30
       seed: 41
       # min_cath: 3
@@ -87,7 +88,7 @@ dataset:
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       # n_samples: 10
-      esm_layer: 30
+      esm_layer: 20
       seed: 81
       max_cath: 4
       # bbr_filter_ratio: 0.3
