@@ -228,8 +228,8 @@ def make_pseudo_bond_files(
         template_atom = template_pocket_atoms[ids_template[n]].get_full_id()
         query_atom = transformed_query_pocket_atoms[ids_query[n]].get_full_id()        
         lines.append(f"#1/{template_atom[-3]}:{template_atom[-2][1]}@{template_atom[-1][0]} #2/{query_atom[-3]}:{query_atom[-2][1]}@{query_atom[-1][0]}")        
-        template_corr_residues.append(f'#1/{template_atom[-3]}:{template_atom[-2][1]}')
-        query_corr_residues.append(f'#2/{query_atom[-3]}:{query_atom[-2][1]}')
+        template_corr_residues.append(f'#1/{template_atom[-3]}:{template_atom[-2][1]}@{template_atom[-1][0]}')
+        query_corr_residues.append(f'#2/{query_atom[-3]}:{query_atom[-2][1]}@{query_atom[-1][0]}')
     
     template_corr_residues = ' '.join(template_corr_residues)    
     query_corr_residues = ' '.join(query_corr_residues)
@@ -301,7 +301,7 @@ def make_pseudo_bond_file_from_residue_indices(
 
             lines.append(f"#1/{t_chain_id}:{template_idx}@{t_atom_name} #2/{q_chain_id}:{query_idx}@{q_atom_name}")
             
-            template_corr_residues.append(f'#1/{t_chain_id}:{template_idx}')
+            template_corr_residues.append(f'#1/{t_chain_id}:{template_idx}@{t_atom_name}')
             query_corr_residues.append(f'#2/{q_chain_id}:{query_idx}@{q_atom_name}')
 
         except:
@@ -441,17 +441,24 @@ def process_alignment(
     list_commands.append('lighting soft')
     list_commands.append('set bgColor white')
     
-    list_commands.append(f'sel {template_corr_residues}')
+    template_corr_residues_all = ' '.join( x.split('@')[0] for x in template_corr_residues.split(' ') )
+    query_corr_residues_residues_all = ' '.join( x.split('@')[0] for x in query_corr_residues.split(' ') )
+    
+    list_commands.append(f'sel {template_corr_residues_all}')
     list_commands.append('color sel dark blue transparency 50') 
     list_commands.append('show sel atoms')
     list_commands.append('hide sel cartoon')
+    list_commands.append('style sel stick')
+    list_commands.append(f'sel {template_corr_residues}')
     list_commands.append('style sel ball')
     
-    list_commands.append(f'sel {query_corr_residues}')
+    list_commands.append(f'sel {query_corr_residues_residues_all}')
     list_commands.append('color sel dark red transparency 50') 
     list_commands.append('show sel atoms')
     list_commands.append('hide sel cartoon')
-    list_commands.append('style sel ball')  
+    list_commands.append('style sel stick')  
+    list_commands.append(f'sel {query_corr_residues}')
+    list_commands.append('style sel ball')    
     list_commands.append('sel clear')    
     list_commands.append('open correspondences.pb')
     # for file in ['template_receptor','transformed_query_receptor']:
