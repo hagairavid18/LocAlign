@@ -83,8 +83,7 @@ class RecyclingModule(nn.Module):
             B, N = src_coords.shape[:2]
             device = top_corr_indices.device
 
-            # Per-pair weights (no batch-sum). Detach if you don't want gradients flowing back.
-            vals = (self.scalar_scale * top_corr_values).detach()      # (B, K)
+            vals = self.scalar_scale * top_corr_values.detach()      # (B, K)
 
             # Indices (B, K)
             tgt_idx = top_corr_indices[:, :, 0].long()
@@ -94,11 +93,9 @@ class RecyclingModule(nn.Module):
             tgt_scalar = torch.zeros(B, N, device=device, dtype=vals.dtype)
             src_scalar = torch.zeros(B, N, device=device, dtype=vals.dtype)
 
-            # Accumulate values (sums duplicates if they exist)
             tgt_scalar.scatter_add_(dim=1, index=tgt_idx, src=vals)  # (B, N)
             src_scalar.scatter_add_(dim=1, index=src_idx, src=vals)  # (B, N)
 
-            # If you prefer a stable rule with duplicates, use amax instead:
             # tgt_scalar.scatter_reduce_(1, tgt_idx, vals, reduce='amax', include_self=False)
             # src_scalar.scatter_reduce_(1, src_idx, vals, reduce='amax', include_self=False)
 

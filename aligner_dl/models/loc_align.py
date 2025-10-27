@@ -5,7 +5,6 @@ torch.set_float32_matmul_precision('medium')  # or 'high'
 
 from models.soft_bb_base import SoftBBBase
 from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord
-from models.utils.plots import plot_correspondences
 
 
 class LocAlign(SoftBBBase):
@@ -19,11 +18,10 @@ class LocAlign(SoftBBBase):
         corr_rmsd_lambda: float = 0.2,
         embedding_cosine_lambda: float = 0.1,
         gap_lambda: float = 1.0,
-        n_iter_recycling: int = 3,
-        plot_dir: str | None = None
+        n_iter_recycling: int = 3
         ) -> None:
        
-        super().__init__(loss=loss, optimizer=optimizer, plot_dir=plot_dir, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda)
+        super().__init__(loss=loss, optimizer=optimizer, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda)
         self._input_block = build_object(input_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
         self._recycling = RecyclingModule(recycle_scalar=True)
@@ -278,11 +276,7 @@ class LocAlign(SoftBBBase):
             curr_loss, loss_dict = self._compute_loss(batch, iter_results['pred_R'], iter_results['pred_t'], iter_results['corr_rmsd'], iter_results['embedding_similarity'], iter_results['gap'])
             loss += curr_loss
         loss /= len(all_iter_results)  # Average loss over all iterations
-        if self._plot:
-            loss_iter1, _ = self._compute_loss(batch, iter_results['all_R'][0].detach(), iter_results['all_t'][0].detach())
-            plot_correspondences(iter_results['all_gamma'], batch['metadata'], [loss_iter1, loss], self._plot_dir)
-            print(f"Loss: {loss.item()}")            
-        
+         
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': iter_results}
         self._metrics.update(batch, outputs)
         return outputs

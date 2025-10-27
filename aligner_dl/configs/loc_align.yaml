@@ -37,7 +37,7 @@ model:
       args:
         embedding_size: 256
         n_rbf_functions: 16
-        top_k: 400
+        top_k: 1000
     loss:
       use_transformation: false
       pocket:

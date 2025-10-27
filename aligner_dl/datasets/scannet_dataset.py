@@ -39,6 +39,7 @@ class ScanNetDataset(BasePairDataset):
             inference: bool = False, 
             ligand_column: str = 'Ligand_ID',
             esm_model: str = None,
+            base_esm_embedding_path: str = LIGAND_DIR,
             use_esm: bool = True,
             esm_layer: int = 28
             ) -> None:
@@ -79,14 +80,15 @@ class ScanNetDataset(BasePairDataset):
         self._with_esm = use_esm
         if esm_model is not None:
             self._esm_layer= esm_layer
-            self._init_esm_model(esm_model)
+            self._init_esm_model(esm_model, base_esm_embedding_path)
 
-    def _init_esm_model(self, esm_model: str) -> None:
+    def _init_esm_model(self, esm_model: str, base_esm_embedding_path: str = None) -> None:
         self._esm_model, self._esm_alphabet = getattr(esm.pretrained, esm_model)()
         self._batch_converter = self._esm_alphabet.get_batch_converter()
         self._esm_model = self._esm_model.eval()
         self._ppb_builder = PPBuilder()
-        self._cache_dir = os.path.join(self._base_data_path, f"esm_cache_{esm_model}_{self._esm_layer}")
+        base_esm_path = base_esm_embedding_path if base_esm_embedding_path is not None else self._base_data_path
+        self._cache_dir = os.path.join(base_esm_path, f"esm_cache_{esm_model}_{self._esm_layer}")
         os.makedirs(self._cache_dir, exist_ok=True)
 
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
@@ -310,7 +312,7 @@ class ScanNetDataset(BasePairDataset):
         """
 
         # === Caching ===
-        pdb_hash = hashlib.md5(pdb_file.encode()).hexdigest()
+        pdb_hash = hashlib.md5(pdb_file.split('/')[-1].encode()).hexdigest()
         cache_path = os.path.join(self._cache_dir, f"{pdb_hash}.pt")
         if os.path.exists(cache_path):
             return torch.load(cache_path)
