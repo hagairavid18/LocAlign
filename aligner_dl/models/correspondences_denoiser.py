@@ -23,7 +23,7 @@ class CDM(nn.Module):
         
         pre_input_dim = 2 * n_rbf_functions + 8 if with_angles else 2 * n_rbf_functions
         self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
-        self._rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 100.0), learn_gamma=True)
+        self._rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 30.0), learn_gamma=True)
         
         self.apply(self.init_weights)
        
@@ -69,7 +69,7 @@ class CDM(nn.Module):
         graph_data = self.build_correspondence_graph(top_k_values, top_k_indices, src_frames, tgt_frames)
 
         # print gnn weights before
-        print("GNN weights before: rel, root", self._gnn_layer.lin_rel.weight.data, self._gnn_layer.lin_root.weight.data)
+        # print("GNN weights before: rel, root", self._gnn_layer.lin_rel.weight.data, self._gnn_layer.lin_root.weight.data)
         # print top edges 
         # print("Top k edge weights before GNN:", torch.topk(graph_data.edge_attr, 5, dim=0).values)
         for i in range(self._n_gnn_layers):

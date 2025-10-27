@@ -1,5 +1,5 @@
 trainer:
-  exp_name: only-ligand-dataset-test-recycling0
+  exp_name: only-ligand-dataset-test-recycling0-ligandrmsd1-400-100
   tags: ["atom", "esm", "homology_split"]
   max_epochs: 10
   validate_only: false
@@ -28,7 +28,7 @@ model:
       name: 
         CDM
       args:
-        n_nodes: 400
+        n_nodes: 100
         n_gnn_layers: 10
         n_rbf_functions: 32
         with_angles: true

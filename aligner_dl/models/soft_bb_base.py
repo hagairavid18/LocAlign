@@ -18,7 +18,6 @@ class SoftBBBase(L.LightningModule, ABC):
             self, 
             loss: dict[str, Any] | None, 
             optimizer: dict[str, Any] | None, 
-            plot_dir : str | None = None,
             corr_rmsd_lambda: float = 0.2,
             gap_lambda: float = 1.0,
             embedding_cosine_lambda: float = 0.1,
@@ -31,7 +30,6 @@ class SoftBBBase(L.LightningModule, ABC):
         Args:
             loss (dict[str, Any]): loss functions to be used in the model.
             optimizer (dict[str, Any]): optimizer configuration.
-            plot_dir (str | None, optional): Directory to save plots. Defaults to None.,
             corr_rmsd_lambda (float, optional): Weight for the Kabsch RMSD loss in the total loss. Defaults to 0.2.
             embedding_cosine_lambda (float, optional): Weight for the embedding cosine similarity loss in the total loss. Defaults to 0.1.
         """        
@@ -46,10 +44,6 @@ class SoftBBBase(L.LightningModule, ABC):
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
         self._plot = False
-        if plot_dir is not None:
-            os.makedirs(plot_dir, exist_ok=True)
-            self._plot = True
-            self._plot_dir = plot_dir
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_pretrained_embeddings'].shape[0]
@@ -135,7 +129,7 @@ class SoftBBBase(L.LightningModule, ABC):
         loss_dict['embedding_loss'] = embedding_similarity.mean()
         loss_dict['gap_loss'] = gap.mean()
         loss = self._corr_rmsd_lambda * corr_rmsd_loss  -self._embedding_cosine_lambda * embedding_similarity.mean() -self._gap_lambda * gap.mean()
-        loss = loss + 5.0 * loss_dict['ligand_rmsd']
+        loss = loss + loss_dict['ligand_rmsd']
         # loss = loss + 5.0 * loss_dict['pocket_rmsd']
         # print losses for debugging
         loss_dict['loss'] = loss

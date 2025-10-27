@@ -95,15 +95,15 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
     # Step 1: Save non-ligand models
     print("Saving non-ligand models...")
-    save_non_ligand_models(df, output_dir)
+    save_non_ligand_models(df, args.base_save_dir)
 
     # Step 2: Run ScanNet feature extraction
     print("Running ScanNet feature extraction...")
-    run_scannet(df, output_dir, args.scannet_dir)
+    run_scannet(df, args.base_save_dir, args.scannet_dir)
 
     # Step 3: Build dataset and dataloader
     print("Preparing dataset and dataloader...")
-    dataset = ScanNetDataset(df_path=csv_path, base_data_path=output_dir, base_embedding_path=args.scannet_dir, inference=True, ligand_column='ligand', esm_layer=30, esm_model="esm2_t30_150M_UR50D")
+    dataset = ScanNetDataset(df_path=csv_path, base_data_path=args.base_save_dir, base_embedding_path=args.scannet_dir, inference=True, ligand_column='ligand', esm_layer=30, esm_model="esm2_t30_150M_UR50D")
     dataloader = DataLoader(dataset, batch_size=1, num_workers=0, collate_fn=custom_collate_fn, pin_memory=True)
 
     # Step 4: Build model and load checkpoint

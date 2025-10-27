@@ -23,7 +23,7 @@ class LocAlign(SoftBBBase):
         plot_dir: str | None = None
         ) -> None:
        
-        super().__init__(loss=loss, optimizer=optimizer, plot_dir=plot_dir, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda)
+        super().__init__(loss=loss, optimizer=optimizer, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda)
         self._input_block = build_object(input_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
         self._recycling = RecyclingModule(recycle_scalar=True)
