@@ -26,8 +26,17 @@ class FeatureBlock(nn.Module):
 
 
 class EmbeddingBlock(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, n_blocks: int = 1, hidden_dim: int | None = None, dropout: float = 0.0, bias: bool = True,
-                norm_in_last_layer: bool = False) -> None:
+    def __init__(
+            self, 
+            input_dim: int, 
+            output_dim: int, 
+            n_blocks: int = 1, 
+            hidden_dim: int | None = None, 
+            dropout: float = 0.0, 
+            bias: bool = True,
+            norm_in_last_layer: bool = False,
+            last_norm_learnable: bool = True
+            ) -> None:
         """
         Feature transformation block with multiple layers.
 
@@ -49,7 +58,7 @@ class EmbeddingBlock(nn.Module):
         self.output_layer = nn.Linear(input_dim, output_dim, bias=bias) if input_dim != output_dim else nn.Identity()
         self._norm_in_last_layer = norm_in_last_layer
         if norm_in_last_layer:
-            self.norm = MaskedLayerNorm(output_dim)
+            self.norm = MaskedLayerNorm(output_dim, learnable=last_norm_learnable)
         
         self.apply(self.init_weights)
 

@@ -37,7 +37,6 @@ class LocAlign(SoftBBBase):
         top_corr_indices: torch.Tensor,  # [B, K', 2] -> (idxA, idxB)
         top_tar_embedding: torch.Tensor, # [B, N_A, D] -> E^A (unit norm)
         top_src_embedding: torch.Tensor, # [B, N_B, D] -> E^B (unit norm)
-        lambda_emb: float = 1.0,
     ) -> torch.Tensor:
         B, Kp = top_corr_indices.shape[:2]
         device = top_corr_indices.device
@@ -55,14 +54,14 @@ class LocAlign(SoftBBBase):
         term1 = (w * dot_per_m).sum(dim=-1)                      # [B]
 
         # μA = (1/K') Σ_m w_m EA_m ; μB similarly
-        w_exp = w.unsqueeze(-1)                                       # [B, K', 1]
-        muA = (w_exp * EA).sum(dim=1)                            # [B, D]
-        muB = (w_exp * EB).sum(dim=1)                            # [B, D]
+        # w_exp = w.unsqueeze(-1)                                       # [B, K', 1]
+        # muA = (w_exp * EA).sum(dim=1)                            # [B, D]
+        # muB = (w_exp * EB).sum(dim=1)                            # [B, D]
 
-        term2 = (muA * muB).sum(dim=-1)                               # [B]
+        # term2 = (muA * muB).sum(dim=-1)                               # [B]
 
-        # Final: -λ_emb [ term1 - term2 ]
-        return  term1 - term2                          # [B]
+        # return  term1 - term2
+        return  term1 
 
     def _embedding_entropy_term(
         self,
@@ -220,6 +219,7 @@ class LocAlign(SoftBBBase):
             step_results: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(top_corr_values, gathered_coord_src, gathered_coord_tar)
             
             step_results['embedding_similarity'] = self._embedding_cov_term(top_corr_values, top_corr_indices, top_tar_embedding, top_src_embedding)
+            # step_results['embedding_similarity'] = self._embedding_cov_term(top_corr_values, top_corr_indices, batch['tar_pretrained_embeddings'].gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, hidden_dim)), batch['src_pretrained_embeddings'].gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, hidden_dim)))
             step_results['gap'] = self._embedding_entropy_term(top_corr_values) / top_corr_values.shape[1]
             all_iter_results.append(step_results)
             

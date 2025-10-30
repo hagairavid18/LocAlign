@@ -15,7 +15,7 @@ model:
     corr_rmsd_lambda: 0.1
     embedding_cosine_lambda: 1.0
     gap_lambda: 1.00
-    ligaud_rmsd_lambda: 10.0
+    ligand_rmsd_lambda: 5.0
     input_layer:
       name: 
         EmbeddingBlock
@@ -26,19 +26,20 @@ model:
         output_dim: 256
         dropout: 0.1
         norm_in_last_layer: true
+        last_norm_learnable: false
     denoiser:
       name: 
         CDM
       args:
         n_nodes: 400
-        n_gnn_layers: 10
-        n_rbf_functions: 32
+        n_gnn_layers: 20
+        n_rbf_functions: 64
         with_angles: true
     keypoints_selection:
       name: KeypointsSelection
       args:
         embedding_size: 256
-        n_rbf_functions: 16
+        n_rbf_functions: 64
         top_k: 1000
     loss:
       use_transformation: false
@@ -54,13 +55,13 @@ model:
     optimizer:
       name: Adam
       args:
-        learning_rate: 0.0002
+        learning_rate: 0.0005
         scheduler:
           name: OneCycleLR
           interval: step
           args:
 
-            max_lr: 0.0002
+            max_lr: 0.0005
             epochs: 30
             steps_per_epoch: 2436
             div_factor: 25

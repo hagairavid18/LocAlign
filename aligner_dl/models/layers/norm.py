@@ -62,12 +62,16 @@ class MaskedBatchNorm1d(nn.Module):
 
 
 class MaskedLayerNorm(nn.Module):
-    def __init__(self, normalized_shape, eps=1e-3):
+    def __init__(self, normalized_shape, eps=1e-3, learnable=True):
         super(MaskedLayerNorm, self).__init__()
         self.normalized_shape = normalized_shape
         self.eps = eps
-        self.gamma = nn.Parameter(torch.ones(normalized_shape))
-        self.beta = nn.Parameter(torch.zeros(normalized_shape))
+        if learnable:
+            self.gamma = nn.Parameter(torch.ones(normalized_shape))
+            self.beta = nn.Parameter(torch.zeros(normalized_shape))
+        else:
+            self.register_buffer('gamma', torch.ones(normalized_shape))
+            self.register_buffer('beta', torch.zeros(normalized_shape))
 
     def forward(self, x, mask=None):
         if mask is not None:
