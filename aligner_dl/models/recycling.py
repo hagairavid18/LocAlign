@@ -43,8 +43,6 @@ class RecyclingModule(nn.Module):
         if self.recycle_scalar:
             self.scalar_scale = nn.Parameter(torch.full((1,), 1.))
 
-        
-        
     def _build_reference_frame(self, coordinates):
         mean = torch.mean(coordinates, axis=-2)
         U, eigenvalues, Vh = torch.linalg.svd(coordinates - mean.unsqueeze(-2))
@@ -70,7 +68,8 @@ class RecyclingModule(nn.Module):
     
     def forward(self, src_coords: torch.Tensor, tgt_coords: torch.Tensor,
                 top_corr_values: torch.Tensor | None = None, top_corr_indices: torch.Tensor | None=None):
-                
+        # print recycle scale  and coords scale
+        print(f"RecyclingModule: coords_scale={self.coords_scale.item()}, scalar_scale={self.scalar_scale.item()}")
         tgt_frame = self._build_reference_frame(tgt_coords)        
         tgt_coords_local = self._global_to_local(tgt_coords, tgt_frame)
         src_coords_local = self._global_to_local(src_coords, tgt_frame)
@@ -84,8 +83,8 @@ class RecyclingModule(nn.Module):
         if self.recycle_scalar & (top_corr_values is not None) & (top_corr_indices is not None):
             B,N = src_coords.shape[:-1]
             src_scalar, tgt_scalar = torch.zeros([B,N],device=top_corr_indices.device), torch.zeros([B,N],device=top_corr_indices.device)            
-            tgt_scalar.scatter_add(1,top_corr_indices[:,:,0], top_corr_values.detach()) # Detach to stop backpropagation here.
-            src_scalar.scatter_add(1,top_corr_indices[:,:,1], top_corr_values.detach()) # Detach to stop backpropagation here.
+            tgt_scalar.scatter_add_(1,top_corr_indices[:,:,0], top_corr_values.detach()) # Detach to stop backpropagation here.
+            src_scalar.scatter_add_(1,top_corr_indices[:,:,1], top_corr_values.detach()) # Detach to stop backpropagation here.
             tgt_scalar *= self.scalar_scale
             src_scalar *= self.scalar_scale
             return tgt_fourier_embeddings, src_fourier_embeddings, tgt_scalar,src_scalar

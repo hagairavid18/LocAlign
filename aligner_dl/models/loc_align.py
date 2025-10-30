@@ -18,11 +18,11 @@ class LocAlign(SoftBBBase):
         corr_rmsd_lambda: float = 0.2,
         embedding_cosine_lambda: float = 0.1,
         gap_lambda: float = 1.0,
-        ligaud_rmsd_lambda: float = 1.0,
+        ligand_rmsd_lambda: float = 1.0,
         n_iter_recycling: int = 3
         ) -> None:
        
-        super().__init__(loss=loss, optimizer=optimizer, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda, ligand_rmsd_lambda=ligaud_rmsd_lambda)
+        super().__init__(loss=loss, optimizer=optimizer, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda, ligand_rmsd_lambda=ligand_rmsd_lambda)
         self._input_block = build_object(input_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
         self._recycling = RecyclingModule(recycle_scalar=True)
