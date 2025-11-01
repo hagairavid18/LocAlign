@@ -38,12 +38,13 @@ class PocketLoss(nn.Module):
 
 
 class LigandLoss(nn.Module):
-    def __init__(self, return_non_linear: bool = False, alpha: float = 1.0):
+    def __init__(self, return_non_linear: bool = False, alpha: float = 1.0, rmsd0: float = 10.0):
         super(LigandLoss, self).__init__()
+        self._rmsd0 = rmsd0
         self._return_non_linear = return_non_linear
         self._alpha = alpha
     
-    def forward(self, batch, rotation_ab_pred, translation_ab_pred):
+    def forward(self, batch, rotation_ab_pred, translation_ab_pred, reduce: bool = True):
         src_ligand_coordiantes = batch['src_ligand_coordinates']
         tar_ligand_coordiantes = batch['tar_ligand_coordinates']
         mask = batch['src_ligand_mask']
@@ -53,5 +54,11 @@ class LigandLoss(nn.Module):
         masked_squared_diff = squared_diff * mask.float()  
         valid_counts = mask.sum(dim=1)  
 
-        rmsd_value = torch.sqrt(masked_squared_diff.sum(dim=1) / valid_counts.clamp(min=1e-10))  
-        return {"ligand_rmsd": rmsd_value.mean()}
+        rmsd_value = torch.sqrt(masked_squared_diff.sum(dim=1) / valid_counts.clamp(min=1e-10))
+
+        if self._return_non_linear:
+            rmsd_value = rmsd_value / (1 + rmsd_value/ self._rmsd0)
+        if reduce:
+            return {"ligand_rmsd": rmsd_value.mean()}
+        else:
+            return rmsd_value

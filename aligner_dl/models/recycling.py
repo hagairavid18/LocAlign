@@ -78,30 +78,14 @@ class RecyclingModule(nn.Module):
         tgt_fourier_embeddings *= fourier_scalings.unsqueeze(0).unsqueeze(0)
         src_fourier_embeddings *= fourier_scalings.unsqueeze(0).unsqueeze(0)
         
-        if self.recycle_scalar and (top_corr_values is not None) and (top_corr_indices is not None):
-           
-            B, N = src_coords.shape[:2]
-            device = top_corr_indices.device
-
-            # Per-pair weights (no batch-sum). Detach if you don't want gradients flowing back.
-            vals = self.scalar_scale * (top_corr_values.detach())      # (B, K)
-
-            # Indices (B, K)
-            tgt_idx = top_corr_indices[:, :, 0].long()
-            src_idx = top_corr_indices[:, :, 1].long()
-
-            # Init outputs
-            tgt_scalar = torch.zeros(B, N, device=device, dtype=vals.dtype)
-            src_scalar = torch.zeros(B, N, device=device, dtype=vals.dtype)
-
-            tgt_scalar.scatter_add_(dim=1, index=tgt_idx, src=vals)  # (B, N)
-            src_scalar.scatter_add_(dim=1, index=src_idx, src=vals)  # (B, N)
-
-            # tgt_scalar.scatter_reduce_(1, tgt_idx, vals, reduce='amax', include_self=False)
-            # src_scalar.scatter_reduce_(1, src_idx, vals, reduce='amax', include_self=False)
-
-            return tgt_fourier_embeddings, src_fourier_embeddings, tgt_scalar, src_scalar
-
+        if self.recycle_scalar & (top_corr_values is not None) & (top_corr_indices is not None):
+            B,N = src_coords.shape[:-1]
+            src_scalar, tgt_scalar = torch.zeros([B,N],device=top_corr_indices.device), torch.zeros([B,N],device=top_corr_indices.device)            
+            tgt_scalar.scatter_add_(1,top_corr_indices[:,:,0], top_corr_values.detach()) # Detach to stop backpropagation here.
+            src_scalar.scatter_add_(1,top_corr_indices[:,:,1], top_corr_values.detach()) # Detach to stop backpropagation here.
+            tgt_scalar *= self.scalar_scale
+            src_scalar *= self.scalar_scale
+            return tgt_fourier_embeddings, src_fourier_embeddings, tgt_scalar,src_scalar
         else:
             return tgt_fourier_embeddings, src_fourier_embeddings # Per-atom embeddings to be concatenated with the previous ones.
     

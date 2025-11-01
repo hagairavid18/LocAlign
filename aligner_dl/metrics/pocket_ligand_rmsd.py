@@ -3,6 +3,7 @@ import torch
 from torch.nn import Module
 
 from models.utils.math import compute_rmsd_torch
+from losses.soft_bb_loss import LigandLoss
 
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class PocketRMSD(Module):
         self.pair_infos_per_degree = {deg: [] for deg in range(0, 9)}
         # self.pocket_rmsd_per_degree_protein = {deg: [] for deg in range(0, 9)}
         self.corr_rmsd_per_degree_protein = {deg: [] for deg in range(0, 9)}
+        self._ligand_rmsd_metric = LigandLoss()
 
     def update(self, batch, outputs):
         batch_size = len(batch['metadata'])
@@ -39,22 +41,8 @@ class PocketRMSD(Module):
 
             # Compute RMSDs
             # pocket_coordinates = batch['src_pocket_frames'][:, :, 0, :]
-            # pocket_rmsd = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_pocket_mask'])[batch_id]
-            # ligand_rmsd = compute_rmsd_torch(batch['src_ligand_coordinates'], batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_ligand_mask'])[batch_id]
-
-
-            src_ligand_coordiantes = batch['src_ligand_coordinates']
-            tar_ligand_coordiantes = batch['tar_ligand_coordinates']
-            mask = batch['src_ligand_mask']
-            src_ligand_coordiantes_transformed = torch.matmul(src_ligand_coordiantes, outputs['transformation_dict']['pred_R']) + outputs['transformation_dict']['pred_t'][:,:3].unsqueeze(1)
-            
-            squared_diff = torch.sum((tar_ligand_coordiantes - src_ligand_coordiantes_transformed) ** 2, dim=2)  
-            masked_squared_diff = squared_diff * mask.float()  
-            valid_counts = mask.sum(dim=1)  
-
-            ligand_rmsd = torch.sqrt(masked_squared_diff.sum(dim=1) / valid_counts.clamp(min=1e-10))[batch_id] 
-            # pocket_rmsd = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_pocket_mask'])[batch_id]
-            # ligand_rmsd = compute_rmsd_torch(batch['src_ligand_coordinates'], batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_ligand_mask'])[batch_id]
+            # pocket_rmsd = compute_rmsd_torch(pocket_coordinates, batch['gt_R'], batch['gt_t'], outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], batch['src_pocket_mask'])[batch_id]     
+            ligand_rmsd = self._ligand_rmsd_metric(batch, outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], reduce=False)[batch_id]
 
             # Update metrics
             # self.pocket_rmsd_per_degree[cath_degree] += pocket_rmsd

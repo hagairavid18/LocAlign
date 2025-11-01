@@ -5,7 +5,6 @@ torch.set_float32_matmul_precision('medium')  # or 'high'
 
 from models.soft_bb_base import SoftBBBase
 from models.utils import move_batch_to_device, build_object, compute_transformation_from_corr_and_coord
-from models.utils.plots import plot_correspondences
 
 
 class LocAlign(SoftBBBase):
@@ -19,13 +18,11 @@ class LocAlign(SoftBBBase):
         corr_rmsd_lambda: float = 0.2,
         embedding_cosine_lambda: float = 0.1,
         gap_lambda: float = 1.0,
-        ligaud_rmsd_lambda: float = 1.0,
-        n_iter_recycling: int = 3,
-        plot_dir: str | None = None
+        ligand_rmsd_lambda: float = 1.0,
+        n_iter_recycling: int = 3
         ) -> None:
        
-        super().__init__(loss=loss, optimizer=optimizer, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda)
-        super().__init__(loss=loss, optimizer=optimizer, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda, ligand_rmsd_lambda=ligaud_rmsd_lambda)
+        super().__init__(loss=loss, optimizer=optimizer, corr_rmsd_lambda=corr_rmsd_lambda, embedding_cosine_lambda=embedding_cosine_lambda, gap_lambda=gap_lambda, ligand_rmsd_lambda=ligand_rmsd_lambda)
         self._input_block = build_object(input_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
         self._recycling = RecyclingModule(recycle_scalar=True)
@@ -40,7 +37,6 @@ class LocAlign(SoftBBBase):
         top_corr_indices: torch.Tensor,  # [B, K', 2] -> (idxA, idxB)
         top_tar_embedding: torch.Tensor, # [B, N_A, D] -> E^A (unit norm)
         top_src_embedding: torch.Tensor, # [B, N_B, D] -> E^B (unit norm)
-        lambda_emb: float = 1.0,
     ) -> torch.Tensor:
         B, Kp = top_corr_indices.shape[:2]
         device = top_corr_indices.device
@@ -58,14 +54,14 @@ class LocAlign(SoftBBBase):
         term1 = (w * dot_per_m).sum(dim=-1)                      # [B]
 
         # μA = (1/K') Σ_m w_m EA_m ; μB similarly
-        w_exp = w.unsqueeze(-1)                                       # [B, K', 1]
-        muA = (w_exp * EA).sum(dim=1)                            # [B, D]
-        muB = (w_exp * EB).sum(dim=1)                            # [B, D]
+        # w_exp = w.unsqueeze(-1)                                       # [B, K', 1]
+        # muA = (w_exp * EA).sum(dim=1)                            # [B, D]
+        # muB = (w_exp * EB).sum(dim=1)                            # [B, D]
 
-        term2 = (muA * muB).sum(dim=-1)                               # [B]
+        # term2 = (muA * muB).sum(dim=-1)                               # [B]
 
-        # Final: -λ_emb [ term1 - term2 ]
-        return  term1 - term2                          # [B]
+        # return  term1 - term2
+        return  term1 
 
     def _embedding_entropy_term(
         self,
@@ -223,6 +219,7 @@ class LocAlign(SoftBBBase):
             step_results: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(top_corr_values, gathered_coord_src, gathered_coord_tar)
             
             step_results['embedding_similarity'] = self._embedding_cov_term(top_corr_values, top_corr_indices, top_tar_embedding, top_src_embedding)
+            # step_results['embedding_similarity'] = self._embedding_cov_term(top_corr_values, top_corr_indices, batch['tar_pretrained_embeddings'].gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, hidden_dim)), batch['src_pretrained_embeddings'].gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, hidden_dim)))
             step_results['gap'] = self._embedding_entropy_term(top_corr_values) / top_corr_values.shape[1]
             all_iter_results.append(step_results)
             
@@ -280,11 +277,7 @@ class LocAlign(SoftBBBase):
             curr_loss, loss_dict = self._compute_loss(batch, iter_results['pred_R'], iter_results['pred_t'], iter_results['corr_rmsd'], iter_results['embedding_similarity'], iter_results['gap'])
             loss += curr_loss
         loss /= len(all_iter_results)  # Average loss over all iterations
-        if self._plot:
-            loss_iter1, _ = self._compute_loss(batch, iter_results['all_R'][0].detach(), iter_results['all_t'][0].detach())
-            plot_correspondences(iter_results['all_gamma'], batch['metadata'], [loss_iter1, loss], self._plot_dir)
-            print(f"Loss: {loss.item()}")            
-        
+         
         outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': iter_results}
         self._metrics.update(batch, outputs)
         return outputs

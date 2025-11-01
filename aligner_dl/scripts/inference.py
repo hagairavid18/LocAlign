@@ -138,10 +138,16 @@ def main():
             preds = model.inference_step(batch)
 
             metadata = preds["metadata"][0]
-            top_k_corr_indices= torch.topk(preds["corr_values"][0], 10)[1]
-            top_corr_values = preds["corr_values"][0][top_k_corr_indices]  # Get top 10 correlation values
-            top_corr_indices = preds["corr_indices"][0][top_k_corr_indices]  # Get top 10 correlation values]
-            top_corr_indices_atom = preds["corr_atom_indices"][0][top_k_corr_indices]  # Get top 10 correlation values]
+
+            # get all correspondences that above 0.5 of the highest correlation value
+            threshold = 0.25 * torch.max(preds["corr_values"][0])
+            above_threshold_indices = torch.where(preds["corr_values"][0] >= threshold)[0]
+            print(f"Batch {idx}: Found {len(above_threshold_indices)} correspondences above threshold {threshold.item():.4f}")
+
+            # top_k_corr_indices= torch.topk(preds["corr_values"][0], 10)[1]
+            top_corr_values = preds["corr_values"][0][above_threshold_indices]  # Get top 10 correlation values
+            top_corr_indices = preds["corr_indices"][0][above_threshold_indices]  # Get top 10 correlation values]
+            top_corr_indices_atom = preds["corr_atom_indices"][0][above_threshold_indices]  # Get top 10 correlation values]
             ref = metadata["ref_protein"]
             mov = metadata["mov_protein"]
             ligand = metadata.get("ligand", "general")
