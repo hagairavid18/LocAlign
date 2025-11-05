@@ -1,20 +1,16 @@
 trainer:
-  exp_name: small-ligands-recycling1-lambda5-400-100-10gnn
-  tags: ["atom", "esm", "homology_split"]
+  exp_name: small-ligands-recycling1-baseline-ln-fast-10gnn-esm18
+  tags: ["atom", "esm", "homology_split", "small_ligands"]
   max_epochs: 10
   validate_only: false
   check_val_every_n_epoch: 1
-  gradient_clipping: 30
-  # profiler: true
-  # ckpt_path: "checkpoints/split7-10gnn-recycling2-lambda05/epoch=29-step=76440.ckpt"
+  gradient_clipping: 30.0
+  # profiler: false
+  # ckpt_path: "checkpoints/small-ligands-recycling1-prev-kp-corr01-gap2/epoch=9-step=87120.ckpt"
 model:
   name: LocAlign
   args:
     n_iter_recycling: 1
-    corr_rmsd_lambda: 0.1
-    embedding_cosine_lambda: 1.0
-    gap_lambda: 1.0
-    ligand_rmsd_lambda: 10.0
     top_k: 1000
     scalar_layer:
       name: 
@@ -51,16 +47,14 @@ model:
         n_rbf_functions: 32
         top_k: 1000
     loss:
-      use_transformation: false
-      pocket:
-        name: PocketLoss
-        args: {"return_non_linear": True}
+      weight_dict:
+        corr_rmsd: 0.1
+        embedding: 1.0
+        gap: 1.0
+        ligand_rmsd: 10.0
       ligand:
         name: LigandLoss
         args: {"return_non_linear" : true}
-      transformation:
-        name: RTLoss
-        args: {"translation_weight": 0.1}
     optimizer:
       name: Adam
       args:
@@ -72,7 +66,8 @@ model:
 
             max_lr: 0.0005
             epochs: 10
-            steps_per_epoch: 8712
+            steps_per_epoch: 8712 
+            # steps_per_epoch: 4356 
             div_factor: 25
             # final_div_factor: 1e4
 
@@ -84,7 +79,7 @@ dataset:
       base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_knn_25_10_2025'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
-      esm_layer: 30
+      esm_layer: 18
       # n_samples: 30
       seed: 41
       # min_cath: 3
@@ -99,7 +94,7 @@ dataset:
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       # n_samples: 10
-      esm_layer: 30
+      esm_layer: 18
       seed: 81
       max_cath: 4
       # bbr_filter_ratio: 0.3

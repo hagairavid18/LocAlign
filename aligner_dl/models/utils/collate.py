@@ -16,23 +16,49 @@ def custom_collate_fn(batch: list[dict[torch.Tensor, dict]]):
     return batch_dict
 
 
-def move_batch_to_device(batch, device):
-    amp_enabled = torch.is_autocast_enabled()
-    target_dtype = torch.bfloat16 if amp_enabled else None
+import torch
+from collections.abc import Mapping, Sequence
 
-    def move_and_cast(x):
+def move_batch_to_device(batch, device, *, non_blocking=True, cast_inputs_for_amp=False, amp_dtype=torch.bfloat16, exclude_keys=frozenset({"labels", "target", "targets"})):
+    """Move a nested batch to device. Optionally cast *floating* inputs for bandwidth savings."""
+    amp_on = torch.is_autocast_enabled()
+
+    def should_cast(key_path, t: torch.Tensor):
+        if not cast_inputs_for_amp or not amp_on:
+            return False
+        if not t.is_floating_point() or t.dtype != torch.float32:
+            return False
+        # don't cast common target/label fields
+        return not any(k in exclude_keys for k in key_path)
+
+    def _move(x, key_path=()):
+        # Tensors
         if isinstance(x, torch.Tensor):
-            if target_dtype is not None and x.dtype == torch.float32:
-                return x.to(device=device, dtype=target_dtype)
-            else:
+            # move first (non_blocking if from pinned CPU)
+            y = x if x.device == device else x.to(device, non_blocking=non_blocking)
+            # optional pre-cast for AMP (inputs only)
+            if should_cast(key_path, y):
+                if y.dtype != amp_dtype:
+                    y = y.to(dtype=amp_dtype)
+            return y
+
+        # PyG Data or any object with a .to(device) method
+        if hasattr(x, "to") and callable(getattr(x, "to")) and not isinstance(x, (str, bytes)):
+            try:
+                return x.to(device, non_blocking=non_blocking)
+            except TypeError:
                 return x.to(device)
+
+        # Mappings (dict-like)
+        if isinstance(x, Mapping):
+            return type(x)({k: _move(v, key_path + (k,)) for k, v in x.items()})
+
+        # Sequences (list/tuple) but not strings/bytes
+        if isinstance(x, Sequence) and not isinstance(x, (str, bytes)):
+            return type(x)(_move(v, key_path) for v in x)
+
+        # Leave everything else as is
         return x
 
-    if isinstance(batch, dict):
-        return {k: move_and_cast(v) if not isinstance(v, (dict, list, tuple)) else move_batch_to_device(v, device) for k, v in batch.items()}
-    elif isinstance(batch, list):
-        return [move_batch_to_device(v, device) for v in batch]
-    elif isinstance(batch, tuple):
-        return tuple(move_batch_to_device(v, device) for v in batch)
-    else:
-        return move_and_cast(batch)
+    return _move(batch)
+

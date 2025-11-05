@@ -22,7 +22,7 @@ class CDM(nn.Module):
         self._add_angle_features = with_angles  # Whether to include angle features
         
         pre_input_dim = 2 * n_rbf_functions + 8 if with_angles else 2 * n_rbf_functions
-        self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=64)  # Input: 2 * 16 (dist_A, dist_B)
+        self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=16)  # Input: 2 * 16 (dist_A, dist_B)
         self._rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 30.0), learn_gamma=True)
         
         self.apply(self.init_weights)
@@ -68,33 +68,22 @@ class CDM(nn.Module):
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
         graph_data = self.build_correspondence_graph(top_k_values, top_k_indices, src_frames, tgt_frames)
 
-        # print gnn weights before
-        print("GNN weights before: rel, root", self._gnn_layer.lin_rel.weight.data, self._gnn_layer.lin_root.weight.data)
-        # print top edges 
-        print(f"Top k values before gnn :", torch.topk( graph_data.x.reshape(B, self._n_nodes), 5, dim=-1)[0])
 
-        # print topk edges before gnn
-        # print("Top k edges before GNN:", torch.topk(graph_data.edge_attr.view(B, -1), 5, dim=-1)[0])
         for i in range(self._n_gnn_layers):
             orig_x = graph_data.x.reshape(B, self._n_nodes)
             graph_data.x = self._gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
-            # print(f"Top k values after gnn iter {i}:", torch.topk( graph_data.x.reshape(B, self._n_nodes), 5, dim=-1)[0])
             
             # multiplicative softmax
             graph_data.x = graph_data.x.reshape(B, self._n_nodes)
             graph_data.x = self.safe_softmax(graph_data.x, orig_x, dim=-1) + 1e-6  # avoid zero scores
             graph_data.x = graph_data.x.reshape(B * self._n_nodes, 1)
 
-            # print top k values after each layer
-            # print(f"Top k values after softmax iter {i}:", torch.topk( graph_data.x.reshape(B, self._n_nodes), 5, dim=-1)[0])
         if self._n_gnn_layers == 0:
             graph_data.x = graph_data.x.reshape(B, self._n_nodes)
             graph_data.x = self.safe_softmax(graph_data.x, top_k_values, dim=-1) + 1e-6  # avoid zero scores
             graph_data.x = graph_data.x.reshape(B * self._n_nodes, 1) 
         # Step 4: Update soft correspondences
         updated_correspondences = graph_data.x.squeeze(-1).view(B, -1) # Shape: [B, K]
-        # print top k per batch
-        # print("Top k values after GNN:", torch.topk(updated_correspondences, 5, dim=-1)[0])
 
         return updated_correspondences, top_k_indices, top_k_values
 
@@ -209,10 +198,6 @@ class EdgeWeightLearner(nn.Module):
         self.norm = nn.LayerNorm(input_dim)
         self.mlp = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),  # Input: edge_attr
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(hidden_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, 1)
