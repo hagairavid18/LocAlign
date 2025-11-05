@@ -20,9 +20,10 @@ class KeypointsSelection(nn.Module):
         self._top_k = top_k                                
         self._add_angle_features = with_angles  # Whether to include angle features                            
         pre_input_dim = n_rbf_functions + 4 if with_angles else n_rbf_functions
-        self._embedding_block = EmbeddingBlock(input_dim=embedding_size, output_dim=3, n_blocks=3, dropout=0.0, bias=False)
+        self._embedding_block = EmbeddingBlock(input_dim=embedding_size, output_dim=3, n_blocks=2, dropout=0.0, bias=True)
         self._rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 6.0), learn_gamma=True)
         self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=16)
+        self._root_term = torch.nn.Parameter(torch.tensor(1.0))
         self.apply(self.init_weights)
                        
     @staticmethod
@@ -32,6 +33,23 @@ class KeypointsSelection(nn.Module):
             nn.init.kaiming_uniform_(m.weight,nonlinearity='relu')
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
+
+    import torch
+
+    def safe_softmax(self, x: torch.Tensor, dim: int = -1, eps: float = 1e-6) -> torch.Tensor:
+        """
+        Softmax that safely handles zero denominators.
+
+        Args:
+            x: input tensor
+            dim: dimension to apply softmax over
+            eps: small constant to avoid division by zero
+        """
+        exps = torch.exp(x - torch.max(x, dim=dim, keepdim=True).values)
+        denom = exps.sum(dim=dim, keepdim=True)
+        denom = torch.clamp(denom, min=eps)  # prevent division by zero
+        return exps / denom
+
         
     def forward(
         self,
@@ -64,8 +82,8 @@ class KeypointsSelection(nn.Module):
         query = query.masked_fill(~mask, -float('inf')) # Make sure that masked positions have no role in attention.
         local_value = value.gather(1, neighbors.view(B,N*K) ).view(B, N, K)
         local_query = query.gather(1, neighbors.view(B,N*K) ).view(B, N, K)
-        local_attention = torch.softmax(key.unsqueeze(-1) * local_query + local_scalar_edges,axis=-1) # Scalar attention over neighbors.
-        output_score = torch.sum(local_value * local_attention,axis=-1)
+        local_attention = self.safe_softmax(key.unsqueeze(-1) * local_query + local_scalar_edges) # Scalar attention over neighbors.
+        output_score = torch.sum(local_value * local_attention,axis=-1)  + value * self._root_term
         output_score = output_score.masked_fill(~mask, -float('inf'))  # Make sure that masked positions have no output_score.
         top_k_indices, top_k_score = self._get_rectified_top_k(output_score, mask)
         return top_k_indices, top_k_score
