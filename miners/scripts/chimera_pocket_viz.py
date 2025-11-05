@@ -451,8 +451,8 @@ def make_chimera_script(
         
     
     if show_template_keypoints:            
-        template_corr_atoms = ' '.join( x.split('@')[0] for x in template_corr_atoms.split(' ') )
-        list_commands.append(f"sel {template_corr_atoms}")
+        template_corr_residues = ' '.join( x.split('@')[0] for x in template_corr_atoms.split(' ') )
+        list_commands.append(f"sel {template_corr_residues}")
         list_commands.append(f"color sel {colors_and_transparency['template']['keypoints'][0]} transparency {colors_and_transparency['template']['keypoints'][1]}")        
         list_commands.append('show sel atoms')
         list_commands.append('hide sel cartoon')
@@ -462,8 +462,8 @@ def make_chimera_script(
         list_commands.append('style sel ball')
         
     if show_query_keypoints:                
-        query_corr_atoms = ' '.join( x.split('@')[0] for x in query_corr_atoms.split(' ') )    
-        list_commands.append(f'sel {query_corr_atoms}')
+        query_corr_residues = ' '.join( x.split('@')[0] for x in query_corr_atoms.split(' ') )    
+        list_commands.append(f'sel {query_corr_residues}')
         list_commands.append(f"color sel {colors_and_transparency['query']['keypoints'][0]} transparency {colors_and_transparency['query']['keypoints'][1]}")        
         list_commands.append('show sel atoms')
         list_commands.append('hide sel cartoon')
