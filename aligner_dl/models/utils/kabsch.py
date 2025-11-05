@@ -73,28 +73,25 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     H = torch.bmm(Q_centered.transpose(1, 2), P_centered * weights.unsqueeze(-1))  # [B, 3, 3]
 
     # SVD
-    dtype = H.dtype
-    with torch.autocast(device_type="cuda", enabled=False):
-        U, S, raw_Vt = torch.linalg.svd(H.float(), full_matrices=False)
+    U, S, raw_Vt = torch.linalg.svd(H, full_matrices=False)
 
-        # Compute determinant signs: (B,)
-        det_sign = torch.sign(torch.det(torch.bmm(raw_Vt.transpose(1, 2), U.transpose(1, 2))))
+    # Compute determinant signs: (B,)
+    det_sign = torch.sign(torch.det(torch.bmm(raw_Vt.transpose(1, 2), U.transpose(1, 2))))
 
-        # Fix reflection by adjusting the last row of Vt
-        eye = torch.eye(3, device=H.device, dtype=H.dtype).unsqueeze(0).repeat(H.shape[0], 1, 1)
-        eye[:, -1, -1] = det_sign  # last singular value sign correction
+    # Fix reflection by adjusting the last row of Vt
+    eye = torch.eye(3, device=H.device, dtype=H.dtype).unsqueeze(0).repeat(H.shape[0], 1, 1)
+    eye[:, -1, -1] = det_sign  # last singular value sign correction
 
-        # Corrected Vt
-        Vt = torch.bmm(eye, raw_Vt)
+    # Corrected Vt
+    Vt = torch.bmm(eye, raw_Vt)
 
-        # Optimal rotation
-        R = torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2))
-        t =  centroid_Q - torch.bmm(R.transpose(1,2), centroid_P[:, :, None]).squeeze(2)
-        
-        diff = (torch.bmm(P, R) + t[:, None, :]) - Q
-        sq_dist = torch.sum(diff ** 2, dim=2)
-        weighted_sq = weights * sq_dist
-        weighted_corr_rmsd = torch.sqrt(weighted_sq.sum(dim=1))
-        # print(f"rmsd: {rmsd}")
+    # Optimal rotation
+    R = torch.bmm(Vt.transpose(1, 2), U.transpose(1, 2))
+    t =  centroid_Q - torch.bmm(R.transpose(1,2), centroid_P[:, :, None]).squeeze(2)
+    
+    diff = (torch.bmm(P, R) + t[:, None, :]) - Q
+    sq_dist = torch.sum(diff ** 2, dim=2)
+    weighted_sq = weights * sq_dist
+    weighted_corr_rmsd = torch.sqrt(weighted_sq.sum(dim=1))
 
-    return R.to(dtype), t.to(dtype), weighted_corr_rmsd
+    return R, t, weighted_corr_rmsd

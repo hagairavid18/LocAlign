@@ -5,6 +5,10 @@ path2libraries = '/home/iscb/wolfson/hagairavid/ScanNet_Ub'
 sys.path.append(path2libraries)
 from preprocessing import PDBio, PDB_processing
 import Bio.PDB
+from Bio.PDB.PDBExceptions import PDBConstructionWarning
+
+warnings.filterwarnings("ignore", category=PDBConstructionWarning)
+
 
 amino_acid_3to_1 = {
     'ALA': 'A',
@@ -72,51 +76,43 @@ amino_acid_atom_order = {
     'Y': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD1', 'CD2', 'CE1', 'CE2', 'CZ', 'OH']  # Tyrosine
 
 }
+class SelectChain_without_ligand(Bio.PDB.Select):
+    def __init__(self,selected_chains,excluded_ligand, mode='without_ligand', *args, **kwargs):
+        self.selected_chains = selected_chains
+        self.excluded_ligand = excluded_ligand
+        self.mode = mode
+        super().__init__(*args,**kwargs)
+    def accept_model(self,model):
+        if self.selected_chains == 'all':
+            return 1
+        elif model.id in [x[0] for x in self.selected_chains]:
+            return 1
+        else:
+            return 0
+    def accept_chain(self, chain):
+        if self.selected_chains == 'all':
+            return 1            
+        elif (chain.get_full_id()[1],chain.get_full_id()[2]) in self.selected_chains:
+            return 1
+        else:
+            return 0
+    def accept_residue(self,residue):
+        if self.mode == 'without_ligand':
+            return int(residue.get_resname() != self.excluded_ligand)
+        elif self.mode == 'only_ligand':
+            return int(residue.get_resname() == self.excluded_ligand)
+        else:
+            raise ValueError(self.mode)
 
-def extract_chains_andor_ligand_and_apply_transform(file, chain_ids, ligand_id,final_file,mode='without_ligand',
-                                                    transformation=None):
-    class SelectChain_without_ligand(Bio.PDB.Select):
-        def __init__(self,selected_chains,excluded_ligand,*args,**kwargs):
-            self.selected_chains = selected_chains
-            self.excluded_ligand = excluded_ligand
-            return super().__init__(*args,**kwargs)
-        def accept_model(self,model):
-            if self.selected_chains == 'all':
-                return 1
-            elif model.id in [x[0] for x in self.selected_chains]:
-                return 1
-            else:
-                return 0
-        def accept_chain(self, chain):
-            if self.selected_chains == 'all':
-                return 1            
-            elif (chain.get_full_id()[1],chain.get_full_id()[2]) in self.selected_chains:
-                return 1
-            else:
-                return 0
-        def accept_residue(self,residue):
-            if mode == 'without_ligand':
-                return int(residue.get_resname() != self.excluded_ligand)
-            elif mode == 'only_ligand':
-                return int(residue.get_resname() == self.excluded_ligand)
-            else:
-                raise ValueError(mode)
+def extract_chains_andor_ligand_and_apply_transform(struct, chain_ids, ligand_id,final_file,mode='without_ligand'):
             
     with warnings.catch_warnings(record=True) as w:
-        if file[-4:] == '.cif':
-            parser = Bio.PDB.MMCIFParser()
-        else:
-            parser = Bio.PDB.PDBParser()
-        struct = parser.get_structure('name',file)
-        if transformation is not None:
-            rot,tran = transformation
-            for atom in Bio.PDB.Selection.unfold_entities(struct,'A'):
-                atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
+        
         
         
         io = Bio.PDB.PDBIO()
         io.set_structure(struct)
-        io.save(final_file, SelectChain_without_ligand(chain_ids,ligand_id))
+        io.save(final_file, SelectChain_without_ligand(chain_ids,ligand_id, mode=mode))
     return final_file
         
         
@@ -329,7 +325,10 @@ def process_alignment(
         corr_indices: np.ndarray | None = None,
         atom_indexes_list: np.ndarray | None = None
         ):
+    import copy
+
     query_ligand = template_ligand
+    parent_folder = base_folder.split('/')[0]
 
     folder = base_folder
     # query = os.path.join(folder, f'RANSACAlligner_0_protein_0_0.pdb')
@@ -337,23 +336,56 @@ def process_alignment(
     os.makedirs(output_folder, exist_ok = True)
 
     template_file, template_chain_id = PDBio.getPDB(template[:-1] + '_' + template[-1], biounit=False)
+
+    
     query_file,query_chain_id = PDBio.getPDB(query[:-1] + '_' + query[-1], biounit=False)
 
-    extract_chains_andor_ligand_and_apply_transform(template_file, template_chain_id, template_ligand,
+    parser = Bio.PDB.PDBParser()
+    
+
+    template_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{template}_non_ligand_.ent"))
+
+    extract_chains_andor_ligand_and_apply_transform(template_non_ligand_struct, template_chain_id, template_ligand,
                                 os.path.join(output_folder, 'template_receptor.pdb')
-                                ,mode='without_ligand',transformation=None)
+                                ,mode='without_ligand')
+    
+    template_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{template}_ligand.pdb"))
 
-    extract_chains_andor_ligand_and_apply_transform(template_file, template_chain_id, template_ligand,
+    extract_chains_andor_ligand_and_apply_transform(template_only_ligand_struct, template_chain_id, template_ligand,
                                 os.path.join(output_folder, 'template_ligand.pdb')
-                                ,mode='only_ligand',transformation=None)
+                                ,mode='only_ligand')
+    
+    parser = Bio.PDB.PDBParser()
 
-    extract_chains_andor_ligand_and_apply_transform(query_file, query_chain_id, query_ligand,
+    # struct = parser.get_structure('name',query_file)
+    query_non_ligand_struct_orig = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_non_ligand_.ent"))
+    query_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_non_ligand_.ent"))
+    rot,tran = query_transformation
+    for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct,'A'):
+        atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
+    
+    # query_only_ligand_struct_orig = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_ligand.pdb"))
+    query_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_ligand.pdb"))
+    rot,tran = query_transformation
+    for atom in Bio.PDB.Selection.unfold_entities(query_only_ligand_struct,'A'):
+        atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
+    
+    
+    orig_query_path = f"{parent_folder}/{template_ligand}/{query}_non_ligand_.ent"
+    orig_template_path = f"{parent_folder}/{template_ligand}/{template}_non_ligand_.ent"
+
+    print(f"mean orig query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct_orig, 'A')]).mean(0)}")
+    print(f"mean transformed query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct, 'A')]).mean(0)}")
+    print(f"mean orig template: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(template_non_ligand_struct, 'A')]).mean(0)}")
+
+
+    extract_chains_andor_ligand_and_apply_transform(query_non_ligand_struct, query_chain_id, query_ligand,
                                 os.path.join(output_folder, 'transformed_query_receptor.pdb')
-                                ,mode='without_ligand',transformation=query_transformation)
+                                ,mode='without_ligand')
 
-    extract_chains_andor_ligand_and_apply_transform(query_file, query_chain_id, query_ligand,
+    extract_chains_andor_ligand_and_apply_transform(query_only_ligand_struct, query_chain_id, query_ligand,
                                 os.path.join(output_folder, 'transformed_query_ligand.pdb')
-                                ,mode='only_ligand',transformation=query_transformation)
+                                ,mode='only_ligand')
 
     if query_ligand != 'general':
         template_pocket_residues = get_pocket( os.path.join(output_folder, 'template_receptor.pdb'),
@@ -474,6 +506,8 @@ def process_alignment(
     with open(chimera_file,'w') as f:
         for command in list_commands:
             f.write(command + '\n')
+
+            
 
 if __name__ == "__main__":
     import argparse

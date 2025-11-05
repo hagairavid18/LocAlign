@@ -52,7 +52,7 @@ class CDM(nn.Module):
         x_exp = torch.exp(scores - scores.max(dim=-1, keepdim=True).values)  # prevent overflow
         weights = prev_scores * x_exp
         denom = weights.sum(dim=-1, keepdim=True)
-        denom = torch.clamp(denom, min=1e-6)  # avoid 0/0
+        denom = torch.clamp(denom, min=1e-5)  # avoid 0/0
         res = weights / denom
 
         return res
@@ -62,18 +62,21 @@ class CDM(nn.Module):
         soft_correspondences: torch.Tensor, 
         src_frames: torch.Tensor, 
         tgt_frames: torch.Tensor
-        ) -> torch.Tensor:
+        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         B, N, _ = soft_correspondences.shape  # B: batch size, N: number of points
 
         top_k_values, top_k_indices = self.extract_top_k_correspondences(soft_correspondences)
         graph_data = self.build_correspondence_graph(top_k_values, top_k_indices, src_frames, tgt_frames)
 
         # print gnn weights before
-        # print("GNN weights before: rel, root", self._gnn_layer.lin_rel.weight.data, self._gnn_layer.lin_root.weight.data)
+        print("GNN weights before: rel, root", self._gnn_layer.lin_rel.weight.data, self._gnn_layer.lin_root.weight.data)
         # print top edges 
-        # print("Top k edge weights before GNN:", torch.topk(graph_data.edge_attr, 5, dim=0).values)
+        print(f"Top k values before gnn :", torch.topk( graph_data.x.reshape(B, self._n_nodes), 5, dim=-1)[0])
+
+        # print topk edges before gnn
+        # print("Top k edges before GNN:", torch.topk(graph_data.edge_attr.view(B, -1), 5, dim=-1)[0])
         for i in range(self._n_gnn_layers):
-            orig_x = graph_data.x.clone().reshape(B, self._n_nodes)
+            orig_x = graph_data.x.reshape(B, self._n_nodes)
             graph_data.x = self._gnn_layer(graph_data.x, graph_data.edge_index, graph_data.edge_attr) 
             # print(f"Top k values after gnn iter {i}:", torch.topk( graph_data.x.reshape(B, self._n_nodes), 5, dim=-1)[0])
             
@@ -89,7 +92,7 @@ class CDM(nn.Module):
             graph_data.x = self.safe_softmax(graph_data.x, top_k_values, dim=-1) + 1e-6  # avoid zero scores
             graph_data.x = graph_data.x.reshape(B * self._n_nodes, 1) 
         # Step 4: Update soft correspondences
-        updated_correspondences = graph_data.x.squeeze(-1).to(soft_correspondences).view(B, -1) # Shape: [B, K]
+        updated_correspondences = graph_data.x.squeeze(-1).view(B, -1) # Shape: [B, K]
         # print top k per batch
         # print("Top k values after GNN:", torch.topk(updated_correspondences, 5, dim=-1)[0])
 

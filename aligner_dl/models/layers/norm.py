@@ -75,7 +75,6 @@ class MaskedLayerNorm(nn.Module):
 
     def forward(self, x, mask=None):
         if mask is not None:
-            mask = mask.to(x.dtype)
             mask = mask.unsqueeze(-1)
         mean = x.mean(dim=-1, keepdim=True)
         var = x.var(dim=-1, unbiased=False, keepdim=True)

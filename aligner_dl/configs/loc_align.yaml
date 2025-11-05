@@ -13,8 +13,18 @@ model:
     n_iter_recycling: 1
     corr_rmsd_lambda: 0.1
     embedding_cosine_lambda: 1.0
-    gap_lambda: 1.00
-    ligand_rmsd_lambda: 5.0
+    gap_lambda: 1.0
+    ligand_rmsd_lambda: 10.0
+    top_k: 1000
+    scalar_layer:
+      name: 
+        EmbeddingBlock
+      args:
+        n_blocks: 3
+        input_dim: 256
+        output_dim: 1
+        bias: false
+        dropout: 0.0
     input_layer:
       name: 
         EmbeddingBlock
@@ -30,16 +40,16 @@ model:
       name: 
         CDM
       args:
-        n_nodes: 100
+        n_nodes: 400
         n_gnn_layers: 10
-        n_rbf_functions: 64
+        n_rbf_functions: 32
         with_angles: true
     keypoints_selection:
       name: KeypointsSelection
       args:
         embedding_size: 256
-        n_rbf_functions: 64
-        top_k: 400
+        n_rbf_functions: 32
+        top_k: 1000
     loss:
       use_transformation: false
       pocket:
@@ -47,7 +57,7 @@ model:
         args: {"return_non_linear": True}
       ligand:
         name: LigandLoss
-        args: {}
+        args: {"return_non_linear" : true}
       transformation:
         name: RTLoss
         args: {"translation_weight": 0.1}

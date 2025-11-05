@@ -115,7 +115,8 @@ class ScanNetDataset(BasePairDataset):
                     shared_atom_ids = set(src_atom_ids).intersection(tar_atom_ids)
                     src_ligand_coordinates = src_ligand_coordinates[torch.tensor([src_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
                     tar_ligand_coordinates = tar_ligand_coordinates[torch.tensor([tar_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
-                    assert src_ligand_coordinates.shape == tar_ligand_coordinates.shape
+                    if src_ligand_coordinates.shape != tar_ligand_coordinates.shape or src_ligand_coordinates.shape[0] == 0:
+                        raise ValueError("Mismatched ligand coordinates after filtering to shared atoms")
 
         except Exception as e:
             print(f"Error reading embeddings for {row['ref_protein']} {row['mov_protein']}: {e}")
@@ -167,6 +168,22 @@ class ScanNetDataset(BasePairDataset):
         # ret['gt_t'] = torch.Tensor(row['translations'][0][0])
         
         # ret['sample_weight'] = torch.tensor(row['sample_weight'])
+        if len(src_ligand_coordinates) > self._MAX_LIGAND_LENGTH or len(src_ligand_coordinates) == 0:
+            print(f"Source ligand length {len(src_ligand_coordinates)} exceeds max length {self._MAX_LIGAND_LENGTH} or is zero")
+            idx = torch.randint(0, len(self), (1,)).item()
+            return self.__getitem__(idx)
+        
+        # check if the input continas nans
+        # for key in ret:
+        #     if isinstance(ret[key], torch.Tensor) and if torch.isnan(ret[key]).any():
+        #     if torch.isnan(ret[key]).any():
+        #         print(f"Found NaNs in {key}, for src chain {row['mov_protein']}{row['mov_chain']} and tar chain {row['ref_protein']}{row['ref_chain']}")
+        #         raise ValueError("Input contains NaNs")
+
+        # if len(src_ligand_coordinates) < 2:
+        #     print(f"Source ligand length {len(src_ligand_coordinates)} is less than 2")
+            # idx = torch.randint(0, len(self), (1,)).item()
+            # return self.__getitem__(idx)
         ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self._MAX_LIGAND_LENGTH - len(src_ligand_coordinates)))
         ret['tar_ligand_coordinates'] = F.pad(tar_ligand_coordinates, (0, 0, 0, self._MAX_LIGAND_LENGTH - len(tar_ligand_coordinates)))
 

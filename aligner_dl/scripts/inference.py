@@ -85,6 +85,8 @@ def main():
         "mov_protein": mov,
         "ref_chain": ref_chain, 
         "mov_chain": mov_chain,
+        "cath_degree": -1,
+        "Ligand RMSD": 0.0,
         "ligand": args.ligand_id  # Or modify as needed
     }])
     csv_path = "temp_csv.csv"
@@ -131,7 +133,7 @@ def main():
     model.eval()
 
     python_path = "/home/iscb/wolfson/hagairavid/miniforge3/envs/miner/envs/py_scannet_keras3/bin/python"  # Adjust to your system"
-    script_path = "miners/scripts/chimera_pocket_viz.py"
+    script_path = "/home/iscb/wolfson/hagairavid/LocAlign/miners/scripts/chimera_pocket_viz.py"
 
     with torch.no_grad():
         for idx, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc="Running inference"):
@@ -156,7 +158,7 @@ def main():
                 print(f"⚠️ Skipping visualization for batch {idx} due to missing metadata")
                 continue
 
-            base_folder = os.path.join(output_dir, f"{ref}_{mov}_cath{metadata['cath_degree']}_{ligand}_rmsd{metadata['Pocket RMSD']:.1f}")
+            base_folder = os.path.join(output_dir, f"{ref}_{mov}_cath{metadata['cath_degree']}_{ligand}_rmsd{metadata.pop('Ligand RMSD', 0):.1f}_corr{preds['loss_dict']['corr_rmsd'].item():.2f}_gap{preds['loss_dict']['gap_loss'].item():.2f}_emb{preds['loss_dict']['embedding_loss'].item():.2f}")
             os.makedirs(base_folder, exist_ok=True)
 
             trans_dict = preds["transformation_dict"]
@@ -170,18 +172,21 @@ def main():
                                 R=trans_dict['pred_R'][0].numpy(), t=trans_dict['pred_t'][0].numpy())
 
             # Build the command
-            cmd = [
-                python_path,
-                script_path,
-                "--base_folder", base_folder,
-                "--scannet_dir", args.scannet_dir,
-                "--model_output_path", model_output_path,
-                "--template", ref + metadata['ref_chain'],
-                "--template_ligand", ligand,
-                "--query", mov + metadata['mov_chain'] ]
-          
-            print(f"Running visualization: {' '.join(cmd)}")
-            subprocess.run(cmd, check=True, text=True, stdout=sys.stdout, stderr=sys.stderr)
+            try:
+                cmd = [
+                    python_path,
+                    script_path,
+                    "--base_folder", base_folder,
+                    "--scannet_dir", args.scannet_dir,
+                    "--model_output_path", model_output_path,
+                    "--template", ref + metadata['ref_chain'],
+                    "--template_ligand", ligand,
+                    "--query", mov + metadata['mov_chain']
+                ]
+                print(f"Running visualization: {' '.join(cmd)}")
+                subprocess.run(cmd, check=True)
+            except Exception as e:
+                print(f"Visualization failed: {e}")
 
     print("✅ All predictions processed and visualized.")
     print("✅ All predicted pairs processed and visualized.")

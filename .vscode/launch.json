@@ -170,12 +170,12 @@
                 "results/alignment_results/2025-10-25_14-09-39_216073.csv",
                 "--output_dir",
                 // "datasets/csv_files/protein_grouping_1206",       // Directory to save the train, val, and test CSVs
-                "datasets/csv_files/homology_25_10", // Directory to save the train, val, and test CSVs
+                "datasets/csv_files/ligand_25_10", // Directory to save the train, val, and test CSVs
                 "--test_size",
                 "0.0", // Optional: Adjust the test set size (default 0.2)
                 "--val_size",
                 "0.15",
-                // "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
+                "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
             ]
         }
     ]

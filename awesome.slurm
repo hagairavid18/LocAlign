@@ -1,7 +1,7 @@
 #! /bin/sh
 
 #SBATCH --job-name=softbbs
-#SBATCH --output=/home/iscb/wolfson/hagairavid/awesome.out # redirect stdout
+#SBATCH --output=/home/iscb/wolfson/hagairavid/test_print9.out # redirect stdout
 #SBATCH --error=/home/iscb/wolfson/hagairavid/awesome.err # redirect stderr
 #SBATCH --partition=gpu-h100-killable # partition
 #SBATCH --time=400 # max time (minutes)
