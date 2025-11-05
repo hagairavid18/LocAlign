@@ -22,10 +22,10 @@ class LocAlign(SoftBBBase):
        
         super().__init__(loss=loss, optimizer=optimizer)
         self._input_block = build_object(input_layer, 'models.layers')
-        self._scalar_layer = build_object(scalar_layer, 'models.layers')
+        self._linear = build_object(scalar_layer, 'models.layers')
         self._denoiser = build_object(denoiser, 'models')
         self._recycling = RecyclingModule(recycle_scalar=False)
-        self._keypoints_selection = build_object(keypoints_selection, 'models')
+        # self._keypoints_selection = build_object(keypoints_selection, 'models')
         self._top_k  = top_k
 
         self._n_recycling_iterations = n_iter_recycling
@@ -213,8 +213,8 @@ class LocAlign(SoftBBBase):
 
             step_results: dict[str, torch.Tensor] = compute_transformation_from_corr_and_coord(top_corr_values, gathered_coord_src, gathered_coord_tar)
             
-            step_results['embedding_similarity'] = self._embedding_cov_term(top_corr_values, top_corr_indices, top_tar_embedding, top_src_embedding)
-            # step_results['embedding_similarity'] = self._embedding_cov_term(top_corr_values, top_corr_indices, batch['tar_pretrained_embeddings'].gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, hidden_dim)), batch['src_pretrained_embeddings'].gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, hidden_dim)))
+            # step_results['embedding_similarity'] = self._embedding_cov_term(top_corr_values, top_corr_indices, top_tar_embedding, top_src_embedding)
+            step_results['embedding_similarity'] = self._embedding_cov_term(top_corr_values, top_corr_indices, batch['tar_pretrained_embeddings'].gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, hidden_dim)), batch['src_pretrained_embeddings'].gather(1, topk_src_indices.unsqueeze(-1).expand(-1, -1, hidden_dim)))
             step_results['gap'] = self._embedding_entropy_term(top_corr_values) / top_corr_values.shape[1]
             all_iter_results.append(step_results)
             

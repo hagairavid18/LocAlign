@@ -118,7 +118,9 @@
             "args": [
                 "--csv",
                 // "aligner_dl/Protein_RMSD_Results_29-71899.csv",
-                "aligner_dl/Protein_RMSD_Results_0_clean.csv",
+                // "aligner_dl/Protein_RMSD_Results_0_clean.csv",
+                "small_ligand_to_plot.csv",
+                // "ligand_pairs_updated.csv",
                 // "--protein_pair",
                 // "5zve", "B", "6i71", "A"
                 // "1TRN", "1H4W",
@@ -149,7 +151,7 @@
                 // "checkpoints/kp-knn-recycle1-sum-1000-400-rbfmax30-metriclossfix/epoch=20-step=53508.ckpt",
                 "--scannet_dir",
                 // "/home/iscb/wolfson/hagairavid/scannet_outputs_inference",
-                "/home/iscb/wolfson/hagairavid/scannet_outputs_knn",
+                "/home/iscb/wolfson/hagairavid/scannet_outputs_knn_test",
                 "--base_save_dir",
                 // "inference_results",
                 "inference_results_2710",
