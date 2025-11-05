@@ -219,21 +219,21 @@ def make_pseudo_bond_files(
     '; dashes = 0'
     ]
 
-    template_corr_residues,query_corr_residues = [],[]     
+    template_corr_atoms,query_corr_atoms = [],[]     
     for n in range(num_correspondences):
         template_atom = template_pocket_atoms[ids_template[n]].get_full_id()
         query_atom = transformed_query_pocket_atoms[ids_query[n]].get_full_id()        
         lines.append(f"#1/{template_atom[-3]}:{template_atom[-2][1]}@{template_atom[-1][0]} #2/{query_atom[-3]}:{query_atom[-2][1]}@{query_atom[-1][0]}")        
-        template_corr_residues.append(f'#1/{template_atom[-3]}:{template_atom[-2][1]}@{template_atom[-1][0]}')
-        query_corr_residues.append(f'#2/{query_atom[-3]}:{query_atom[-2][1]}@{query_atom[-1][0]}')
+        template_corr_atoms.append(f'#1/{template_atom[-3]}:{template_atom[-2][1]}@{template_atom[-1][0]}')
+        query_corr_atoms.append(f'#2/{query_atom[-3]}:{query_atom[-2][1]}@{query_atom[-1][0]}')
     
-    template_corr_residues = ' '.join(template_corr_residues)    
-    query_corr_residues = ' '.join(query_corr_residues)
+    template_corr_atoms = ' '.join(template_corr_atoms)    
+    query_corr_atoms = ' '.join(query_corr_atoms)
     
     with open(output_file,'w') as f:
         for line in lines:
             f.write(line + '\n')    
-    return output_file,template_corr_residues,query_corr_residues
+    return output_file,template_corr_atoms,query_corr_atoms
     
 import numpy as np
 from Bio.PDB import PDBParser
@@ -276,7 +276,7 @@ def make_pseudo_bond_file_from_residue_indices(
                 return residue
         return None
     
-    template_corr_residues,query_corr_residues = [],[] 
+    template_corr_atoms,query_corr_atoms = [],[] 
 
     for (query_idx, template_idx), score, (query_atom_index, template_atom_index) in zip(corr_residue_indices, corr_values, atom_indexes_list):
         try:
@@ -297,23 +297,194 @@ def make_pseudo_bond_file_from_residue_indices(
 
             lines.append(f"#1/{t_chain_id}:{template_idx}@{t_atom_name} #2/{q_chain_id}:{query_idx}@{q_atom_name}")
             
-            template_corr_residues.append(f'#1/{t_chain_id}:{template_idx}@{t_atom_name}')
-            query_corr_residues.append(f'#2/{q_chain_id}:{query_idx}@{q_atom_name}')
+            template_corr_atoms.append(f'#1/{t_chain_id}:{template_idx}@{t_atom_name}')
+            query_corr_atoms.append(f'#2/{q_chain_id}:{query_idx}@{q_atom_name}')
 
         except:
             print(f"Skipping correspondence ({template_idx}, {query_idx}) - index out of bounds")
             continue
         
-    template_corr_residues = ' '.join(template_corr_residues)
-    query_corr_residues = ' '.join(query_corr_residues)
+    template_corr_atoms = ' '.join(template_corr_atoms)
+    query_corr_atoms = ' '.join(query_corr_atoms)
 
     with open(output_file, 'w') as f:
         for line in lines:
             f.write(line + "\n")
 
     print(f"Saved {len(corr_residue_indices)} pseudobonds to {output_file}")
-    return output_file,template_corr_residues,query_corr_residues
+    return output_file,template_corr_atoms,query_corr_atoms
 
+
+def make_chimera_script(
+                        output_folder,
+                        query_ligand=None,
+                        template_pocket_residues=None,
+                        query_pocket_residues=None,
+                        template_corr_atoms = None,
+                        query_corr_atoms = None,
+                        version = 'pocket',
+                        ):
+    
+        
+    assert version in ['pocket','motif']
+    # Version pocket: Highlights the ligand and the pocket.
+    # Version motif: Highlights the ligand, if present, and the learned alignment.
+    
+    show_ligand = query_ligand not in  [None,'general']
+    show_template_ligand = show_ligand & os.path.exists(os.path.join(output_folder,'template_ligand.pdb') )
+    show_query_ligand = show_ligand & os.path.exists(os.path.join(output_folder,'transformed_query_ligand.pdb'))
+    # Use case where we want to show both ligands: finding common structural motif.
+    # Use case where want to show neither: catalytic sites or unknown ligand, etc.
+    # Use case where we want to show the template ligand, but query is unavailable: comparing unbound query against database of templates with bound ligands.
+    # Last use case: a priori not needed.
+    
+    if version == 'pocket':    
+        colors_and_transparency = {
+            'template': {            
+                'receptor': ('cornflower blue', 90),
+                'ligand': ('cyan',0),
+                'pocket': ('blue',0),
+                'keypoints': ('dark blue',50)
+            },
+            
+            'query': {            
+                'receptor': ('orange red', 90),
+                'ligand': ('orange',0),
+                'pocket': ('red',0),
+                'keypoints': ('dark red',50)
+            }            
+        }        
+    elif version == 'motif':
+        colors_and_transparency = {
+            'template': {            
+                'receptor': ('cornflower blue', 85),
+                'ligand': ('dark blue',50),
+                'keypoints': ('cyan',0)
+            },
+            
+            'query': {            
+                'receptor': ('orange red', 85),
+                'ligand': ('dark red',50),
+                'keypoints': ('orange',0)
+            }
+        }    
+
+            
+    show_template_pocket =  (template_pocket_residues is not None) & (version == 'pocket')
+    show_query_pocket =  (query_pocket_residues is not None) & (version == 'pocket')
+    
+    show_template_keypoints = (template_corr_atoms is not None)
+    show_query_keypoints = (query_corr_atoms is not None)
+    
+    
+    model_ranks = {
+        'template_receptor': 1,
+        'query_receptor':2,
+    }
+    current_rank = 3
+    
+
+    list_commands = []
+    
+    
+    for file in ['template_receptor','transformed_query_receptor']:
+        list_commands.append( f'open {file}.pdb' )
+        
+    if show_template_ligand:
+        list_commands.append( f'open template_ligand.pdb' )
+        model_ranks['template_ligand'] = current_rank
+        current_rank +=1
+    if show_query_ligand:
+        list_commands.append( f'open transformed_query_ligand.pdb' )
+        model_ranks['query_ligand'] = current_rank
+        current_rank +=1
+
+
+    list_commands.append(f'dssp')
+    list_commands.append(f"sel #{model_ranks['template_receptor']}")
+    list_commands.append(f'hide sel atoms')
+    list_commands.append(f"color sel {colors_and_transparency['template']['receptor'][0]} transparency {colors_and_transparency['template']['receptor'][1]}")
+    
+    list_commands.append(f"sel #{model_ranks['query_receptor']}")
+    list_commands.append(f'hide sel atoms')
+    list_commands.append(f"color sel {colors_and_transparency['query']['receptor'][0]} transparency {colors_and_transparency['query']['receptor'][1]}")
+    
+    if show_template_pocket:        
+        template_pocket_residues_chimera_formatted = []
+        for chain in np.unique(template_pocket_residues[:,0]):
+            subset = (template_pocket_residues[:,0] == chain)
+            indices = template_pocket_residues[subset,1]
+            template_pocket_residues_chimera_formatted.append(f"#{model_ranks['template_receptor']}/{chain}:" + ','.join(indices))
+        list_commands.append(f'sel ' + '| '.join(template_pocket_residues_chimera_formatted))
+        list_commands.append(f'show sel atoms')
+        list_commands.append(f'style sel stick')
+        list_commands.append(f"color sel {colors_and_transparency['template']['pocket'][0]} transparency {colors_and_transparency['template']['pocket'][1]}")
+        
+    if show_query_pocket:
+        query_pocket_residues_chimera_formatted = []
+        for chain in np.unique(query_pocket_residues[:,0]):
+            subset = (query_pocket_residues[:,0] == chain)
+            indices = query_pocket_residues[subset,1]
+            query_pocket_residues_chimera_formatted.append(f"#{model_ranks['query_receptor']}/{chain}:" + ','.join(indices))
+        list_commands.append(f'sel ' + '| '.join(query_pocket_residues_chimera_formatted))
+        list_commands.append(f'show sel atoms')
+        list_commands.append(f'style sel stick')
+        list_commands.append(f"color sel {colors_and_transparency['query']['pocket'][0]} transparency {colors_and_transparency['query']['pocket'][1]}")
+        
+    if show_template_ligand:
+        list_commands.append(f"sel #{model_ranks['template_ligand']}")
+        list_commands.append(f'show sel atoms')
+        list_commands.append(f'style sel stick')
+        list_commands.append(f"color sel {colors_and_transparency['template']['ligand'][0]} transparency {colors_and_transparency['template']['ligand'][1]}")        
+        list_commands.append(f'color sel byhetero')
+        
+    if show_query_ligand:
+        list_commands.append(f"sel #{model_ranks['query_ligand']}")
+        list_commands.append(f'show sel atoms')
+        list_commands.append(f'style sel stick')
+        list_commands.append(f"color sel {colors_and_transparency['query']['ligand'][0]} transparency {colors_and_transparency['query']['ligand'][1]}")        
+        list_commands.append(f'color sel byhetero')
+        
+    
+    if show_template_keypoints:            
+        template_corr_atoms = ' '.join( x.split('@')[0] for x in template_corr_atoms.split(' ') )
+        list_commands.append(f"sel {template_corr_atoms}")
+        list_commands.append(f"color sel {colors_and_transparency['template']['keypoints'][0]} transparency {colors_and_transparency['template']['keypoints'][1]}")        
+        list_commands.append('show sel atoms')
+        list_commands.append('hide sel cartoon')
+        list_commands.append('style sel stick')
+        list_commands.append(f'color sel byhetero')        
+        list_commands.append(f"sel {template_corr_atoms}")
+        list_commands.append('style sel ball')
+        
+    if show_query_keypoints:                
+        query_corr_atoms = ' '.join( x.split('@')[0] for x in query_corr_atoms.split(' ') )    
+        list_commands.append(f'sel {query_corr_atoms}')
+        list_commands.append(f"color sel {colors_and_transparency['query']['keypoints'][0]} transparency {colors_and_transparency['query']['keypoints'][1]}")        
+        list_commands.append('show sel atoms')
+        list_commands.append('hide sel cartoon')
+        list_commands.append('style sel stick')  
+        list_commands.append(f'color sel byhetero')        
+        list_commands.append(f"sel {query_corr_atoms}")
+        list_commands.append('style sel ball')
+
+    if (version == 'motif') & show_query_keypoints & show_template_keypoints:
+        list_commands.append(f'sel {query_corr_atoms} {template_corr_atoms}')
+        list_commands.append(f'view sel')
+    
+        
+    list_commands.append('sel clear')
+    list_commands.append('open correspondences.pb')
+    list_commands.append('hide solvent')
+    list_commands.append('lighting soft')
+    list_commands.append('set bgColor white')
+    
+
+    chimera_file = os.path.join(output_folder,f'chimera_script_{version}.cxc')
+    with open(chimera_file,'w') as f:
+        for command in list_commands:
+            f.write(command + '\n')
+    return chimera_file
     
 def process_alignment(
         base_folder: str, 
@@ -398,7 +569,7 @@ def process_alignment(
         query_pocket_residues = None
 
     if corr_indices is not None: # In case we have correspondences from the model output
-        _,template_corr_residues,query_corr_residues = make_pseudo_bond_file_from_residue_indices(
+        _,template_corr_atoms,query_corr_atoms = make_pseudo_bond_file_from_residue_indices(
             os.path.join(output_folder, 'correspondences.pb'),
             os.path.join(output_folder, 'template_receptor.pdb'),
             os.path.join(output_folder, 'transformed_query_receptor.pdb'),
@@ -407,7 +578,7 @@ def process_alignment(
             atom_indexes_list=atom_indexes_list
         )
     else:
-        _,template_corr_residues,query_corr_residues = make_pseudo_bond_files(
+        _,template_corr_atoms,query_corr_atoms = make_pseudo_bond_files(
             os.path.join(output_folder, 'correspondences.pb'),    
             os.path.join(output_folder, 'template_receptor.pdb'),
             os.path.join(output_folder, 'template_ligand.pdb'),
@@ -415,97 +586,26 @@ def process_alignment(
             os.path.join(output_folder, 'transformed_query_ligand.pdb'),                         
         )
 
-
-    list_commands = []
+    make_chimera_script(
+                        output_folder,
+                        query_ligand=query_ligand,
+                        template_pocket_residues=template_pocket_residues,
+                        query_pocket_residues=query_pocket_residues,
+                        template_corr_atoms = template_corr_atoms,
+                        query_corr_atoms = query_corr_atoms,
+                        version = 'pocket',
+                        ) 
     
-    for file in ['template_receptor','transformed_query_receptor']:
-        list_commands.append( f'open {file}.pdb' )
-    
-    if query_ligand != 'general':
-        for file in ['template_ligand','transformed_query_ligand']:
-            list_commands.append( f'open {file}.pdb' )
-        list_commands.append(f'dssp')
-        list_commands.append(f'sel #1')
-        list_commands.append(f'hide sel atoms')
-        list_commands.append(f'color sel cornflower blue transparency 90')
-
-        if template_pocket_residues is not None:
-            template_pocket_residues_chimera_formatted = []
-            for chain in np.unique(template_pocket_residues[:,0]):
-                subset = (template_pocket_residues[:,0] == chain)
-                indices = template_pocket_residues[subset,1]
-                template_pocket_residues_chimera_formatted.append(f'#1/{chain}:' + ','.join(indices))
-            list_commands.append(f'sel ' + '| '.join(template_pocket_residues_chimera_formatted))
-            list_commands.append(f'show sel atoms')
-            list_commands.append(f'style sel stick')
-            list_commands.append(f'color sel blue transparency 0')
-
-        list_commands.append(f'sel #3')
-
-        list_commands.append(f'show sel atoms')
-        list_commands.append(f'style sel stick')
-        list_commands.append(f'color sel cyan transparency 0')
-
-
-        list_commands.append(f'sel #2')
-        list_commands.append(f'hide sel atoms')
-        list_commands.append(f'color sel orange red transparency 90')
-
-        query_pocket_residues_chimera_formatted = []
-        for chain in np.unique(query_pocket_residues[:,0]):
-            subset = (query_pocket_residues[:,0] == chain)
-            indices = query_pocket_residues[subset,1]
-            query_pocket_residues_chimera_formatted.append(f'#2/{chain}:' + ','.join(indices))
-        list_commands.append(f'sel ' + '| '.join(query_pocket_residues_chimera_formatted))
-        list_commands.append(f'show sel atoms')
-        list_commands.append(f'style sel stick')
-        list_commands.append(f'color sel red transparency 0')
-        # list_commands.append(f'color sel byhetero')
-
-
-        list_commands.append(f'sel #4')
-        list_commands.append(f'show sel atoms')
-        list_commands.append(f'style sel stick')
-        list_commands.append(f'color sel orange transparency 0')
-        list_commands.append(f'color sel byhetero')
-        list_commands.append('sel clear')
-    list_commands.append('hide solvent')
-    list_commands.append('lighting soft')
-    list_commands.append('set bgColor white')
-    
-    template_corr_residues_all = ' '.join( x.split('@')[0] for x in template_corr_residues.split(' ') )
-    query_corr_residues_residues_all = ' '.join( x.split('@')[0] for x in query_corr_residues.split(' ') )
-    
-    list_commands.append(f'sel {template_corr_residues_all}')
-    list_commands.append('color sel dark blue transparency 50') 
-    list_commands.append('show sel atoms')
-    list_commands.append('hide sel cartoon')
-    list_commands.append('style sel stick')
-    list_commands.append(f'sel {template_corr_residues}')
-    list_commands.append('style sel ball')
-    
-    list_commands.append(f'sel {query_corr_residues_residues_all}')
-    list_commands.append('color sel dark red transparency 50') 
-    list_commands.append('show sel atoms')
-    list_commands.append('hide sel cartoon')
-    list_commands.append('style sel stick')  
-    list_commands.append(f'sel {query_corr_residues}')
-    list_commands.append('style sel ball')    
-    list_commands.append('sel clear')    
-    list_commands.append('open correspondences.pb')
-    # for file in ['template_receptor','transformed_query_receptor']:
-    #         list_commands.append( f'open {file}.pdb' )
-    # list_commands.append("sel #6")
-    # list_commands.append("color sel blue")
-    # list_commands.append("sel clear")
-    # list_commands.append("sel #7")
-    # list_commands.append("color sel red")
-    # list_commands.append("sel clear")
-
-    chimera_file = os.path.join(output_folder,'chimera_script.cxc')
-    with open(chimera_file,'w') as f:
-        for command in list_commands:
-            f.write(command + '\n')
+    make_chimera_script(
+                        output_folder,
+                        query_ligand=query_ligand,
+                        template_pocket_residues=template_pocket_residues,
+                        query_pocket_residues=query_pocket_residues,
+                        template_corr_atoms = template_corr_atoms,
+                        query_corr_atoms = query_corr_atoms,
+                        version = 'motif',
+                        )
+    return    
 
             
 

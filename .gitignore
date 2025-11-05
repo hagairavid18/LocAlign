@@ -33,3 +33,4 @@ events*
 aligner_dl/.DS_Store
 aligner_dl/models/.DS_Store
 checkpoints
+miners/scripts/tmp.py
