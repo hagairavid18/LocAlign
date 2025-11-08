@@ -1,5 +1,5 @@
 trainer:
-  exp_name: small-ligands-recycling1-baseline-ln-fast-10gnn-esm18
+  exp_name: small-ligands-recycling1-GAT-esm18-corr02-embed1-gap1-lig5-reformat-loss
   tags: ["atom", "esm", "homology_split", "small_ligands"]
   max_epochs: 10
   validate_only: false
@@ -11,21 +11,11 @@ model:
   name: LocAlign
   args:
     n_iter_recycling: 1
-    top_k: 1000
-    scalar_layer:
-      name: 
-        EmbeddingBlock
-      args:
-        n_blocks: 3
-        input_dim: 256
-        output_dim: 1
-        bias: false
-        dropout: 0.0
     input_layer:
       name: 
         EmbeddingBlock
       args:
-        n_blocks: 3
+        n_blocks: 2
         input_dim: 1004
         hidden_dim: 256
         output_dim: 256
@@ -47,14 +37,17 @@ model:
         n_rbf_functions: 32
         top_k: 1000
     loss:
-      weight_dict:
-        corr_rmsd: 0.1
-        embedding: 1.0
-        gap: 1.0
-        ligand_rmsd: 10.0
-      ligand:
-        name: LigandLoss
-        args: {"return_non_linear" : true}
+      name: LocAlignLoss
+      args:
+        return_non_linear: true
+        weight_dict:
+          corr_rmsd: 0.1
+          embedding: 2.0
+          gap: 1.0
+          ligand_rmsd: 5.0
+      # ligand:
+      #   name: LigandLoss
+      #   args: {"return_non_linear" : true}
     optimizer:
       name: Adam
       args:

@@ -1,4 +1,5 @@
 from abc import ABC
+from losses.soft_bb_loss import LocAlignLoss
 import pandas as pd
 import os
 from typing import Any
@@ -29,8 +30,7 @@ class SoftBBBase(L.LightningModule, ABC):
             optimizer (dict[str, Any]): optimizer configuration.
         """        
         super().__init__()
-        self._ligand_loss = build_object(loss['ligand'], 'losses') if loss is not None else None
-        self._loss_weight_dict = loss['weight_dict']
+        self._loss: LocAlignLoss =  build_object(loss, 'losses')
         self._metrics = PocketRMSD()
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
@@ -100,29 +100,29 @@ class SoftBBBase(L.LightningModule, ABC):
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
 
-    def _compute_loss(
-        self, 
-        batch, 
-        R_total, 
-        t_total, 
-        corr_rmsd: torch.Tensor, 
-        embedding_similarity: torch.Tensor = None, 
-        gap: torch.Tensor = None, 
-        inference: bool = False
-        ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    # def _compute_loss(
+    #     self, 
+    #     batch, 
+    #     R_total, 
+    #     t_total, 
+    #     corr_rmsd: torch.Tensor, 
+    #     inference: bool = False
+    #     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
 
-        loss_dict: dict[str, torch.Tensor] = {}
+    #     loss_dict: dict[str, torch.Tensor] = {}
+    #     loss_dict['gap_loss'] = self._weight_entropy_loss(batch, R_total, t_total)
+    #     loss_dict['embedding_loss'] = self._embedding_similarity_loss(batch, R_total, t_total)
         
-        loss_dict['corr_rmsd'] = corr_rmsd.mean()
-        loss_dict['embedding_loss'] = embedding_similarity.mean()
-        loss_dict['gap_loss'] = gap.mean()
-        loss = self._loss_weight_dict['corr_rmsd'] * corr_rmsd.mean() - self._loss_weight_dict['embedding'] * embedding_similarity.mean()  - self._loss_weight_dict['gap'] * gap.mean()
-        if not inference:
-            loss_dict.update(self._ligand_loss(batch, R_total, t_total))
-            loss = loss + self._loss_weight_dict['ligand_rmsd'] * loss_dict['ligand_rmsd']
+    #     loss_dict['corr_rmsd'] = corr_rmsd.mean()
+    #     # loss_dict['embedding_loss'] = embedding_similarity.mean()
+    #     # loss_dict['gap_loss'] = gap.mean()
+    #     loss = self._loss_weight_dict['corr_rmsd'] * corr_rmsd.mean() - self._loss_weight_dict['embedding'] * loss_dict['embedding_loss'] + self._loss_weight_dict['gap'] * loss_dict['gap_loss']
+    #     if not inference:
+    #         loss_dict.update(self._ligand_loss(batch, R_total, t_total))
+    #         loss = loss + self._loss_weight_dict['ligand_rmsd'] * loss_dict['ligand_rmsd']
         
-        loss_dict['loss'] = loss
-        return loss, loss_dict
+    #     loss_dict['loss'] = loss
+    #     return loss, loss_dict
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self._lr, weight_decay=1e-4, fused=True)        

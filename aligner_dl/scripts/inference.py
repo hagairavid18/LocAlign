@@ -18,17 +18,51 @@ from models.utils.misc import build_object
 from miners.objects import Protein  # Adjust path if necessary
 from datasets import ScanNetDataset  # Ensure this is in your PYTHONPATH
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run inference using a trained model.")
-    parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint.")
-    parser.add_argument("--scannet_dir", type=str, help="Directory containing ligand files.")
-    parser.add_argument("--ligand_id", type=str, default="general", help="Ligand ID to use for non-ligand models.")
+    
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default="checkpoints/small-ligands-recycling1-baseline-ln-fast-10gnn-esm18/epoch=6-step=60984.ckpt",
+        help="Path to model checkpoint (default: preconfigured baseline)."
+    )
+    parser.add_argument(
+        "--scannet_dir",
+        type=str,
+        default=os.getcwd(),
+        help="Directory for saving ScanNet pretrained embedding."
+    )
+    parser.add_argument(
+        "--ligand_id",
+        type=str,
+        default="general",
+        help="The ligand pdb name, if both inputs binds the same one"
+    )
+
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--csv_path", type=str, help="Path to CSV file with ref/mov chains.")
-    group.add_argument("--protein_pair", nargs=4, metavar=("REF_PROTEIN", "REF_CHAIN", "MOV_PROTEIN", "MOV_CHAIN"),
-                       help="Specify a single protein pair instead of a CSV.")
-    parser.add_argument("--base_save_dir", type=str, default="inference_results", help="Directory to save inference results.")
+    group.add_argument(
+        "--csv_path",
+        type=str,
+        help="Path to CSV file with tar/src chains."
+    )
+    group.add_argument(
+        "--protein_pair",
+        nargs=4,
+        metavar=("TAR_PROTEIN", "TAR_CHAIN", "SRC_PROTEIN", "SRC_CHAIN"),
+        help="Specify a single protein pair instead of a CSV."
+    )
+
+    parser.add_argument(
+        "--base_save_dir",
+        type=str,
+        default="inference_results",
+        help="Directory to save inference results."
+    )
+
     return parser.parse_args()
+
 
 def save_non_ligand_models(df, output_dir) -> None:
     for _, row in df.iterrows():
@@ -72,12 +106,12 @@ def main():
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    if args.csv_path:
-        df = pd.read_csv(args.csv_path)
-        csv_path = args.csv_path
-        # rename columns to match expected format
-        df.rename(columns={'Ligand_ID': 'ligand'}, inplace=True)
-    else:
+    if not args.csv_path:
+    #     df = pd.read_csv(args.csv_path)
+    #     csv_path = args.csv_path
+    #     # rename columns to match expected format
+    #     df.rename(columns={'Ligand_ID': 'ligand'}, inplace=True)
+    # else:
         # Build DataFrame manually from provided pair
         ref, ref_chain, mov, mov_chain = args.protein_pair
         df = pd.DataFrame([{
@@ -89,13 +123,24 @@ def main():
         "Ligand RMSD": 0.0,
         "ligand": args.ligand_id  # Or modify as needed
     }])
-    csv_path = "temp_csv.csv"
+        csv_path = "temp_csv.csv"
+    else:
+        df = pd.read_csv(args.csv_path)
+
+        # rename columns to match expected format
+        df.rename(columns={'Ligand_ID': 'ligand'}, inplace=True)
+
+        csv_path = args.csv_path
     df.to_csv(csv_path, index=False)
+
 
     experiment_name = args.checkpoint.split('/')[1]
     output_dir = os.path.join(args.base_save_dir, experiment_name)
     os.makedirs(output_dir, exist_ok=True)
     # Step 1: Save non-ligand models
+    checkpoint_dir = os.path.join("checkpoints", experiment_name)
+    if not os.path.isdir(checkpoint_dir):
+        raise FileNotFoundError(f"Checkpoint directory not found: {checkpoint_dir}")
     print("Saving non-ligand models...")
     save_non_ligand_models(df, args.base_save_dir)
 
@@ -105,21 +150,32 @@ def main():
 
     # Step 3: Build dataset and dataloader
     print("Preparing dataset and dataloader...")
-    dataset = ScanNetDataset(df_path=csv_path, base_data_path=args.base_save_dir, base_embedding_path=args.scannet_dir, inference=True, ligand_column='ligand', esm_layer=30, esm_model="esm2_t30_150M_UR50D")
+    dataset_config_path = os.path.join(checkpoint_dir, "dataset_config.yaml")
+    if not os.path.isfile(dataset_config_path):
+        raise FileNotFoundError(f"Model config file not found in checkpoint dir: {dataset_config_path}")
+    with open(dataset_config_path) as f:
+        dataset_config = yaml.safe_load(f)
+    
+    dataset_config['args']['df_path'] = csv_path
+    dataset_config['args']['base_data_path'] = args.base_save_dir
+    dataset_config['args']['base_embedding_path'] = args.scannet_dir
+    dataset_config['args']['inference'] = True
+    dataset_config['args']['ligand_column'] = 'ligand'
+    
+    dataset = ScanNetDataset(**dataset_config['args'])
     dataloader = DataLoader(dataset, batch_size=1, num_workers=0, collate_fn=custom_collate_fn, pin_memory=True)
 
     # Step 4: Build model and load checkpoint
-    checkpoint_dir = os.path.join("checkpoints", experiment_name)
-    if not os.path.isdir(checkpoint_dir):
-        raise FileNotFoundError(f"Checkpoint directory not found: {checkpoint_dir}")
 
     # Load model config YAML saved in this directory
     model_config_path = os.path.join(checkpoint_dir, "model_config.yaml")
     if not os.path.isfile(model_config_path):
         raise FileNotFoundError(f"Model config file not found in checkpoint dir: {model_config_path}")
+   
 
     with open(model_config_path) as f:
         model_config = yaml.safe_load(f)
+    
 
     # Build model from saved config
     model = build_object(model_config, 'models')
@@ -144,6 +200,10 @@ def main():
             # get all correspondences that above 0.5 of the highest correlation value
             threshold = 0.25 * torch.max(preds["corr_values"][0])
             above_threshold_indices = torch.where(preds["corr_values"][0] >= threshold)[0]
+
+            # assert that there aer at least 3 correspondences
+            if len(above_threshold_indices) < 3:
+                above_threshold_indices = torch.topk(preds["corr_values"][0], 3)[1]
             print(f"Batch {idx}: Found {len(above_threshold_indices)} correspondences above threshold {threshold.item():.4f}")
 
             # top_k_corr_indices= torch.topk(preds["corr_values"][0], 10)[1]
@@ -171,7 +231,6 @@ def main():
                                 top_corr_indices_atom=top_corr_indices_atom.numpy(),
                                 R=trans_dict['pred_R'][0].numpy(), t=trans_dict['pred_t'][0].numpy())
 
-            # Build the command
             try:
                 cmd = [
                     python_path,
@@ -184,9 +243,18 @@ def main():
                     "--query", mov + metadata['mov_chain']
                 ]
                 print(f"Running visualization: {' '.join(cmd)}")
-                subprocess.run(cmd, check=True)
+
+                # Run without stopping on any error
+                result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+
+                if result.returncode != 0:
+                    print(f"⚠️ Visualization script failed with code {result.returncode}")
+                    print(f"stderr:\n{result.stderr}")
+                else:
+                    print("✅ Visualization completed successfully.")
             except Exception as e:
-                print(f"Visualization failed: {e}")
+                print(f"Unexpected error during visualization: {e}")
+
 
     print("✅ All predictions processed and visualized.")
     print("✅ All predicted pairs processed and visualized.")

@@ -139,6 +139,10 @@ def main():
     model_config_path = os.path.join(f"checkpoints/{config['trainer']['exp_name']}", "model_config.yaml")
     with open(model_config_path, 'w') as f:
         yaml.dump(config['model'], f)
+    
+    val_dataset_config_path = os.path.join(f"checkpoints/{config['trainer']['exp_name']}", "dataset_config.yaml")
+    with open(val_dataset_config_path, 'w') as f:
+        yaml.dump(config['dataset']['validation'], f)
 
     print(f"Saved model config to {model_config_path}")
 
