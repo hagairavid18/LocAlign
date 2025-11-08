@@ -58,25 +58,33 @@ class KeypointsSelection(nn.Module):
         neighbors: torch.Tensor,
         mask: torch.Tensor,
         previous_importance: torch.Tensor | None  = None,
+        cached_local_scalar_edges: torch.Tensor | None  = None,
+        cached_value_key_query: torch.Tensor | None  = None,
         ) -> tuple[torch.Tensor,torch.Tensor]:
         
         B, N, embedding_size = embeddings.shape # Batch size, number of atoms, embedding size.
         K = neighbors.shape[-1] # Number of neigbhors
         # assert embedding_size == self._embedding_size
         neighbors = torch.clip(neighbors.type(torch.int64), 0, N-1) # Make sure that neighbors are not outside of max length.
-        local_coordinates = self._get_local_coordinates(frames, neighbors) # B X N X K X 3 [3,theta,phi]
-        local_coordinates = local_coordinates.view(B, N*K, 3) # Reshape before passing to edge learner.
-        local_distances = local_coordinates[:,:,0]
-        local_edges = self._rbf_encoder(local_distances) # Calculate scalar edges; same code as in correspondence solver module.
-        if self._add_angle_features:
-            local_angles = local_coordinates[:,:,1:]
-            local_edges = torch.cat([local_edges, self._encode_angles(local_angles)], dim=-1)
-        local_scalar_edges = self._edge_learner(local_edges).view(B,N,K)
-                
-        value_key_query = self._embedding_block(embeddings,mask) # value,key,queries for attention. Here, the value, query and key are scalars.
+        if cached_local_scalar_edges is not None:
+            local_scalar_edges = cached_local_scalar_edges
+        else:
+            local_coordinates = self._get_local_coordinates(frames, neighbors) # B X N X K X 3 [3,theta,phi]
+            local_coordinates = local_coordinates.view(B, N*K, 3) # Reshape before passing to edge learner.
+            local_distances = local_coordinates[:,:,0]
+            local_edges = self._rbf_encoder(local_distances) # Calculate scalar edges; same code as in correspondence solver module.
+            if self._add_angle_features:
+                local_angles = local_coordinates[:,:,1:]
+                local_edges = torch.cat([local_edges, self._encode_angles(local_angles)], dim=-1)
+            local_scalar_edges = self._edge_learner(local_edges).view(B,N,K)
+
+        if cached_value_key_query is not None:
+            value_key_query = cached_value_key_query
+        else:
+            value_key_query = self._embedding_block(embeddings,mask) # value,key,queries for attention. Here, the value, query and key are scalars.
         value = value_key_query[:,:,0]
         if previous_importance is not None: # Previous importance, (either recycled from previous iteration or user-provided if using input motif)
-            value += previous_importance
+            value = value + previous_importance
         key = value_key_query[:,:,1]
         query = value_key_query[:,:,2]
         query = query.masked_fill(~mask, -float('inf')) # Make sure that masked positions have no role in attention.
@@ -86,7 +94,7 @@ class KeypointsSelection(nn.Module):
         output_score = torch.sum(local_value * local_attention,axis=-1)  + value * self._root_term
         output_score = output_score.masked_fill(~mask, -float('inf'))  # Make sure that masked positions have no output_score.
         top_k_indices, top_k_score = self._get_rectified_top_k(output_score, mask)
-        return top_k_indices, top_k_score
+        return top_k_indices, top_k_score, value_key_query,local_scalar_edges
     
     def _get_local_coordinates(
         self,

@@ -92,6 +92,7 @@ class LocAlign(SoftBBBase):
         recycled_src_importance = None
         recycled_tar_embedding = None
         recycled_src_embedding = None
+        cached_value_key_query_src,cached_local_scalar_edges_src, cached_value_key_query_tar,cached_local_scalar_edges_tar = None,None,None,None
         # src_atom_importance = self._get_atom_importance(src_embedding, batch['src_mask'])
         # tar_atom_importance = self._get_atom_importance(tar_embedding, batch['tar_mask'])
 
@@ -99,9 +100,8 @@ class LocAlign(SoftBBBase):
         # topk_tar_indices, topk_tar_values = self._get_rectified_top_k(tar_atom_importance, batch['tar_mask'])
         for i in range(self._n_recycling_iterations +1):
                 
-                
-            topk_src_indices, topk_src_values = self._keypoints_selection(src_embedding, batch['src_frames'], batch['src_neighbors'], batch['src_mask'], previous_importance=recycled_src_importance)
-            topk_tar_indices, topk_tar_values = self._keypoints_selection(tar_embedding, batch['tar_frames'], batch['tar_neighbors'], batch['tar_mask'], previous_importance=recycled_tar_importance)
+            topk_src_indices, topk_src_values, cached_value_key_query_src,cached_local_scalar_edges_src = self._keypoints_selection(src_embedding, batch['src_frames'], batch['src_neighbors'], batch['src_mask'], previous_importance=recycled_src_importance,cached_value_key_query=cached_value_key_query_src,cached_local_scalar_edges=cached_local_scalar_edges_src)
+            topk_tar_indices, topk_tar_values, cached_value_key_query_tar,cached_local_scalar_edges_tar = self._keypoints_selection(tar_embedding, batch['tar_frames'], batch['tar_neighbors'], batch['tar_mask'], previous_importance=recycled_tar_importance,cached_value_key_query=cached_value_key_query_tar,cached_local_scalar_edges=cached_local_scalar_edges_tar)
 
             # Now gather
             hidden_dim = src_embedding.shape[-1]        
