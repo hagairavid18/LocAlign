@@ -43,7 +43,7 @@ model:
         weight_dict:
           corr_rmsd: 0.1
           embedding: 2.0
-          gap: 1.0
+          gap: 0.0025
           ligand_rmsd: 5.0
       # ligand:
       #   name: LigandLoss

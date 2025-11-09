@@ -218,7 +218,7 @@ def main():
                 print(f"⚠️ Skipping visualization for batch {idx} due to missing metadata")
                 continue
 
-            base_folder = os.path.join(output_dir, f"{ref}_{mov}_cath{metadata['cath_degree']}_{ligand}_rmsd{metadata.pop('Ligand RMSD', 0):.1f}_corr{preds['loss_dict']['corr_rmsd'].item():.2f}_gap{preds['loss_dict']['gap_loss'].item():.2f}_emb{preds['loss_dict']['embedding_loss'].item():.2f}")
+            base_folder = os.path.join(output_dir, f"{ref}_{mov}_cath{metadata['cath_degree']}_{ligand}_rmsd{metadata.pop('Ligand RMSD', 0):.1f}_corr{preds['loss_dict']['corr_rmsd'].item():.2f}_gap{preds['loss_dict']['gap'].item():.2f}_emb{preds['loss_dict']['embedding'].item():.2f}")
             os.makedirs(base_folder, exist_ok=True)
 
             trans_dict = preds["transformation_dict"]
@@ -244,8 +244,9 @@ def main():
                 ]
                 print(f"Running visualization: {' '.join(cmd)}")
 
-                # Run without stopping on any error
-                result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+                # Run without stopping on any error but print stdeout and stderr
+                # result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+                result = subprocess.run(cmd, capture_output=True, text=True)
 
                 if result.returncode != 0:
                     print(f"⚠️ Visualization script failed with code {result.returncode}")

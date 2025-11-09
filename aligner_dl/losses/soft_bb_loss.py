@@ -23,27 +23,25 @@ class QualityLoss(nn.Module):
         return loss, loss_dict
 
 class LocAlignLoss(nn.Module):
-    def __init__(self, weight_dict: dict[str, float], return_non_linear: bool = True, reduce: bool = True, inference: bool = False):
+    def __init__(self, weight_dict: dict[str, float], return_non_linear: bool = True, reduce: bool = True):
         super(LocAlignLoss, self).__init__()
         self._quality_loss = QualityLoss(weight_dict)
 
         self._ligand_loss = LigandLoss(return_non_linear=return_non_linear)
         self._ligand_loss_weight = weight_dict.get('ligand_rmsd', 1.0)
         self._reduce = reduce
-        self._inference = inference
 
-    def forward(self, batch, outputs):
+    def forward(self, batch, outputs, inference: bool = False):
         rotation_ab_pred = outputs['pred_R']
         translation_ab_pred = outputs['pred_t']
         quality_loss, quality_loss_dict = self._quality_loss(outputs)
-        if self._inference:
+        if inference:
             quality_loss_dict['loss'] = quality_loss
             return quality_loss, quality_loss_dict
         ligand_loss_dict = self._ligand_loss(batch, rotation_ab_pred, translation_ab_pred, reduce=self._reduce)
         total_loss = quality_loss + self._ligand_loss_weight * ligand_loss_dict['ligand_rmsd']
         loss_dict = {**quality_loss_dict, **ligand_loss_dict, 'loss': total_loss}
         return total_loss, loss_dict
-
 
 
 class PocketLoss(nn.Module):
