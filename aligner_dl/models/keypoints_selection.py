@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from models.utils.math import euclidean_to_spherical
-from models.correspondences_denoiser import LearnableRBFEncoding, EdgeWeightLearner
+from models.correspondences_denoiser import LearnableRBFEncoding, EdgeWeightLearner, CDM
 from models.layers.blocks import EmbeddingBlock
 
 
@@ -34,7 +34,6 @@ class KeypointsSelection(nn.Module):
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
 
-    import torch
 
     def safe_softmax(self, x: torch.Tensor, dim: int = -1, eps: float = 1e-6) -> torch.Tensor:
         """
@@ -50,7 +49,6 @@ class KeypointsSelection(nn.Module):
         denom = torch.clamp(denom, min=eps)  # prevent division by zero
         return exps / denom
 
-        
     def forward(
         self,
         embeddings: torch.Tensor,
@@ -75,7 +73,7 @@ class KeypointsSelection(nn.Module):
             local_edges = self._rbf_encoder(local_distances) # Calculate scalar edges; same code as in correspondence solver module.
             if self._add_angle_features:
                 local_angles = local_coordinates[:,:,1:]
-                local_edges = torch.cat([local_edges, self._encode_angles(local_angles)], dim=-1)
+                local_edges = torch.cat([local_edges, CDM.encode_angles(local_angles)], dim=-1)
             local_scalar_edges = self._edge_learner(local_edges).view(B,N,K)
 
         if cached_value_key_query is not None:
@@ -94,7 +92,7 @@ class KeypointsSelection(nn.Module):
         output_score = torch.sum(local_value * local_attention,axis=-1)  + value * self._root_term
         output_score = output_score.masked_fill(~mask, -float('inf'))  # Make sure that masked positions have no output_score.
         top_k_indices, top_k_score = self._get_rectified_top_k(output_score, mask)
-        return top_k_indices, top_k_score, value_key_query,local_scalar_edges
+        return top_k_indices, top_k_score, value_key_query, local_scalar_edges
     
     def _get_local_coordinates(
         self,
@@ -106,21 +104,7 @@ class KeypointsSelection(nn.Module):
         difference_vector = neighbor_coordinates - frames[:,:,0,:].unsqueeze(2)
         local_neighbor_coordinates = torch.einsum('bnkm, bnlm->bnkl', difference_vector,  frames[:,:,1:,:])
         return euclidean_to_spherical(local_neighbor_coordinates)
-
-    def _encode_angles(
-        self, 
-        angles: torch.Tensor
-        ) -> torch.Tensor:
-        """
-        Encode angles using sine and cosine transformations.
-        """
-        theta_sin = torch.sin(angles[..., 0])
-        theta_cos = torch.cos(angles[..., 0])
-        phi_sin = torch.sin(angles[..., 1])
-        phi_cos = torch.cos(angles[..., 1])
-        return torch.stack([theta_sin, theta_cos, phi_sin, phi_cos], dim=-1)
  
-
     def _get_rectified_top_k(
         self, 
         scalar_values: torch.Tensor, 

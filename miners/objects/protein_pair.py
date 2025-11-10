@@ -11,8 +11,8 @@ from scipy.spatial import distance_matrix
 
 from miners.utils.constants import LIGAND_DIR, BaselineHolder
 
-from objects import Protein
-from miners.utils.constants import NOT_ENOUGH_ATOMS_MESSAGE, TOO_MUCH_RESIDUES_MESSAGE, LIGAND_RESIDUE_IS_MISSED_MESSAGE, N_ATOMS_RATIO_MESSAGE, LIGAND_OVERLAP_MESSAGE, ResultHolder
+from miners.objects import Protein
+from miners.utils.constants import  TOO_MUCH_RESIDUES_MESSAGE, LIGAND_RESIDUE_IS_MISSED_MESSAGE, N_ATOMS_RATIO_MESSAGE, LIGAND_OVERLAP_MESSAGE, ResultHolder
 
 logger = logging.getLogger(__name__)
 

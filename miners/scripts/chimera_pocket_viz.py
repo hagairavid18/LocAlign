@@ -491,15 +491,76 @@ def process_alignment(
         template: str, 
         template_ligand: str, 
         query: str, 
+        scannet_dir: str | None = None,
+        model_output_path: str | None = None,
         query_transformation: tuple[np.ndarray, np.ndarray] | None = None,
         corr_values: np.ndarray | None = None,
         corr_indices: np.ndarray | None = None,
         atom_indexes_list: np.ndarray | None = None
         ):
+    """
+    Process protein alignment and create visualization files for Chimera.
+    
+    Args:
+        base_folder: Base folder for output files
+        template: Template protein identifier
+        template_ligand: Ligand identifier for the template
+        query: Query protein identifier
+        scannet_dir: Directory containing ScanNet features (optional)
+        model_output_path: Path to model output for correspondences (optional)
+        query_transformation: Tuple of (R, t) for transformation (optional, loaded from model_output_path if not provided)
+        corr_values: Correspondence values (optional, loaded from model_output_path if not provided)
+        corr_indices: Correspondence indices (optional, loaded from model_output_path if not provided)
+        atom_indexes_list: Atom index mappings (optional, computed from model_output_path if not provided)
+    """
     import copy
 
     query_ligand = template_ligand
-    parent_folder = base_folder.split('/')[0]
+
+    # If model output path is provided, load the data
+    if model_output_path is not None:
+        output_dict = np.load(model_output_path, allow_pickle=True)
+        
+        if corr_values is None:
+            corr_values = output_dict.get('top_corr_values', None)
+        if corr_indices is None:
+            corr_indices = output_dict.get('top_corr_indices', None)
+        
+        if query_transformation is None:
+            R = output_dict['R']
+            t = output_dict['t']
+            query_transformation = (R, t)
+        
+        # Compute atom indexes if scannet_dir is provided and atom_indexes_list not provided
+        if scannet_dir is not None and atom_indexes_list is None:
+            corr_indices_atom = output_dict.get('top_corr_indices_atom', None)
+            
+            if corr_indices_atom is not None:
+                ref_scannet_path = os.path.join(scannet_dir, template_ligand, f"{template}_scannet_atoms.pkl")
+                mov_scannet_path = os.path.join(scannet_dir, template_ligand, f"{query}_scannet_atoms.pkl")
+                
+                # Load ref and mov scannet features
+                with open(ref_scannet_path, 'rb') as f:
+                    ref_scannet = pickle.load(f)
+                with open(mov_scannet_path, 'rb') as f:
+                    mov_scannet = pickle.load(f)
+                
+                atom_indexes_list = np.zeros((corr_indices_atom.shape[0], 2), dtype=int)
+                for i in range(corr_indices.shape[0]):
+                    ref_res_idx = ref_scannet['sequence_indices_atom'][corr_indices_atom[i, 1]]
+                    mov_res_idx = mov_scannet['sequence_indices_atom'][corr_indices_atom[i, 0]]
+
+                    ref_atom_list = ref_scannet['aa_to_atom_indices'][ref_res_idx]
+                    mov_atom_list = mov_scannet['aa_to_atom_indices'][mov_res_idx]
+
+                    ref_atom_index = np.where(ref_atom_list == corr_indices_atom[i, 1])[0][0]
+                    mov_atom_index = np.where(mov_atom_list == corr_indices_atom[i, 0])[0][0]
+
+                    atom_indexes_list[i, 0] = mov_atom_index
+                    atom_indexes_list[i, 1] = ref_atom_index
+
+    # Get parent parent folder
+    parent_folder = os.path.dirname(os.path.dirname(base_folder))
 
     folder = base_folder
     # query = os.path.join(folder, f'RANSACAlligner_0_protein_0_0.pdb')
@@ -621,47 +682,12 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    
-            
-    ref_scannet_path = os.path.join(args.scannet_dir, args.template_ligand, f"{args.template}_scannet_atoms.pkl")
-    mov_scannet_path = os.path.join(args.scannet_dir, args.template_ligand, f"{args.query}_scannet_atoms.pkl")
-    
-    # load ref and mov scannet features
-    with open(ref_scannet_path, 'rb') as f:
-        ref_scannet = pickle.load(f)
-    with open(mov_scannet_path, 'rb') as f:
-        mov_scannet = pickle.load(f)
-    
-    if args.model_output_path:
-        output_dict = np.load(args.model_output_path, allow_pickle=True)
-        corr_values = output_dict.get('top_corr_values', None)
-        corr_indices = output_dict.get('top_corr_indices', None)
-        corr_indices_atom = output_dict.get('top_corr_indices_atom', None)
-        atom_indexes_list = np.zeros((corr_indices_atom.shape[0],2),dtype=int)
-        for i in range(corr_indices.shape[0]):
-            ref_res_idx = ref_scannet['sequence_indices_atom'][corr_indices_atom[i,1]]
-            mov_res_idx = mov_scannet['sequence_indices_atom'][corr_indices_atom[i,0]]
-
-            ref_atom_list = ref_scannet['aa_to_atom_indices'][ref_res_idx]
-            mov_atom_list = mov_scannet['aa_to_atom_indices'][mov_res_idx]
-
-            ref_atom_index = np.where(ref_atom_list == corr_indices_atom[i,1])[0][0]
-            mov_atom_index = np.where(mov_atom_list == corr_indices_atom[i,0])[0][0]
-
-            atom_indexes_list[i,0] = mov_atom_index
-            atom_indexes_list[i,1] = ref_atom_index
-
-        R = output_dict['R']
-        t = output_dict['t']
-        process_alignment(
-            args.base_folder, 
-            args.template, 
-            args.template_ligand, 
-            args.query,
-            query_transformation=(R, t),
-            corr_values=corr_values,
-            corr_indices=corr_indices,
-            atom_indexes_list=atom_indexes_list
-            )
-    else:
-        process_alignment(args.base_folder, args.template, args.template_ligand, args.query)
+    # Call process_alignment with all arguments from command line
+    process_alignment(
+        base_folder=args.base_folder,
+        template=args.template,
+        template_ligand=args.template_ligand,
+        query=args.query,
+        scannet_dir=args.scannet_dir,
+        model_output_path=args.model_output_path
+    )

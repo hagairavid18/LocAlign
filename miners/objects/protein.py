@@ -2,17 +2,20 @@ import os
 import logging
 import pickle
 import warnings
-from scipy.spatial.distance import cdist
+# from scipy.spatial.distance import cdist
 import subprocess
 
 
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
-from Bio.PDB import PDBList, MMCIFParser
+from Bio.PDB import MMCIFParser
 from Bio.PDB.Model import Model
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Residue import Residue
 from Bio.PDB.PDBIO import PDBIO
 from Bio.PDB.Structure import Structure
+from Bio.PDB.Polypeptide import is_aa
+
+
 from Bio.PDB.Atom import Atom
 import numpy as np
 # from Bio.PDB.Polypeptide import protein_letters_3to1
@@ -308,19 +311,28 @@ class Protein:
         
         non_ligand_model = Model(model.id)
         chain: Chain = model[chain_idx]
-        non_ligand_chain = Chain(chain.id)
-        for residue in list(chain):
-            if residue.resname != ligand_name:
-                heavy_residue = Residue(residue.id, residue.resname, residue.get_segid())
-                for atom in residue.get_atoms():
-                    if atom.element != "H":
-                        heavy_residue.add(atom)
-                non_ligand_chain.add(heavy_residue)
+        protein_chain = Chain(chain.id)
 
-        num_atoms = [len(residue) for residue in non_ligand_chain]
-        logger.debug(f"Ligand has {num_atoms} atoms")
-        non_ligand_model.add(non_ligand_chain)
-        return non_ligand_model, num_atoms
+        kept_res, dropped_res = 0, 0
+        for residue in chain:
+            # Keep only standard amino acids (drops ligands/waters/ions etc.)
+            if is_aa(residue, standard=False):
+                new_res = Residue(residue.id, residue.resname, residue.get_segid())
+                for atom in residue.get_atoms():
+                    # keep heavy atoms only
+                    if getattr(atom, "element", None) != "H":
+                        new_res.add(atom)
+                protein_chain.add(new_res)
+                kept_res += 1
+            else:
+                dropped_res += 1
+
+        num_atoms = [len(res) for res in protein_chain]
+        logger.info(f"Kept {kept_res} AA residues; dropped {dropped_res} non-AA residues. "
+                     f"Atoms per kept residue: {num_atoms}")
+
+        protein_model.add(protein_chain)
+        return protein_model, num_atoms
     
     def _get_atoms(self, id: str = " ", all_atoms: bool = False) -> list[list[Atom]]:
         atoms =  [] 

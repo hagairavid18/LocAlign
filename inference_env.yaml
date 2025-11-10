@@ -1,28 +1,25 @@
-name: aligner_dl
+name: localign_infer3
 
 channels:
   - pytorch
   - nvidia
   - conda-forge
-  - defaults  
+  - defaults
 
 dependencies:
-  - python=3.10  
-  - numpy       
-  - pandas      
-  - matplotlib  
+  - python=3.10
+  - numpy
+  - pandas
   - biopython
   - scipy
+  - scikit-learn
+  - numba
   - pip
-  - conda-build
 
   - pip:
-      - pytorch-lightning
+      - keras
+      - fair-esm
       - lightning
-      - torchmetrics
       - torch
       - torch_geometric
-      - torchvision
-      - torchaudio
-      - comet-ml 
       - --extra-index-url https://download.pytorch.org/whl/cu124

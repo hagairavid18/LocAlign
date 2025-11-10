@@ -20,6 +20,7 @@ class QualityLoss(nn.Module):
         loss_dict['embedding'] = embedding_similarity
         loss_dict['gap'] = gap
         loss_dict['corr_rmsd'] = corr_rmsd
+        loss_dict['quality'] = loss
         return loss, loss_dict
 
 class LocAlignLoss(nn.Module):
@@ -89,42 +90,14 @@ class LigandLoss(nn.Module):
 class EmbeddingSimilarityLoss(nn.Module):
     def __init__(self):
         super(EmbeddingSimilarityLoss, self).__init__()
-        # self.cosine_similarity = nn.CosineSimilarity(dim=-1)
-
-    def _embedding_cov_term(
-        self,
-        top_corr_values: torch.Tensor,   # [B, K'] -> weights w_m
-        top_corr_indices: torch.Tensor,  # [B, K', 2] -> (idxA, idxB)
-        top_tar_embedding: torch.Tensor, # [B, N_A, D] -> E^A (unit norm)
-        top_src_embedding: torch.Tensor, # [B, N_B, D] -> E^B (unit norm)
-    ) -> torch.Tensor:
-        B, Kp = top_corr_indices.shape[:2]
-        batch_idx = torch.arange(B).unsqueeze(-1).expand(B, Kp)
-
-        # Gather matched, already-normalized embeddings
-        EA = top_tar_embedding[batch_idx, top_corr_indices[:, :, 0]]  # [B, K', D]
-        EB = top_src_embedding[batch_idx, top_corr_indices[:, :, 1]]  # [B, K', D]
-        EA = EA / (EA.norm(dim=-1, keepdim=True) + 1e-8)
-        EB = EB / (EB.norm(dim=-1, keepdim=True) + 1e-8)
-        w  = top_corr_values                                          # [B, K']
-
-        dot_per_m = (EA * EB).sum(dim=-1)                             # [B, K']
-        term1 = (w * dot_per_m).sum(dim=-1)                      # [B]
-        # return  1- term1 
-        return  term1 
+        self.cosine_similarity = nn.CosineSimilarity(dim=-1)
     
     def forward(self, outputs):
         top_corr_values = outputs['top_corr_values']
-        top_corr_indices = outputs['top_corr_indices']
-        tar_embeddings = outputs['top_tar_embedding']
-        src_embeddings = outputs['top_src_embedding']
-        embedding_cov = self._embedding_cov_term(
-            top_corr_values,
-            top_corr_indices,
-            tar_embeddings,
-            src_embeddings,
-        )
-        # loss = embedding_cov.mean()
+        tar_embeddings = outputs['corr_tar_embedding']
+        src_embeddings = outputs['corr_src_embedding']
+        dot_per_m = self.cosine_similarity(tar_embeddings, src_embeddings)
+        embedding_cov = (top_corr_values * dot_per_m).sum(dim=-1)
         return embedding_cov.mean()
     
 
@@ -132,32 +105,9 @@ class WeightEntropyLoss(nn.Module):
     def __init__(self):
         super(WeightEntropyLoss, self).__init__()
 
-    def _embedding_entropy_term(
-        self,
-        top_corr_values: torch.Tensor,  # [B, K'] -> weights w_m
-        eps: float = 1e-12,
-    ) -> torch.Tensor:
-        """
-        Entropy regularizer:
-            λ_gap * exp( - Σ_m w_m log w_m )
-
-        Args:
-            top_corr_values: [B, K'] nonnegative weights (w_m).
-            eps: small constant for numerical stability (avoids log(0)).
-
-        Returns:
-            Tensor of shape [B] with the entropy term per batch element.
-        """
-        w = top_corr_values.clamp_min(eps)  # [B, K']
-        N = top_corr_values.shape[-1]
-
-        H = -(w * torch.log(w)).sum(dim=-1) / torch.log(torch.tensor(N)) 
-        return H
-
     def forward(self, outputs):
         top_corr_values = outputs['top_corr_values']
-        entropy_term = self._embedding_entropy_term(
-            top_corr_values,
-        )
-        return entropy_term.mean()
-    
+        N = top_corr_values.size(1)
+        H = -(top_corr_values * torch.log(top_corr_values)).sum(dim=-1) / torch.log(torch.tensor(N))
+        return H.mean()
+

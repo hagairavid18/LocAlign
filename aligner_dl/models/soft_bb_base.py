@@ -1,5 +1,4 @@
 from abc import ABC
-from losses.soft_bb_loss import LocAlignLoss
 import pandas as pd
 import os
 from typing import Any
@@ -10,7 +9,6 @@ torch.set_float32_matmul_precision('medium')  # or 'high'
 import lightning as L
 import torch.optim as optim
 
-from metrics import PocketRMSD
 from models.utils.misc import build_object
 
 
@@ -18,6 +16,7 @@ class SoftBBBase(L.LightningModule, ABC):
     def __init__(
             self, 
             loss: dict[str, Any] | None, 
+            metric: dict[str, Any] | None,
             optimizer: dict[str, Any] | None, 
             ) -> None:
         """
@@ -30,11 +29,10 @@ class SoftBBBase(L.LightningModule, ABC):
             optimizer (dict[str, Any]): optimizer configuration.
         """        
         super().__init__()
-        self._loss: LocAlignLoss =  build_object(loss, 'losses')
-        self._metrics = PocketRMSD()
+        self._loss =  build_object(loss, 'losses')
+        self._metrics = build_object(metric, 'metrics')
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
-        self._plot = False
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_pretrained_embeddings'].shape[0]
@@ -99,30 +97,6 @@ class SoftBBBase(L.LightningModule, ABC):
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
-
-    # def _compute_loss(
-    #     self, 
-    #     batch, 
-    #     R_total, 
-    #     t_total, 
-    #     corr_rmsd: torch.Tensor, 
-    #     inference: bool = False
-    #     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-
-    #     loss_dict: dict[str, torch.Tensor] = {}
-    #     loss_dict['gap_loss'] = self._weight_entropy_loss(batch, R_total, t_total)
-    #     loss_dict['embedding_loss'] = self._embedding_similarity_loss(batch, R_total, t_total)
-        
-    #     loss_dict['corr_rmsd'] = corr_rmsd.mean()
-    #     # loss_dict['embedding_loss'] = embedding_similarity.mean()
-    #     # loss_dict['gap_loss'] = gap.mean()
-    #     loss = self._loss_weight_dict['corr_rmsd'] * corr_rmsd.mean() - self._loss_weight_dict['embedding'] * loss_dict['embedding_loss'] + self._loss_weight_dict['gap'] * loss_dict['gap_loss']
-    #     if not inference:
-    #         loss_dict.update(self._ligand_loss(batch, R_total, t_total))
-    #         loss = loss + self._loss_weight_dict['ligand_rmsd'] * loss_dict['ligand_rmsd']
-        
-    #     loss_dict['loss'] = loss
-    #     return loss, loss_dict
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self._lr, weight_decay=1e-4, fused=True)        

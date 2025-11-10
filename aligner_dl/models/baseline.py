@@ -27,7 +27,7 @@ class Baseline(SoftBBBase):
         if R.shape[0] == 0 or t.shape[0] == 0: # Handle empty tensors, create B x 3 identity rotation and zero translation
             R = torch.eye(3, device=self.device).unsqueeze(0).repeat(batch_size, 1, 1)
             t = torch.zeros(batch_size, 3, device=self.device)        
-        outputs = { 'transformation_dict': {'pred_R': R, 'pred_t': t, 'all_R': [R], 'all_t': [t]} }
+        outputs = { 'transformation_dict': {'pred_R': R, 'pred_t': t} }
         self._metrics.update(batch, outputs)
         return outputs
     

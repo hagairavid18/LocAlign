@@ -109,8 +109,8 @@ class CDM(nn.Module):
 
         return top_k_values, top_k_indices
 
-    def _encode_angles(
-        self, 
+    @staticmethod
+    def encode_angles(
         angles: torch.Tensor
         ) -> torch.Tensor:
         """
@@ -170,9 +170,9 @@ class CDM(nn.Module):
         
         edge_features = self._rbf_encoder(distance_features).view(B, distance_features.shape[1], -1)
         if self._add_angle_features:
-            angle_features = torch.cat([self._encode_angles(tgt_diff_r_theta_phi[:, i_idx, j_idx, 1:]),
-                                        self._encode_angles(src_diff_r_theta_phi[:, i_idx, j_idx, 1:]),], dim=-1)
-                
+            angle_features = torch.cat([CDM.encode_angles(tgt_diff_r_theta_phi[:, i_idx, j_idx, 1:]),
+                                        CDM.encode_angles(src_diff_r_theta_phi[:, i_idx, j_idx, 1:]),], dim=-1)
+
             edge_features = torch.cat([edge_features, angle_features], dim=-1)  # Concatenate RBF features
         # Pass through the edge learner
         edge_weight = self._edge_learner(edge_features).view(-1, 1)
@@ -187,44 +187,65 @@ class CDM(nn.Module):
         
         return data
 
-        
+
 class EdgeWeightLearner(nn.Module):
     def __init__(
-        self, 
-        input_dim: int = 1, 
-        hidden_dim=16
-        ):
-        super().__init__()
-        self.norm = nn.LayerNorm(input_dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),  # Input: edge_attr
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1)
-        )
-
-    def forward(
-        self, 
-        edge_attr: torch.Tensor
-        )-> torch.Tensor:
+        self,
+        input_dim: int = 36,
+        hidden_dim: int = 64
+    ):
         """
         Args:
-            edge_attr: Tensor of shape (B * num_edges, input_dim)
+            input_dim: number of features per edge.
+            hidden_dim: hidden layer size.
+           
+        """
+        super().__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+
+        self.norm = nn.BatchNorm1d(input_dim, eps=1e-3, momentum=0.01)
+
+        # Residual-style 2-layer MLP
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, input_dim)
+        self.act = nn.SiLU()
+
+        # Output projection
+        self.out = nn.Linear(input_dim, 1)
+        nn.init.zeros_(self.out.weight)
+        nn.init.zeros_(self.out.bias)
+
+    def _forward_block(self, x2d: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x2d: Tensor of shape (N_edges, input_dim)
+        Returns:
+            edge_weight: Tensor of shape (N_edges,)
+        """
+        x2d = self.norm(x2d)
+        y = self.fc2(self.act(self.fc1(x2d))) + x2d  # residual connection
+        return self.out(y).view(-1)
+
+    def forward(self, edge_attr: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            edge_attr: Tensor of shape (B, num_edges, input_dim)
 
         Returns:
             edge_weight: Tensor of shape (B * num_edges,)
         """
-        if len(edge_attr.shape) == 3:
-            # (B, num_edges, input_dim)
-            edge_attr = self.norm(edge_attr)
-            edge_attr = edge_attr.view(-1, edge_attr.size(-1))  # (B * num_edges, input_dim)
-        elif len(edge_attr.shape) == 2:
-            raise ValueError("Edge attribute is 2D, expected 3D for per-batch normalization.")
-        else:
-            raise ValueError(f"Unexpected edge_attr shape: {edge_attr.shape}")
+        if edge_attr.ndim != 3:
+            raise ValueError(f"Expected 3D tensor (B, E, D), got {edge_attr.shape}")
 
-        return self.mlp(edge_attr).view(-1)
-    
+        B, E, D = edge_attr.shape
+        assert D == self.input_dim, f"Expected input_dim={self.input_dim}, got {D}"
+
+        x = edge_attr.reshape(B * E, D)
+        logits = self._forward_block(x)
+       
+        return logits
+
 
 class LearnableRBFEncoding(nn.Module):
     def __init__(self, num_basis=16, rbf_range=(0.0, 20.0), learn_gamma=True):
