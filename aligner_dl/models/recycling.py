@@ -6,8 +6,8 @@ class RecyclingModule(nn.Module):
     
     def __init__(self,
                  fourier_grid_size: int = 8,
-                 fourier_min_length: float = 1.0,
-                 fourier_n_rbf_functions: int = 16,
+                 fourier_min_length: float = 5.0,
+                 fourier_n_rbf_functions: int = 8,
                  recycle_scalar: bool = False,
                  recycle_graph: bool = False,
                  recycle_coords: bool = True):
@@ -20,8 +20,7 @@ class RecyclingModule(nn.Module):
             torch.meshgrid(fourier_grid_1d, fourier_grid_1d, fourier_grid_1d, indexing='ij'),
             dim=-1
         ).reshape(-1, 3).T[:, 1:]  # Transpose then drop first column
-        torch.manual_seed(5)
-        fourier_vectors += torch.normal(0,1,size=fourier_vectors.shape).clip(-3,3) /(fourier_grid_size - 1) * 2 * torch.pi / fourier_min_length # Add random noise to prevent constructive interferences at long distance.
+
         fourier_norms = torch.sqrt(torch.sum(fourier_vectors ** 2, dim=0))
         fourier_vector_norms = torch.cat((fourier_norms, fourier_norms))
 
@@ -33,8 +32,7 @@ class RecyclingModule(nn.Module):
         self.rbf_scales = nn.Parameter(
             (fourier_min_length / (2 * torch.pi) * torch.linspace(0, 4, fourier_n_rbf_functions)) ** 2
         )
-        self.rbf_weights = nn.Parameter(torch.full((fourier_n_rbf_functions,), 1.))        
-        self.coords_scale = nn.Parameter(torch.full((1,), 1.))
+        self.rbf_weights = nn.Parameter(torch.full((fourier_n_rbf_functions,), 1.))
 
         # Flags
         self.recycle_scalar = recycle_scalar
@@ -64,8 +62,7 @@ class RecyclingModule(nn.Module):
         This way, the original decay function is also a weighted sum of gaussians. The non-negative coefficients ensure that the function goes to zero.
         
         '''
-        weights = self.rbf_weights.relu() / self.rbf_weights.relu().sum() * self.coords_scale
-        return (torch.exp(-0.5*self.fourier_vector_norms.unsqueeze(1)**2 * self.rbf_scales.relu().unsqueeze(0) ) * weights.unsqueeze(0) ).sum(1)
+        return (torch.exp(-0.5*self.fourier_vector_norms.unsqueeze(1)**2 * self.rbf_scales.relu().unsqueeze(0) ) * self.rbf_weights.relu().unsqueeze(0) ).mean(1)
     
     
     def forward(self, src_coords: torch.Tensor, tgt_coords: torch.Tensor,
@@ -84,8 +81,8 @@ class RecyclingModule(nn.Module):
         if self.recycle_scalar & (top_corr_values is not None) & (top_corr_indices is not None):
             B,N = src_coords.shape[:-1]
             src_scalar, tgt_scalar = torch.zeros([B,N],device=top_corr_indices.device), torch.zeros([B,N],device=top_corr_indices.device)            
-            tgt_scalar.scatter_add(1,top_corr_indices[:,:,0], top_corr_values.detach()) # Detach to stop backpropagation here.
-            src_scalar.scatter_add(1,top_corr_indices[:,:,1], top_corr_values.detach()) # Detach to stop backpropagation here.
+            tgt_scalar.scatter_add_(1,top_corr_indices[:,:,0], top_corr_values.detach()) # Detach to stop backpropagation here.
+            src_scalar.scatter_add_(1,top_corr_indices[:,:,1], top_corr_values.detach()) # Detach to stop backpropagation here.
             tgt_scalar *= self.scalar_scale
             src_scalar *= self.scalar_scale
             return tgt_fourier_embeddings, src_fourier_embeddings, tgt_scalar,src_scalar
@@ -122,9 +119,9 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt    
     recycling = RecyclingModule()
     
-    B,N = 10,100 # Batch dimension, number of points    
+    B,N = 2,100 # Batch dimension, number of points    
     x1 = torch.randn(B,N,3) * 10
-    x2 = x1+ torch.randn(B,N,3) * .5
+    x2 = x1+ torch.randn(B,N,3) * 2
     distances = torch.sqrt(torch.sum( (x1.unsqueeze(2) - x2.unsqueeze(1))**2,axis=-1) ) # B X N X N.    
     x1_embedded,x2_embedded = recycling(x1,x2)        
     dot_product_in_embedding_space = torch.sum(x1_embedded.unsqueeze(2) * x2_embedded.unsqueeze(1), axis=-1) / torch.sqrt( torch.tensor( x1_embedded.shape[-1] ))    

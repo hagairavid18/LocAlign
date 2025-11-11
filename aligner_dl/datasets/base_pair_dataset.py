@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset
 
 from utils.misc import deserialize_nested_lists
+from utils.constants import ALL_INVALID_LIGANDS
 
 import random
 import numpy as np
@@ -22,7 +23,6 @@ class BasePairDataset(Dataset):
             self, 
             df_path: str, 
             base_data_path: str, 
-            base_embedding_path: str, 
             n_samples: int,
             ligand_column: str = 'Ligand_ID', 
             min_cath: int = 0, 
@@ -33,7 +33,6 @@ class BasePairDataset(Dataset):
             ) -> None:
         self._df_path = df_path
         self._base_data_path = base_data_path
-        self._base_embedding_path = base_embedding_path
         self._n_samples = n_samples
         self._only_one_transformation = only_one_transformation
         self._min_cath = min_cath
@@ -64,14 +63,15 @@ class BasePairDataset(Dataset):
         if 'index' in pairs.columns:
             pairs = pairs.drop('index', axis=1)
         if not self.inference:
-            if self._only_one_transformation:
-                pairs = pairs[pairs['n_transformations'] == 1]
+            # if self._only_one_transformation:
+            #     pairs = pairs[pairs['n_transformations'] == 1]
             pairs = pairs[pairs['cath_degree'] >= self._min_cath].reset_index()
             pairs = pairs[pairs['cath_degree'] <= self._max_cath].reset_index()
 
             if self._n_samples:
                 pairs = pairs.sample(n=self._n_samples, random_state=42, replace=True)
-            pairs = pairs[(pairs['cath_degree'] >= 4) | ((pairs['cath_degree'] < 4) & (pairs['bbc'] > self._bbc_filter_ratio))]
+            # pairs = pairs[(pairs['cath_degree'] >= 4) | ((pairs['cath_degree'] < 4) & (pairs['bbc'] > self._bbc_filter_ratio))]
+            # pairs = pairs[(pairs['cath_degree'] >= 4) | ((pairs['cath_degree'] < 4)]
             print(f"Read df with {len(pairs)} pairs")
         
         for col in pairs.columns:
@@ -83,6 +83,12 @@ class BasePairDataset(Dataset):
              
 
         # pairs = self._calculate_sample_weights(pairs)
+        # test whether some ligands are invalid
+        invalid_ligands = set(pairs[self._ligand_column].unique()).intersection(ALL_INVALID_LIGANDS)
+        if invalid_ligands:
+            print(f"Warning: Found invalid ligands in the dataset: {invalid_ligands}")
+            pairs = pairs[~pairs[self._ligand_column].isin(invalid_ligands)].reset_index(drop=True)
+            print(f"After removing invalid ligands, {len(pairs)} pairs remain.")
 
         return pairs
 

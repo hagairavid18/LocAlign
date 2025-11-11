@@ -5,6 +5,10 @@ path2libraries = '/home/iscb/wolfson/hagairavid/ScanNet_Ub'
 sys.path.append(path2libraries)
 from preprocessing import PDBio, PDB_processing
 import Bio.PDB
+from Bio.PDB.PDBExceptions import PDBConstructionWarning
+
+warnings.filterwarnings("ignore", category=PDBConstructionWarning)
+
 
 amino_acid_3to_1 = {
     'ALA': 'A',
@@ -72,51 +76,43 @@ amino_acid_atom_order = {
     'Y': ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD1', 'CD2', 'CE1', 'CE2', 'CZ', 'OH']  # Tyrosine
 
 }
+class SelectChain_without_ligand(Bio.PDB.Select):
+    def __init__(self,selected_chains,excluded_ligand, mode='without_ligand', *args, **kwargs):
+        self.selected_chains = selected_chains
+        self.excluded_ligand = excluded_ligand
+        self.mode = mode
+        super().__init__(*args,**kwargs)
+    def accept_model(self,model):
+        if self.selected_chains == 'all':
+            return 1
+        elif model.id in [x[0] for x in self.selected_chains]:
+            return 1
+        else:
+            return 0
+    def accept_chain(self, chain):
+        if self.selected_chains == 'all':
+            return 1            
+        elif (chain.get_full_id()[1],chain.get_full_id()[2]) in self.selected_chains:
+            return 1
+        else:
+            return 0
+    def accept_residue(self,residue):
+        if self.mode == 'without_ligand':
+            return int(residue.get_resname() != self.excluded_ligand)
+        elif self.mode == 'only_ligand':
+            return int(residue.get_resname() == self.excluded_ligand)
+        else:
+            raise ValueError(self.mode)
 
-def extract_chains_andor_ligand_and_apply_transform(file, chain_ids, ligand_id,final_file,mode='without_ligand',
-                                                    transformation=None):
-    class SelectChain_without_ligand(Bio.PDB.Select):
-        def __init__(self,selected_chains,excluded_ligand,*args,**kwargs):
-            self.selected_chains = selected_chains
-            self.excluded_ligand = excluded_ligand
-            return super().__init__(*args,**kwargs)
-        def accept_model(self,model):
-            if self.selected_chains == 'all':
-                return 1
-            elif model.id in [x[0] for x in self.selected_chains]:
-                return 1
-            else:
-                return 0
-        def accept_chain(self, chain):
-            if self.selected_chains == 'all':
-                return 1            
-            elif (chain.get_full_id()[1],chain.get_full_id()[2]) in self.selected_chains:
-                return 1
-            else:
-                return 0
-        def accept_residue(self,residue):
-            if mode == 'without_ligand':
-                return int(residue.get_resname() != self.excluded_ligand)
-            elif mode == 'only_ligand':
-                return int(residue.get_resname() == self.excluded_ligand)
-            else:
-                raise ValueError(mode)
+def extract_chains_andor_ligand_and_apply_transform(struct, chain_ids, ligand_id,final_file,mode='without_ligand'):
             
     with warnings.catch_warnings(record=True) as w:
-        if file[-4:] == '.cif':
-            parser = Bio.PDB.MMCIFParser()
-        else:
-            parser = Bio.PDB.PDBParser()
-        struct = parser.get_structure('name',file)
-        if transformation is not None:
-            rot,tran = transformation
-            for atom in Bio.PDB.Selection.unfold_entities(struct,'A'):
-                atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
+        
         
         
         io = Bio.PDB.PDBIO()
         io.set_structure(struct)
-        io.save(final_file, SelectChain_without_ligand(chain_ids,ligand_id))
+        io.save(final_file, SelectChain_without_ligand(chain_ids,ligand_id, mode=mode))
     return final_file
         
         
@@ -495,12 +491,76 @@ def process_alignment(
         template: str, 
         template_ligand: str, 
         query: str, 
+        scannet_dir: str | None = None,
+        model_output_path: str | None = None,
         query_transformation: tuple[np.ndarray, np.ndarray] | None = None,
         corr_values: np.ndarray | None = None,
         corr_indices: np.ndarray | None = None,
         atom_indexes_list: np.ndarray | None = None
         ):
+    """
+    Process protein alignment and create visualization files for Chimera.
+    
+    Args:
+        base_folder: Base folder for output files
+        template: Template protein identifier
+        template_ligand: Ligand identifier for the template
+        query: Query protein identifier
+        scannet_dir: Directory containing ScanNet features (optional)
+        model_output_path: Path to model output for correspondences (optional)
+        query_transformation: Tuple of (R, t) for transformation (optional, loaded from model_output_path if not provided)
+        corr_values: Correspondence values (optional, loaded from model_output_path if not provided)
+        corr_indices: Correspondence indices (optional, loaded from model_output_path if not provided)
+        atom_indexes_list: Atom index mappings (optional, computed from model_output_path if not provided)
+    """
+    import copy
+
     query_ligand = template_ligand
+
+    # If model output path is provided, load the data
+    if model_output_path is not None:
+        output_dict = np.load(model_output_path, allow_pickle=True)
+        
+        if corr_values is None:
+            corr_values = output_dict.get('top_corr_values', None)
+        if corr_indices is None:
+            corr_indices = output_dict.get('top_corr_indices', None)
+        
+        if query_transformation is None:
+            R = output_dict['R']
+            t = output_dict['t']
+            query_transformation = (R, t)
+        
+        # Compute atom indexes if scannet_dir is provided and atom_indexes_list not provided
+        if scannet_dir is not None and atom_indexes_list is None:
+            corr_indices_atom = output_dict.get('top_corr_indices_atom', None)
+            
+            if corr_indices_atom is not None:
+                ref_scannet_path = os.path.join(scannet_dir, template_ligand, f"{template}_scannet_atoms.pkl")
+                mov_scannet_path = os.path.join(scannet_dir, template_ligand, f"{query}_scannet_atoms.pkl")
+                
+                # Load ref and mov scannet features
+                with open(ref_scannet_path, 'rb') as f:
+                    ref_scannet = pickle.load(f)
+                with open(mov_scannet_path, 'rb') as f:
+                    mov_scannet = pickle.load(f)
+                
+                atom_indexes_list = np.zeros((corr_indices_atom.shape[0], 2), dtype=int)
+                for i in range(corr_indices.shape[0]):
+                    ref_res_idx = ref_scannet['sequence_indices_atom'][corr_indices_atom[i, 1]]
+                    mov_res_idx = mov_scannet['sequence_indices_atom'][corr_indices_atom[i, 0]]
+
+                    ref_atom_list = ref_scannet['aa_to_atom_indices'][ref_res_idx]
+                    mov_atom_list = mov_scannet['aa_to_atom_indices'][mov_res_idx]
+
+                    ref_atom_index = np.where(ref_atom_list == corr_indices_atom[i, 1])[0][0]
+                    mov_atom_index = np.where(mov_atom_list == corr_indices_atom[i, 0])[0][0]
+
+                    atom_indexes_list[i, 0] = mov_atom_index
+                    atom_indexes_list[i, 1] = ref_atom_index
+
+    # Get parent parent folder
+    parent_folder = os.path.dirname(os.path.dirname(base_folder))
 
     folder = base_folder
     # query = os.path.join(folder, f'RANSACAlligner_0_protein_0_0.pdb')
@@ -508,23 +568,56 @@ def process_alignment(
     os.makedirs(output_folder, exist_ok = True)
 
     template_file, template_chain_id = PDBio.getPDB(template[:-1] + '_' + template[-1], biounit=False)
+
+    
     query_file,query_chain_id = PDBio.getPDB(query[:-1] + '_' + query[-1], biounit=False)
 
-    extract_chains_andor_ligand_and_apply_transform(template_file, template_chain_id, template_ligand,
+    parser = Bio.PDB.PDBParser()
+    
+
+    template_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{template}_non_ligand_.ent"))
+
+    extract_chains_andor_ligand_and_apply_transform(template_non_ligand_struct, template_chain_id, template_ligand,
                                 os.path.join(output_folder, 'template_receptor.pdb')
-                                ,mode='without_ligand',transformation=None)
+                                ,mode='without_ligand')
+    
+    template_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{template}_ligand.pdb"))
 
-    extract_chains_andor_ligand_and_apply_transform(template_file, template_chain_id, template_ligand,
+    extract_chains_andor_ligand_and_apply_transform(template_only_ligand_struct, template_chain_id, template_ligand,
                                 os.path.join(output_folder, 'template_ligand.pdb')
-                                ,mode='only_ligand',transformation=None)
+                                ,mode='only_ligand')
+    
+    parser = Bio.PDB.PDBParser()
 
-    extract_chains_andor_ligand_and_apply_transform(query_file, query_chain_id, query_ligand,
+    # struct = parser.get_structure('name',query_file)
+    query_non_ligand_struct_orig = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_non_ligand_.ent"))
+    query_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_non_ligand_.ent"))
+    rot,tran = query_transformation
+    for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct,'A'):
+        atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
+    
+    # query_only_ligand_struct_orig = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_ligand.pdb"))
+    query_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_ligand.pdb"))
+    rot,tran = query_transformation
+    for atom in Bio.PDB.Selection.unfold_entities(query_only_ligand_struct,'A'):
+        atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
+    
+    
+    orig_query_path = f"{parent_folder}/{template_ligand}/{query}_non_ligand_.ent"
+    orig_template_path = f"{parent_folder}/{template_ligand}/{template}_non_ligand_.ent"
+
+    print(f"mean orig query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct_orig, 'A')]).mean(0)}")
+    print(f"mean transformed query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct, 'A')]).mean(0)}")
+    print(f"mean orig template: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(template_non_ligand_struct, 'A')]).mean(0)}")
+
+
+    extract_chains_andor_ligand_and_apply_transform(query_non_ligand_struct, query_chain_id, query_ligand,
                                 os.path.join(output_folder, 'transformed_query_receptor.pdb')
-                                ,mode='without_ligand',transformation=query_transformation)
+                                ,mode='without_ligand')
 
-    extract_chains_andor_ligand_and_apply_transform(query_file, query_chain_id, query_ligand,
+    extract_chains_andor_ligand_and_apply_transform(query_only_ligand_struct, query_chain_id, query_ligand,
                                 os.path.join(output_folder, 'transformed_query_ligand.pdb')
-                                ,mode='only_ligand',transformation=query_transformation)
+                                ,mode='only_ligand')
 
     if query_ligand != 'general':
         template_pocket_residues = get_pocket( os.path.join(output_folder, 'template_receptor.pdb'),
@@ -575,6 +668,8 @@ def process_alignment(
                         )
     return    
 
+            
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Process protein alignment and visualize pockets.")
@@ -587,47 +682,12 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    
-            
-    ref_scannet_path = os.path.join(args.scannet_dir, args.template_ligand, f"{args.template}_scannet_atoms.pkl")
-    mov_scannet_path = os.path.join(args.scannet_dir, args.template_ligand, f"{args.query}_scannet_atoms.pkl")
-    
-    # load ref and mov scannet features
-    with open(ref_scannet_path, 'rb') as f:
-        ref_scannet = pickle.load(f)
-    with open(mov_scannet_path, 'rb') as f:
-        mov_scannet = pickle.load(f)
-    
-    if args.model_output_path:
-        output_dict = np.load(args.model_output_path, allow_pickle=True)
-        corr_values = output_dict.get('top_corr_values', None)
-        corr_indices = output_dict.get('top_corr_indices', None)
-        corr_indices_atom = output_dict.get('top_corr_indices_atom', None)
-        atom_indexes_list = np.zeros((corr_indices_atom.shape[0],2),dtype=int)
-        for i in range(corr_indices.shape[0]):
-            ref_res_idx = ref_scannet['sequence_indices_atom'][corr_indices_atom[i,1]]
-            mov_res_idx = mov_scannet['sequence_indices_atom'][corr_indices_atom[i,0]]
-
-            ref_atom_list = ref_scannet['aa_to_atom_indices'][ref_res_idx]
-            mov_atom_list = mov_scannet['aa_to_atom_indices'][mov_res_idx]
-
-            ref_atom_index = np.where(ref_atom_list == corr_indices_atom[i,1])[0][0]
-            mov_atom_index = np.where(mov_atom_list == corr_indices_atom[i,0])[0][0]
-
-            atom_indexes_list[i,0] = mov_atom_index
-            atom_indexes_list[i,1] = ref_atom_index
-
-        R = output_dict['R']
-        t = output_dict['t']
-        process_alignment(
-            args.base_folder, 
-            args.template, 
-            args.template_ligand, 
-            args.query,
-            query_transformation=(R, t),
-            corr_values=corr_values,
-            corr_indices=corr_indices,
-            atom_indexes_list=atom_indexes_list
-            )
-    else:
-        process_alignment(args.base_folder, args.template, args.template_ligand, args.query)
+    # Call process_alignment with all arguments from command line
+    process_alignment(
+        base_folder=args.base_folder,
+        template=args.template,
+        template_ligand=args.template_ligand,
+        query=args.query,
+        scannet_dir=args.scannet_dir,
+        model_output_path=args.model_output_path
+    )

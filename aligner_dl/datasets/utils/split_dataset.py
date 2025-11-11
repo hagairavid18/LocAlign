@@ -97,26 +97,28 @@ def split_csv(
     df = df.drop_duplicates(subset=['ref_protein', 'mov_protein'], keep=False)
     print(f"Removed duplicates, {len(df)} rows remaining")
     # remove n_transforamtions != 1
-    df = df[df['n_transformations'] == 1]
-    print(f"Filtered by n_transformations == 1, {len(df)} rows remaining")
+    # df = df[df['n_transformations'] == 1]
+    # print(f"Filtered by n_transformations == 1, {len(df)} rows remaining")
+    df = df[df['failure_message'].isnull() | (df['failure_message'] == "")]
+    print(f"Filtered out failures, {len(df)} rows remaining")
 
      # Ensure the "Ligand_ID" column exists if group_by_ligand is True
     if group_by_ligand and "Ligand_ID" not in df.columns:
         raise ValueError("The CSV file must contain a 'Ligand_ID' column when group_by_ligand is enabled")
 
     # Split based on Ligand_ID grouping if specified
-    for col in  ['bbr', 'bbc']:
-        if df[col].apply(lambda x: isinstance(x, str) and x.startswith('[') and x.endswith(']')).any():
-            df[col] = df[col].fillna('[]')
+    # for col in  ['bbr', 'bbc']:
+    #     if df[col].apply(lambda x: isinstance(x, str) and x.startswith('[') and x.endswith(']')).any():
+    #         df[col] = df[col].fillna('[]')
             
-            df[col] = df[col].apply(lambda x: json.loads(x))
-            df[col] = df[col].apply(lambda x: deserialize_nested_lists(x, col))
+    #         df[col] = df[col].apply(lambda x: json.loads(x))
+    #         df[col] = df[col].apply(lambda x: deserialize_nested_lists(x, col))
     
-    df['bbr'] = df['bbr'].apply(lambda x: max([max(y) for y in x if len(y) > 0], default=float('-inf')))
-    df['bbc'] = df['bbc'].apply(lambda x: max([max(y) for y in x if len(y) > 0], default=float('-inf')))
+    # df['bbr'] = df['bbr'].apply(lambda x: max([max(y) for y in x if len(y) > 0], default=float('-inf')))
+    # df['bbc'] = df['bbc'].apply(lambda x: max([max(y) for y in x if len(y) > 0], default=float('-inf')))
     # df = df[df['bbr'] > 0.3]
-    df = df[df['bbc'] > 10]
-    print(f"Filtered Best BBR and BBC, {len(df)} rows remaining")
+    # df = df[df['bbc'] > 10]
+    # print(f"Filtered Best BBR and BBC, {len(df)} rows remaining")
     high_cath_degree = df[df['cath_degree'] > 3]
     print(f"Grouped by ref_protein and mov_protein, {len(df)} rows remaining")
     high_cath_degree = high_cath_degree.groupby('Ligand_ID').head(1000)
@@ -153,38 +155,38 @@ def split_csv(
         sequences_path = os.path.join("datasets" , "csv_files", f'sequences_{csv_hash}.txt')
 
         # Load cached sequences if available
-        if os.path.exists(sequences_path):
-            print("Cached sequences found, loading from file")
-            with open(sequences_path, 'r') as f:
-                for line in f:
-                    parts = line.strip().split('\t')
-                    if len(parts) == 4:
-                        ligand_id, protein_id, chain_id, sequence = parts
-                        key = (ligand_id, protein_id, chain_id)
-                        sequence = sequence.replace(' ', '').replace('\n', '')
-                        unique_triples[key] = sequence
-            sequence_list = list(unique_triples.values())
-            print(f"Loaded {len(sequence_list)} cached sequences")
+        # if os.path.exists(sequences_path):
+        #     print("Cached sequences found, loading from file")
+        #     with open(sequences_path, 'r') as f:
+        #         for line in f:
+        #             parts = line.strip().split('\t')
+        #             if len(parts) == 4:
+        #                 ligand_id, protein_id, chain_id, sequence = parts
+        #                 key = (ligand_id, protein_id, chain_id)
+        #                 sequence = sequence.replace(' ', '').replace('\n', '')
+        #                 unique_triples[key] = sequence
+        #     sequence_list = list(unique_triples.values())
+        #     print(f"Loaded {len(sequence_list)} cached sequences")
 
-        # Otherwise, extract sequences and cache them
-        else:
-            print("No cached sequences found, extracting from PDB files")
-            for row_idx, row in df.iterrows():
-                for prot_col, chain_col in [('ref_protein', 'ref_chain'), ('mov_protein', 'mov_chain')]:
-                    protein_id = row[prot_col]
-                    chain_id = row[chain_col]
-                    ligand_id = row['Ligand_ID']
-                    key = (ligand_id, protein_id, chain_id)
+        # # Otherwise, extract sequences and cache them
+        # else:
+        print("No cached sequences found, extracting from PDB files")
+        for row_idx, row in df.iterrows():
+            for prot_col, chain_col in [('ref_protein', 'ref_chain'), ('mov_protein', 'mov_chain')]:
+                protein_id = row[prot_col]
+                chain_id = row[chain_col]
+                ligand_id = row['Ligand_ID']
+                key = (ligand_id, protein_id, chain_id)
 
-                    if key not in unique_triples:
-                        pdb_file = os.path.join(base_data_path, ligand_id, f"{protein_id}{chain_id}_non_ligand_.ent")
-                        try:
-                            seq = extract_sequence_from_pdb(pdb_file, chain_id=chain_id)
-                            if seq:
-                                seq = seq.replace(' ', '').replace('\n', '')
-                                unique_triples[key] = seq
-                        except Exception as e:
-                            print(f"[Warning] Skipping {protein_id} chain {chain_id} in ligand {ligand_id}: {e}")
+                if key not in unique_triples:
+                    pdb_file = os.path.join(base_data_path, ligand_id, f"{protein_id}{chain_id}_non_ligand_.ent")
+                    try:
+                        seq = extract_sequence_from_pdb(pdb_file, chain_id=chain_id)
+                        if seq:
+                            seq = seq.replace(' ', '').replace('\n', '')
+                            unique_triples[key] = seq
+                    except Exception as e:
+                        print(f"[Warning] Skipping {protein_id} chain {chain_id} in ligand {ligand_id}: {e}")
 
         # Write sequences to cache
         with open(sequences_path, 'w') as f:

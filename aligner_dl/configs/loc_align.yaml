@@ -1,41 +1,27 @@
 trainer:
-  exp_name: baseline-new-losses-fix-gap-ligand5
-  tags: ["atom", "esm", "homology_split"]
-  max_epochs: 30
+  exp_name: small-ligands-recycling2-corr01-embed1-gap0025-lig5-bn-val8-real
+  tags: ["atom", "esm", "homology_split", "small_ligands"]
+  max_epochs: 10
   validate_only: false
-  check_val_every_n_epoch: 3
-  gradient_clipping: 30
-  # profiler: true
-  # ckpt_path: "checkpoints/split7-10gnn-recycling2-lambda05/epoch=29-step=76440.ckpt"
+  check_val_every_n_epoch: 1
+  gradient_clipping: 30.0
+  # profiler: false
+  # ckpt_path: "checkpoints/small-ligands-recycling4-GAT-esm18-corr02-embed1-gap0025-lig5-sanity/epoch=2-step=26136.ckpt"
 model:
   name: LocAlign
   args:
-    # plot_dir: "plots/maskedln-atom-256-.a?KB6Pea3Pq%_pocketloss-dp002/val"
-    top_k: 1000
-    n_iter_recycling: 0
-    corr_rmsd_lambda: 0.2
-    embedding_cosine_lambda: 1.0
-    gap_lambda: 1.00
+    n_iter_recycling: 2
     input_layer:
       name: 
         EmbeddingBlock
       args:
-        n_blocks: 3
+        n_blocks: 2
         input_dim: 1004
         hidden_dim: 256
         output_dim: 256
         dropout: 0.1
         norm_in_last_layer: true
-    scalar_layer:
-      name: 
-        EmbeddingBlock
-      args:
-        n_blocks: 3
-        input_dim: 256
-        output_dim: 1
-        bias: false
-        dropout: 0.0
-      
+        last_norm_learnable: false
     denoiser:
       name: 
         CDM
@@ -44,29 +30,38 @@ model:
         n_gnn_layers: 10
         n_rbf_functions: 32
         with_angles: true
+    keypoints_selection:
+      name: KeypointsSelection
+      args:
+        embedding_size: 256
+        n_rbf_functions: 32
+        top_k: 1000
     loss:
-      use_transformation: false
-      pocket:
-        name: PocketLoss
-        args: {"return_non_linear": True}
-      ligand:
-        name: LigandLoss
-        args: {}
-      transformation:
-        name: RTLoss
-        args: {"translation_weight": 0.1}
+      name: LocAlignLoss
+      args:
+        return_non_linear: true
+        weight_dict:
+          corr_rmsd: 0.1
+          embedding: 1.0
+          gap: 0.0025
+          ligand_rmsd: 5.0
+    metric:
+      name: PocketRMSD
+      args: {}
+     
     optimizer:
       name: Adam
       args:
-        learning_rate: 0.0002
+        learning_rate: 0.0005
         scheduler:
           name: OneCycleLR
           interval: step
           args:
 
-            max_lr: 0.0002
-            epochs: 30
-            steps_per_epoch: 2548
+            max_lr: 0.0005
+            epochs: 10
+            steps_per_epoch: 8712 
+            # steps_per_epoch: 4356 
             div_factor: 25
             # final_div_factor: 1e4
 
@@ -74,11 +69,11 @@ dataset:
   train:
     name: ScanNetDataset
     args:
-      df_path: datasets/csv_files/homology_1708_05_split7/train.csv
-      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1709'
+      df_path: datasets/csv_files/homology_25_10/train.csv
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_knn_25_10_2025'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
-      esm_layer: 30
+      esm_layer: 18
       # n_samples: 30
       seed: 41
       # min_cath: 3
@@ -88,17 +83,17 @@ dataset:
   validation:
     name: ScanNetDataset
     args:
-      df_path: datasets/csv_files/homology_1708_05_split7/val_baseline.csv
-      base_embedding_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1709'
+      df_path: datasets/csv_files/homology_25_10/val.csv
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_knn_25_10_2025'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       # n_samples: 10
-      esm_layer: 30
+      esm_layer: 18
       seed: 81
       max_cath: 4
       # bbr_filter_ratio: 0.3
       max_length: 5000
 dataloader:
   train_batch_size: 8
-  valid_batch_size: 1
+  valid_batch_size: 8
   n_workers: 12

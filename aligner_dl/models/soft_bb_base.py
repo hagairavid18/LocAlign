@@ -9,7 +9,6 @@ torch.set_float32_matmul_precision('medium')  # or 'high'
 import lightning as L
 import torch.optim as optim
 
-from metrics import PocketRMSD
 from models.utils.misc import build_object
 
 
@@ -17,11 +16,8 @@ class SoftBBBase(L.LightningModule, ABC):
     def __init__(
             self, 
             loss: dict[str, Any] | None, 
+            metric: dict[str, Any] | None,
             optimizer: dict[str, Any] | None, 
-            plot_dir : str | None = None,
-            corr_rmsd_lambda: float = 0.2,
-            gap_lambda: float = 1.0,
-            embedding_cosine_lambda: float = 0.1,
             ) -> None:
         """
         Base class for algorithms implementing the SoftBB algorithm. Generates a soft correspondence matrix between two sets of 
@@ -31,25 +27,12 @@ class SoftBBBase(L.LightningModule, ABC):
         Args:
             loss (dict[str, Any]): loss functions to be used in the model.
             optimizer (dict[str, Any]): optimizer configuration.
-            plot_dir (str | None, optional): Directory to save plots. Defaults to None.,
-            corr_rmsd_lambda (float, optional): Weight for the Kabsch RMSD loss in the total loss. Defaults to 0.2.
-            embedding_cosine_lambda (float, optional): Weight for the embedding cosine similarity loss in the total loss. Defaults to 0.1.
         """        
         super().__init__()
-        self._pocket_loss = build_object(loss['pocket'], 'losses') if loss is not None else None
-        self._transformation_loss = build_object(loss['transformation'], 'losses') if loss is not None else None
-        self._ligand_loss = build_object(loss['ligand'], 'losses') if loss is not None else None
-        self._metrics = PocketRMSD()
-        self._corr_rmsd_lambda = corr_rmsd_lambda
-        self._embedding_cosine_lambda = embedding_cosine_lambda
-        self._gap_lambda = gap_lambda
+        self._loss =  build_object(loss, 'losses')
+        self._metrics = build_object(metric, 'metrics')
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
-        self._plot = False
-        if plot_dir is not None:
-            os.makedirs(plot_dir, exist_ok=True)
-            self._plot = True
-            self._plot_dir = plot_dir
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
         batch_size = batch['tar_pretrained_embeddings'].shape[0]
@@ -66,11 +49,8 @@ class SoftBBBase(L.LightningModule, ABC):
         metrics = self._metrics.compute()
         
         metric_types = {
-            'pocket_rmsd': 'valid_pocket_rmsd',
             'ligand_rmsd': 'valid_ligand_rmsd',
-            'corr_rmsd': 'valid_corr_rmsd',
-            'pocket_rmsd_below_4_proportion_per_degree': 'rmsd_below_4',
-            'ligand_rmsd_below_2_proportion_per_degree': 'ligand_rmsd_below_2',
+            'ligand_rmsd_below_4_proportion_per_degree': 'ligand_rmsd_below_4',
         }
         
         # Log total metrics
@@ -93,14 +73,12 @@ class SoftBBBase(L.LightningModule, ABC):
         
         for cath_degree in range(0, 9):
             pair_infos = metrics['pair_infos_per_degree'][cath_degree]
-            pocket_rmsd_values = metrics['pocket_rmsd_per_degree_protein'][cath_degree]
-            corr_rmsd_values = metrics['corr_rmsd_per_degree_protein'][cath_degree]
-            
-            for pair_info, pocket_rmsd, corr_rmsd in zip(pair_infos, pocket_rmsd_values, corr_rmsd_values):
+            ligand_rmsd_values = metrics['ligand_rmsd_per_degree_protein'][cath_degree]
+            keys_to_keep = ['Ligand_ID', 'ref_protein', 'ref_chain', 'mov_protein', 'mov_chain', 'cath_degree']
+            for pair_info, ligand_rmsd in zip(pair_infos, ligand_rmsd_values):
                 protein_rmsd_data.append({
-                    **pair_info,
-                    'Pocket RMSD': pocket_rmsd.item(),
-                    'Corr RMSD': corr_rmsd.item(),
+                    **{k: pair_info[k] for k in keys_to_keep},
+                    'Ligand RMSD': ligand_rmsd.item(),
                 })
         
         if protein_rmsd_data and hasattr(self.logger.experiment, 'get_name'):
@@ -120,28 +98,8 @@ class SoftBBBase(L.LightningModule, ABC):
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)
         self.log(f'valid_loss', outputs['loss'], batch_size=batch_size, prog_bar=False, on_epoch=True)
 
-        # if batch_idx % 10 == 0 and self._plot:
-        #     plot_transformed_point_clouds_interactive(self.logger, batch, outputs['transformation_dict'], epoch=self.current_epoch, step=batch_idx)
-
-    def _compute_loss(self, batch, R_total, t_total, corr_rmsd: torch.Tensor, embedding_similarity: torch.Tensor = None, gap: torch.Tensor = None):
-        loss_dict: dict[str, torch.Tensor] = self._pocket_loss(batch, R_total, t_total)
-        loss = loss_dict['pocket_rmsd']
-        loss_dict.update(self._transformation_loss(batch, R_total, t_total))
-        loss_dict.update(self._ligand_loss(batch, R_total, t_total))
-        corr_rmsd_loss = corr_rmsd.mean()
-        loss_dict['corr_rmsd'] = corr_rmsd_loss
-        
-        loss_dict['embedding_loss'] = embedding_similarity.mean()
-        loss_dict['gap_loss'] = gap.mean()
-        loss = self._corr_rmsd_lambda * corr_rmsd_loss  -self._embedding_cosine_lambda * embedding_similarity.mean() -self._gap_lambda * gap.mean()
-        loss = loss + 5.0 * loss_dict['ligand_rmsd']
-        # loss = loss + 5.0 * loss_dict['pocket_rmsd']
-        # print losses for debugging
-        loss_dict['loss'] = loss
-        return loss, loss_dict
-
     def configure_optimizers(self):
-        optimizer = optim.AdamW(self.parameters(), lr=self._lr, weight_decay=1e-4, fused=False)        
+        optimizer = optim.AdamW(self.parameters(), lr=self._lr, weight_decay=1e-4, fused=True)        
         # optimizer = optim.Adam(self.parameters(), lr=self._lr)        
         if self._scheduler_config is not None:
             self._scheduler_config['args']['optimizer'] = optimizer

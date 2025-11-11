@@ -27,6 +27,7 @@ events*
 *.npz
 *.fasta
 *.pt
+*.env
 
 
 .DS_Store

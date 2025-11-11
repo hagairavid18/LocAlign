@@ -1,8 +1,10 @@
-from models.utils.math import euclidean_to_spherical
-from models.correspondences_denoiser import LearnableRBFEncoding,EdgeWeightLearner
-from models.layers.blocks import EmbeddingBlock
 import torch
 import torch.nn as nn
+
+from models.utils.math import euclidean_to_spherical
+from models.correspondences_denoiser import LearnableRBFEncoding, EdgeWeightLearner, CDM
+from models.layers.blocks import EmbeddingBlock
+
 
 class KeypointsSelection(nn.Module):
     def __init__(
@@ -18,12 +20,12 @@ class KeypointsSelection(nn.Module):
         self._top_k = top_k                                
         self._add_angle_features = with_angles  # Whether to include angle features                            
         pre_input_dim = n_rbf_functions + 4 if with_angles else n_rbf_functions
-        self._embedding_block = EmbeddingBlock(input_dim=embedding_size,output_dim=3,n_blocks=3,dropout=0.0,bias=False)
+        self._embedding_block = EmbeddingBlock(input_dim=embedding_size, output_dim=3, n_blocks=2, dropout=0.0, bias=True)
         self._rbf_encoder = LearnableRBFEncoding(num_basis=n_rbf_functions, rbf_range=(0.0, 6.0), learn_gamma=True)
         self._edge_learner = EdgeWeightLearner(input_dim=pre_input_dim, hidden_dim=16)
+        self._root_term = torch.nn.Parameter(torch.tensor(1.0))
         self.apply(self.init_weights)
                        
-         
     @staticmethod
     def init_weights(m):
         """Custom weight initialization for stability"""
@@ -31,7 +33,22 @@ class KeypointsSelection(nn.Module):
             nn.init.kaiming_uniform_(m.weight,nonlinearity='relu')
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
-        
+
+
+    def safe_softmax(self, x: torch.Tensor, dim: int = -1, eps: float = 1e-6) -> torch.Tensor:
+        """
+        Softmax that safely handles zero denominators.
+
+        Args:
+            x: input tensor
+            dim: dimension to apply softmax over
+            eps: small constant to avoid division by zero
+        """
+        exps = torch.exp(x - torch.max(x, dim=dim, keepdim=True).values)
+        denom = exps.sum(dim=dim, keepdim=True)
+        denom = torch.clamp(denom, min=eps)  # prevent division by zero
+        return exps / denom
+
     def forward(
         self,
         embeddings: torch.Tensor,
@@ -39,35 +56,43 @@ class KeypointsSelection(nn.Module):
         neighbors: torch.Tensor,
         mask: torch.Tensor,
         previous_importance: torch.Tensor | None  = None,
+        cached_local_scalar_edges: torch.Tensor | None  = None,
+        cached_value_key_query: torch.Tensor | None  = None,
         ) -> tuple[torch.Tensor,torch.Tensor]:
         
         B, N, embedding_size = embeddings.shape # Batch size, number of atoms, embedding size.
         K = neighbors.shape[-1] # Number of neigbhors
-        assert embedding_size == self._embedding_size
-        neighbors = torch.clip( neighbors.type(torch.int64),0,N-1) # Make sure that neighbors are not outside of max length.
-        local_coordinates = self._get_local_coordinates(frames,neighbors) # B X N X K X 3 [3,theta,phi]
-        local_coordinates = local_coordinates.view(B,N*K,3) # Reshape before passing to edge learner.
-        local_distances = local_coordinates[:,:,0]
-        local_edges = self._rbf_encoder(local_distances) # Calculate scalar edges; same code as in correspondence solver module.
-        if self._add_angle_features:
-            local_angles = local_coordinates[:,:,1:]
-            local_edges = torch.cat([local_edges, self._encode_angles(local_angles)], dim=-1)
-        local_scalar_edges = self._edge_learner(local_edges).view(B,N,K)
-                
-        value_key_query = self._embedding_block(embeddings,mask) # value,key,queries for attention. Here, the value, query and key are scalars.
+        # assert embedding_size == self._embedding_size
+        neighbors = torch.clip(neighbors.type(torch.int64), 0, N-1) # Make sure that neighbors are not outside of max length.
+        if cached_local_scalar_edges is not None:
+            local_scalar_edges = cached_local_scalar_edges
+        else:
+            local_coordinates = self._get_local_coordinates(frames, neighbors) # B X N X K X 3 [3,theta,phi]
+            local_coordinates = local_coordinates.view(B, N*K, 3) # Reshape before passing to edge learner.
+            local_distances = local_coordinates[:,:,0]
+            local_edges = self._rbf_encoder(local_distances) # Calculate scalar edges; same code as in correspondence solver module.
+            if self._add_angle_features:
+                local_angles = local_coordinates[:,:,1:]
+                local_edges = torch.cat([local_edges, CDM.encode_angles(local_angles)], dim=-1)
+            local_scalar_edges = self._edge_learner(local_edges).view(B,N,K)
+
+        if cached_value_key_query is not None:
+            value_key_query = cached_value_key_query
+        else:
+            value_key_query = self._embedding_block(embeddings,mask) # value,key,queries for attention. Here, the value, query and key are scalars.
         value = value_key_query[:,:,0]
         if previous_importance is not None: # Previous importance, (either recycled from previous iteration or user-provided if using input motif)
-            value += previous_importance
+            value = value + previous_importance
         key = value_key_query[:,:,1]
         query = value_key_query[:,:,2]
         query = query.masked_fill(~mask, -float('inf')) # Make sure that masked positions have no role in attention.
-        local_value = value.gather(1, neighbors.view(B,N*K) ).view(B,N,K)
-        local_query = query.gather(1, neighbors.view(B,N*K) ).view(B,N,K)
-        local_attention = torch.softmax( key.unsqueeze(-1) * local_query + local_scalar_edges,axis=-1) # Scalar attention over neighbors.
-        output_score = torch.sum(local_value * local_attention,axis=-1)
+        local_value = value.gather(1, neighbors.view(B,N*K) ).view(B, N, K)
+        local_query = query.gather(1, neighbors.view(B,N*K) ).view(B, N, K)
+        local_attention = self.safe_softmax(key.unsqueeze(-1) * local_query + local_scalar_edges) # Scalar attention over neighbors.
+        output_score = torch.sum(local_value * local_attention,axis=-1)  + value * self._root_term
         output_score = output_score.masked_fill(~mask, -float('inf'))  # Make sure that masked positions have no output_score.
         top_k_indices, top_k_score = self._get_rectified_top_k(output_score, mask)
-        return top_k_indices, top_k_score
+        return top_k_indices, top_k_score, value_key_query, local_scalar_edges
     
     def _get_local_coordinates(
         self,
@@ -79,21 +104,7 @@ class KeypointsSelection(nn.Module):
         difference_vector = neighbor_coordinates - frames[:,:,0,:].unsqueeze(2)
         local_neighbor_coordinates = torch.einsum('bnkm, bnlm->bnkl', difference_vector,  frames[:,:,1:,:])
         return euclidean_to_spherical(local_neighbor_coordinates)
-
-    def _encode_angles(
-        self, 
-        angles: torch.Tensor
-        ) -> torch.Tensor:
-        """
-        Encode angles using sine and cosine transformations.
-        """
-        theta_sin = torch.sin(angles[..., 0])
-        theta_cos = torch.cos(angles[..., 0])
-        phi_sin = torch.sin(angles[..., 1])
-        phi_cos = torch.cos(angles[..., 1])
-        return torch.stack([theta_sin, theta_cos, phi_sin, phi_cos], dim=-1)
  
-
     def _get_rectified_top_k(
         self, 
         scalar_values: torch.Tensor, 

@@ -1,0 +1,25 @@
+name: localign_infer3
+
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - numpy
+  - pandas
+  - biopython
+  - scipy
+  - scikit-learn
+  - numba
+  - pip
+
+  - pip:
+      - keras
+      - fair-esm
+      - lightning
+      - torch
+      - torch_geometric
+      - --extra-index-url https://download.pytorch.org/whl/cu124

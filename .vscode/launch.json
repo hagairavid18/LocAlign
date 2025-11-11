@@ -23,7 +23,7 @@
             "args": [
                 "--config",
                 "miners/configs/align_config.json",
-                // "--debug"
+                "--debug"
             ],
             "env": {
                 "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/miners"
@@ -112,17 +112,21 @@
             "name": "Inference Script",
             "type": "debugpy",
             "request": "launch",
-            "program": "aligner_dl/scripts/inference.py",
+            "program": "scripts/inference.py",
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
                 "--csv",
                 // "aligner_dl/Protein_RMSD_Results_29-71899.csv",
-                "aligner_dl/Protein_RMSD_Results_0_clean.csv",
+                // "aligner_dl/Protein_RMSD_Results_0_clean.csv",
+                "small_ligand_to_plot.csv",
+                // "ligand_pairs_updated_small.csv",
+                // "ligand_pairs_updated.csv",
                 // "--protein_pair",
                 // "5zve", "B", "6i71", "A"
                 // "1TRN", "1H4W",
                 // "1TRN", "A", "1AF4", "A",
+                // "1HLG", "A", "1CSE", "E",
                 // "1TRN", "1TYF",
                 // "1TRN", "1SBT",
                 // "1TRN", "1ELA",
@@ -138,17 +142,30 @@
                 // "3t1t",	"2dcu",
                 // "5szj",	"1ky2",
                 // "1TRN", "1TRN",
-                "--ligand_id",
-                "SAH",
+                // "--ligand_id",
+                // "SAH",
                 "--checkpoint",
                 // "checkpoints/corr-rmsd-loss-lambda-015/epoch=29-step=71970.ckpt",
                 // "checkpoints/corr-rmsd-loss-lambda-015-recycle2/epoch=29-step=71970.ckpt",
-                "checkpoints/split7-10gnn-recycling2-lambda05/epoch=29-step=76440.ckpt",
+                // "checkpoints/split7-10gnn-recycling2-lambda05/epoch=29-step=76440.ckpt",
+                // "checkpoints/kp-knn-recycle1-ligandloss10=esm20-invalid-ligands-removed-embedding-lammbda10/epoch=20-step=51156.ckpt",
+                // "checkpoints/knn-recycle1-lr0005-fix-recycle-ligandrmsd5-corr02-gap1-embedding1/epoch=8-step=21924.ckpt",
+                // "checkpoints/small-ligands-recycling1-prev-kp-corr01-gap2/epoch=9-step=87120.ckpt",
+                // "checkpoints/small-ligands-recycling1-prev-kp/epoch=9-step=87120.ckpt",
+                // "checkpoints/small-ligands-recycling1-prev-kp-init-mbedding-loss-corr02/epoch=7-step=69696.ckpt",
+                // "checkpoints/small-ligands-recycling1-corr02-embed1-gap1-log-entropy/epoch=9-step=87120.ckpt",
+                // "checkpoints/small-ligands-recycling1-corr01-embed1-gap1-ligand10-log-entropy-non-linear/epoch=9-step=87120.ckpt",
+                // "checkpoints/small-ligands-recycling1-GAT-esm18-corr01-embed2-gap1-lig10-late-embed/epoch=9-step=87120.ckpt",
+                // "checkpoints/small-ligands-recycling1-baseline-10gnn-esm18-GAT/epoch=9-step=87120.ckpt",
+                "checkpoints/small-ligands-recycling2-corr01-embed1-gap0025-lig5-bn-val8/epoch=9-step=87120.ckpt",
+                // "checkpoints/kp-knn-recycle1-sum-1000-400-rbfmax30-metriclossfix/epoch=20-step=53508.ckpt",
                 "--scannet_dir",
-                "/home/iscb/wolfson/hagairavid/scannet_outputs_inference",
+                // "/home/iscb/wolfson/hagairavid/scannet_outputs_inference",
+                "/home/iscb/wolfson/hagairavid/env_test10",
                 "--base_save_dir",
                 // "inference_results",
-                "inference_results_2509",
+                "/home/iscb/wolfson/hagairavid/LocAlign/inference_results_1011-sanity2",
+                // "zero_shot_ligands",
             ]
         },
         {
@@ -162,15 +179,16 @@
                 "--input_csv",
                 // "results/alignment_temp_results/2025-02-01_17-48-34_3000.csv",
                 // "results/alignment_results/2025-02-04_09-07-32_106886.csv",
-                "results/alignment_results/2025-08-17_11-19-35_146827.csv",
+                // "results/alignment_results/2025-08-17_11-19-35_146827.csv",
+                "results/alignment_results/2025-10-25_14-09-39_216073.csv",
                 "--output_dir",
                 // "datasets/csv_files/protein_grouping_1206",       // Directory to save the train, val, and test CSVs
-                "datasets/csv_files/homology_1708_05_split7", // Directory to save the train, val, and test CSVs
+                "datasets/csv_files/ligand_25_10", // Directory to save the train, val, and test CSVs
                 "--test_size",
                 "0.0", // Optional: Adjust the test set size (default 0.2)
                 "--val_size",
-                "0.2",
-                // "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
+                "0.15",
+                "--group_by_ligand"               // Optional: Adjust the validation set size (default 0.25)
             ]
         }
     ]

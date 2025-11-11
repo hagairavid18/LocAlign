@@ -10,6 +10,10 @@ from datetime import datetime
 import os
 import argparse
 import lightning as L
+import sys
+
+# add aligner_dl to path
+sys.path.append("./aligner_dl")
 from models.utils.collate import custom_collate_fn
 from models.utils.misc import build_object, flatten_dict
 
@@ -69,7 +73,20 @@ def main():
     # Setup logging with Comet
     log_exp = "delete" not in config['trainer']['exp_name']
     if log_exp:
-        api = API(api_key="9ydBzigeK75Z6RhAiX63xGdsg")  # Or omit if using env var
+        # Get Comet API key from environment variable
+        from dotenv import load_dotenv
+
+        # Load environment variables from .env file
+        load_dotenv()
+        comet_api_key = os.getenv("COMET_API_KEY")
+        if not comet_api_key:
+            raise ValueError(
+                "COMET_API_KEY environment variable not set. "
+                "Please set it with: export COMET_API_KEY='your_api_key' "
+                "or add it to a .env file"
+            )
+        
+        api = API(api_key=comet_api_key)
 
         workspace = "hagairavid18"
         project = "pocket-aligner"
@@ -100,14 +117,14 @@ def main():
         if experiment_id  and found_checkpoint:
             # Create a dummy logger and replace its experiment with ExistingExperiment
             comet_logger = CometLogger(
-                api_key="9ydBzigeK75Z6RhAiX63xGdsg",
+                api_key=comet_api_key,
                 workspace=workspace,
                 project=project,
                 name=experiment_name,
             )
             # Manually replace internal experiment object
             comet_logger._experiment = ExistingExperiment(
-                api_key="9ydBzigeK75Z6RhAiX63xGdsg",
+                api_key=comet_api_key,
                 previous_experiment=experiment_id,
                 workspace=workspace,
                 project=project,
@@ -116,7 +133,7 @@ def main():
         else:
             # Create a new experiment via CometLogger
             comet_logger = CometLogger(
-                api_key="9ydBzigeK75Z6RhAiX63xGdsg",
+                api_key=comet_api_key,
                 workspace=workspace,
                 project=project,
                 name=experiment_name,
@@ -139,6 +156,10 @@ def main():
     model_config_path = os.path.join(f"checkpoints/{config['trainer']['exp_name']}", "model_config.yaml")
     with open(model_config_path, 'w') as f:
         yaml.dump(config['model'], f)
+    
+    val_dataset_config_path = os.path.join(f"checkpoints/{config['trainer']['exp_name']}", "dataset_config.yaml")
+    with open(val_dataset_config_path, 'w') as f:
+        yaml.dump(config['dataset']['validation'], f)
 
     print(f"Saved model config to {model_config_path}")
 
