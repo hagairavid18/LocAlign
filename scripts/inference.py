@@ -101,8 +101,8 @@ class InferenceRunner:
         Raises:
             FileNotFoundError: If checkpoint directory doesn't exist
         """
-        self._experiment_name = self._checkpoint_path.split('/')[1]
-        self._checkpoint_dir = os.path.join("checkpoints", self._experiment_name)
+        self._experiment_name = self._checkpoint_path.split('/')[-2]
+        self._checkpoint_dir = self._checkpoint_path.rsplit('/', 1)[0]
         
         if not os.path.isdir(self._checkpoint_dir):
             raise FileNotFoundError(f"Checkpoint directory not found: {self._checkpoint_dir}")
@@ -329,7 +329,7 @@ def parse_args():
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="checkpoints/small-ligands-recycling1-baseline-ln-fast-10gnn-esm18/epoch=6-step=60984.ckpt",
+        default="/home/iscb/wolfson/hagairavid/LocAlign/checkpoints/small-ligands-recycling2-corr01-embed1-gap0025-lig5-bn-val8/epoch=9-step=87120.ckpt",
         help="Path to model checkpoint (default: preconfigured baseline)."
     )
     parser.add_argument(

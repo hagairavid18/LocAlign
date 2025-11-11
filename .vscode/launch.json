@@ -157,7 +157,7 @@
                 // "checkpoints/small-ligands-recycling1-corr01-embed1-gap1-ligand10-log-entropy-non-linear/epoch=9-step=87120.ckpt",
                 // "checkpoints/small-ligands-recycling1-GAT-esm18-corr01-embed2-gap1-lig10-late-embed/epoch=9-step=87120.ckpt",
                 // "checkpoints/small-ligands-recycling1-baseline-10gnn-esm18-GAT/epoch=9-step=87120.ckpt",
-                "checkpoints/small-ligands-recycling2-corr01-embed1-gap0025-lig5-bn-val8/epoch=9-step=87120.ckpt",
+                "/home/iscb/wolfson/hagairavid/LocAlign/checkpoints/small-ligands-recycling2-corr01-embed1-gap0025-lig5-bn-val8/epoch=9-step=87120.ckpt",
                 // "checkpoints/kp-knn-recycle1-sum-1000-400-rbfmax30-metriclossfix/epoch=20-step=53508.ckpt",
                 "--scannet_dir",
                 // "/home/iscb/wolfson/hagairavid/scannet_outputs_inference",
