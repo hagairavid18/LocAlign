@@ -91,34 +91,29 @@ class Protein:
         return structure
 
     def _get_ligand_model(self, save: bool = True) -> int:
+        save_dir = f'{self._ligand_dir}/{self._ligand_name}'
+        save_path = os.path.join(save_dir, f"{self._pdb_name}{self._chain_id}_ligand.pdb")
         peptide_model = self.get_model(self._model_idx)
         ligand_model, num_of_ligand_atoms = Protein.create_ligand_model(peptide_model, self._ligand_name, self._chain_id)
-        if save:
-            save_dir = f'{self._ligand_dir}/{self._ligand_name}'
+        if save and not os.path.exists(save_path):
             io = PDBIO()
             io.set_structure(ligand_model)
-            io.save(os.path.join(save_dir, f"{self._pdb_name}{self._chain_id}_ligand.pdb"))
+            io.save(save_path)
         return ligand_model, num_of_ligand_atoms
     
     def _get_non_ligand_model(self, save: bool = True) -> tuple[Model, int]:
         # Define cache directory and file
-        cache_dir = f"{self._ligand_dir}/{self._ligand_name}/cache"
-        os.makedirs(cache_dir, exist_ok=True)
-        cache_file = os.path.join(cache_dir, f"{self._pdb_name}_non_ligand_model.pkl")
+        save_dir = f"{self._ligand_dir}/{self._ligand_name}"
+        save_path = os.path.join(save_dir, f"{self._pdb_name}{self._chain_id}_non_ligand_.ent")
 
         peptide_model = self.get_model(self._model_idx)
-        non_ligand_model, num_of_ligand_atoms = Protein.create_non_ligand_model(peptide_model, self._ligand_name, self._chain_id)
+        non_ligand_model, num_of_ligand_atoms = Protein.create_non_ligand_model(peptide_model, self._chain_id)
 
-        # # Save to cache
-        # with open(cache_file, 'wb') as f:
-        #     pickle.dump((non_ligand_model, sum(num_of_ligand_atoms)), f)
-
-        if save:
-            save_dir = f"{self._ligand_dir}/{self._ligand_name}"
+        if save and not os.path.exists(save_path):
             os.makedirs(save_dir, exist_ok=True)
             io = PDBIO()
             io.set_structure(non_ligand_model)
-            io.save(os.path.join(save_dir, f"{self._pdb_name}{self._chain_id}_non_ligand_.ent"))
+            io.save(save_path)
 
         return non_ligand_model, sum(num_of_ligand_atoms)
     
@@ -137,29 +132,29 @@ class Protein:
     def get_ligand_residues(self) -> list[Residue]:
         return list(list(self._ligand_model.get_chains())[0])
     
-    def get_pocket_atoms_within_4A(self, distance_thresh: float = 4.0, ligand_res_idx: int = 0) -> np.ndarray:
+    # def get_pocket_atoms_within_4A(self, distance_thresh: float = 4.0, ligand_res_idx: int = 0) -> np.ndarray:
         
-        ligand_residue = self.get_ligand_residues()[ligand_res_idx]  # Handle ligand with more residues if needed
-        ligand_coors = np.array([atom.coord for atom in ligand_residue.get_atoms() if atom.element != "H"])
-        pocket_atoms = []
-        pocket_residue_indices = []
+    #     ligand_residue = self.get_ligand_residues()[ligand_res_idx]  # Handle ligand with more residues if needed
+    #     ligand_coors = np.array([atom.coord for atom in ligand_residue.get_atoms() if atom.element != "H"])
+    #     pocket_atoms = []
+    #     pocket_residue_indices = []
 
-        # First loop: Identify atoms within the threshold distance
-        for residue in list(self.get_model(self._model_idx, True)):
-            if residue.resname == self._ligand_name:  # Skip ligand itself
-                continue
-            for atom in residue.get_atoms():
-                if atom.element != "H":  # Ignore hydrogens
-                    atom_coor = np.array([atom.coord])
-                    distances = cdist(ligand_coors, atom_coor, metric='euclidean')
-                    if distances.min() < distance_thresh:
-                        pocket_atoms.append(atom)
-                        pocket_residue_indices.append(residue.id[1])
+    #     # First loop: Identify atoms within the threshold distance
+    #     for residue in list(self.get_model(self._model_idx, True)):
+    #         if residue.resname == self._ligand_name:  # Skip ligand itself
+    #             continue
+    #         for atom in residue.get_atoms():
+    #             if atom.element != "H":  # Ignore hydrogens
+    #                 atom_coor = np.array([atom.coord])
+    #                 distances = cdist(ligand_coors, atom_coor, metric='euclidean')
+    #                 if distances.min() < distance_thresh:
+    #                     pocket_atoms.append(atom)
+    #                     pocket_residue_indices.append(residue.id[1])
 
-        # Extract coordinates of pocket atoms
-        pocket_atoms_coors = np.array([atom.coord for atom in pocket_atoms])
+    #     # Extract coordinates of pocket atoms
+    #     pocket_atoms_coors = np.array([atom.coord for atom in pocket_atoms])
 
-        return pocket_atoms_coors, pocket_residue_indices
+    #     return pocket_atoms_coors, pocket_residue_indices
     
     @staticmethod
     def get_atoms_within_distance(all_atoms_coord: np.ndarray, center: np.ndarray, distance_thresh: float = 4.0) -> np.ndarray:
