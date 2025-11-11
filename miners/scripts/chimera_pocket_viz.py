@@ -317,7 +317,7 @@ def make_pseudo_bond_file_from_residue_indices(
 
 def make_chimera_script(
                         output_folder,
-                        query_ligand=None,
+                        ligand=None,
                         template_pocket_residues=None,
                         query_pocket_residues=None,
                         template_corr_atoms = None,
@@ -330,7 +330,7 @@ def make_chimera_script(
     # Version pocket: Highlights the ligand and the pocket.
     # Version motif: Highlights the ligand, if present, and the learned alignment.
     
-    show_ligand = query_ligand not in  [None,'general']
+    show_ligand = ligand not in  [None,'general']
     show_template_ligand = show_ligand & os.path.exists(os.path.join(output_folder,'template_ligand.pdb') )
     show_query_ligand = show_ligand & os.path.exists(os.path.join(output_folder,'transformed_query_ligand.pdb'))
     # Use case where we want to show both ligands: finding common structural motif.
@@ -489,10 +489,9 @@ def make_chimera_script(
 def process_alignment(
         base_folder: str, 
         template: str, 
-        template_ligand: str, 
-        query: str, 
-        scannet_dir: str | None = None,
-        model_output_path: str | None = None,
+        ligand: str, 
+        query: str,
+        scannet_dir: str,
         query_transformation: tuple[np.ndarray, np.ndarray] | None = None,
         corr_values: np.ndarray | None = None,
         corr_indices: np.ndarray | None = None,
@@ -504,60 +503,43 @@ def process_alignment(
     Args:
         base_folder: Base folder for output files
         template: Template protein identifier
-        template_ligand: Ligand identifier for the template
+        ligand: Ligand identifier (same for both template and query)
         query: Query protein identifier
-        scannet_dir: Directory containing ScanNet features (optional)
-        model_output_path: Path to model output for correspondences (optional)
-        query_transformation: Tuple of (R, t) for transformation (optional, loaded from model_output_path if not provided)
-        corr_values: Correspondence values (optional, loaded from model_output_path if not provided)
-        corr_indices: Correspondence indices (optional, loaded from model_output_path if not provided)
-        atom_indexes_list: Atom index mappings (optional, computed from model_output_path if not provided)
+        scannet_dir: Directory containing ScanNet features
+        query_transformation: Tuple of (R, t) for transformation
+        corr_values: Correspondence values
+        corr_indices: Correspondence indices
+        atom_indexes_list: Atom index mappings
     """
     import copy
 
-    query_ligand = template_ligand
+    query_ligand = ligand  # Same ligand for both proteins
 
-    # If model output path is provided, load the data
-    if model_output_path is not None:
-        output_dict = np.load(model_output_path, allow_pickle=True)
-        
-        if corr_values is None:
-            corr_values = output_dict.get('top_corr_values', None)
-        if corr_indices is None:
-            corr_indices = output_dict.get('top_corr_indices', None)
-        
-        if query_transformation is None:
-            R = output_dict['R']
-            t = output_dict['t']
-            query_transformation = (R, t)
-        
-        # Compute atom indexes if scannet_dir is provided and atom_indexes_list not provided
-        if scannet_dir is not None and atom_indexes_list is None:
-            corr_indices_atom = output_dict.get('top_corr_indices_atom', None)
-            
-            if corr_indices_atom is not None:
-                ref_scannet_path = os.path.join(scannet_dir, template_ligand, f"{template}_scannet_atoms.pkl")
-                mov_scannet_path = os.path.join(scannet_dir, template_ligand, f"{query}_scannet_atoms.pkl")
-                
-                # Load ref and mov scannet features
-                with open(ref_scannet_path, 'rb') as f:
-                    ref_scannet = pickle.load(f)
-                with open(mov_scannet_path, 'rb') as f:
-                    mov_scannet = pickle.load(f)
-                
-                atom_indexes_list = np.zeros((corr_indices_atom.shape[0], 2), dtype=int)
-                for i in range(corr_indices.shape[0]):
-                    ref_res_idx = ref_scannet['sequence_indices_atom'][corr_indices_atom[i, 1]]
-                    mov_res_idx = mov_scannet['sequence_indices_atom'][corr_indices_atom[i, 0]]
+    # Compute atom indexes if scannet_dir is provided and atom_indexes_list not provided
+    corr_indices_atom = atom_indexes_list
 
-                    ref_atom_list = ref_scannet['aa_to_atom_indices'][ref_res_idx]
-                    mov_atom_list = mov_scannet['aa_to_atom_indices'][mov_res_idx]
+    ref_scannet_path = os.path.join(scannet_dir, ligand, f"{template}_scannet_atoms.pkl")
+    mov_scannet_path = os.path.join(scannet_dir, ligand, f"{query}_scannet_atoms.pkl")
 
-                    ref_atom_index = np.where(ref_atom_list == corr_indices_atom[i, 1])[0][0]
-                    mov_atom_index = np.where(mov_atom_list == corr_indices_atom[i, 0])[0][0]
+    # Load ref and mov scannet features
+    with open(ref_scannet_path, 'rb') as f:
+        ref_scannet = pickle.load(f)
+    with open(mov_scannet_path, 'rb') as f:
+        mov_scannet = pickle.load(f)
+    
+    atom_indexes_list = np.zeros((corr_indices_atom.shape[0], 2), dtype=int)
+    for i in range(corr_indices.shape[0]):
+        ref_res_idx = ref_scannet['sequence_indices_atom'][corr_indices_atom[i, 1]]
+        mov_res_idx = mov_scannet['sequence_indices_atom'][corr_indices_atom[i, 0]]
 
-                    atom_indexes_list[i, 0] = mov_atom_index
-                    atom_indexes_list[i, 1] = ref_atom_index
+        ref_atom_list = ref_scannet['aa_to_atom_indices'][ref_res_idx]
+        mov_atom_list = mov_scannet['aa_to_atom_indices'][mov_res_idx]
+
+        ref_atom_index = np.where(ref_atom_list == corr_indices_atom[i, 1])[0][0]
+        mov_atom_index = np.where(mov_atom_list == corr_indices_atom[i, 0])[0][0]
+
+        atom_indexes_list[i, 0] = mov_atom_index
+        atom_indexes_list[i, 1] = ref_atom_index
 
     # Get parent parent folder
     parent_folder = os.path.dirname(os.path.dirname(base_folder))
@@ -570,56 +552,51 @@ def process_alignment(
     template_file, template_chain_id = PDBio.getPDB(template[:-1] + '_' + template[-1], biounit=False)
 
     
-    query_file,query_chain_id = PDBio.getPDB(query[:-1] + '_' + query[-1], biounit=False)
+    query_file, query_chain_id = PDBio.getPDB(query[:-1] + '_' + query[-1], biounit=False)
 
     parser = Bio.PDB.PDBParser()
     
 
-    template_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{template}_non_ligand_.ent"))
+    template_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{template}_non_ligand_.ent"))
 
-    extract_chains_andor_ligand_and_apply_transform(template_non_ligand_struct, template_chain_id, template_ligand,
+    extract_chains_andor_ligand_and_apply_transform(template_non_ligand_struct, template_chain_id, ligand,
                                 os.path.join(output_folder, 'template_receptor.pdb')
                                 ,mode='without_ligand')
     
-    template_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{template}_ligand.pdb"))
+    template_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{template}_ligand.pdb"))
 
-    extract_chains_andor_ligand_and_apply_transform(template_only_ligand_struct, template_chain_id, template_ligand,
+    extract_chains_andor_ligand_and_apply_transform(template_only_ligand_struct, template_chain_id, ligand,
                                 os.path.join(output_folder, 'template_ligand.pdb')
                                 ,mode='only_ligand')
     
     parser = Bio.PDB.PDBParser()
 
     # struct = parser.get_structure('name',query_file)
-    query_non_ligand_struct_orig = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_non_ligand_.ent"))
-    query_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_non_ligand_.ent"))
+    query_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_non_ligand_.ent"))
     rot,tran = query_transformation
     for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct,'A'):
         atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
     
-    # query_only_ligand_struct_orig = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_ligand.pdb"))
-    query_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{template_ligand}/{query}_ligand.pdb"))
+    # query_only_ligand_struct_orig = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_ligand.pdb"))
+    query_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_ligand.pdb"))
     rot,tran = query_transformation
     for atom in Bio.PDB.Selection.unfold_entities(query_only_ligand_struct,'A'):
         atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
     
-    
-    orig_query_path = f"{parent_folder}/{template_ligand}/{query}_non_ligand_.ent"
-    orig_template_path = f"{parent_folder}/{template_ligand}/{template}_non_ligand_.ent"
-
-    print(f"mean orig query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct_orig, 'A')]).mean(0)}")
-    print(f"mean transformed query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct, 'A')]).mean(0)}")
-    print(f"mean orig template: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(template_non_ligand_struct, 'A')]).mean(0)}")
+    # print(f"mean orig query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct_orig, 'A')]).mean(0)}")
+    # print(f"mean transformed query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct, 'A')]).mean(0)}")
+    # print(f"mean orig template: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(template_non_ligand_struct, 'A')]).mean(0)}")
 
 
-    extract_chains_andor_ligand_and_apply_transform(query_non_ligand_struct, query_chain_id, query_ligand,
+    extract_chains_andor_ligand_and_apply_transform(query_non_ligand_struct, query_chain_id, ligand,
                                 os.path.join(output_folder, 'transformed_query_receptor.pdb')
                                 ,mode='without_ligand')
 
-    extract_chains_andor_ligand_and_apply_transform(query_only_ligand_struct, query_chain_id, query_ligand,
+    extract_chains_andor_ligand_and_apply_transform(query_only_ligand_struct, query_chain_id, ligand,
                                 os.path.join(output_folder, 'transformed_query_ligand.pdb')
                                 ,mode='only_ligand')
 
-    if query_ligand != 'general':
+    if ligand != 'general':
         template_pocket_residues = get_pocket( os.path.join(output_folder, 'template_receptor.pdb'),
                             os.path.join(output_folder, 'template_ligand.pdb') )
 
@@ -649,7 +626,7 @@ def process_alignment(
 
     make_chimera_script(
                         output_folder,
-                        query_ligand=query_ligand,
+                        ligand=ligand,
                         template_pocket_residues=template_pocket_residues,
                         query_pocket_residues=query_pocket_residues,
                         template_corr_atoms = template_corr_atoms,
@@ -659,7 +636,7 @@ def process_alignment(
     
     make_chimera_script(
                         output_folder,
-                        query_ligand=query_ligand,
+                        ligand=ligand,
                         template_pocket_residues=template_pocket_residues,
                         query_pocket_residues=query_pocket_residues,
                         template_corr_atoms = template_corr_atoms,
@@ -677,7 +654,7 @@ if __name__ == "__main__":
     parser.add_argument("--scannet_dir", type=str, default=None, help="Directory containing ScanNet features.")
     parser.add_argument("--model_output_path", type=str, default=None, help="Path to model output for correspondences.")
     parser.add_argument("--template", type=str, required=True, help="Template protein identifier.")
-    parser.add_argument("--template_ligand", type=str, required=True, help="Ligand identifier for the template.")
+    parser.add_argument("--ligand", type=str, required=True, help="Ligand identifier for the template.")
     parser.add_argument("--query", type=str, required=True, help="Query protein identifier.")
     
     args = parser.parse_args()
@@ -686,7 +663,7 @@ if __name__ == "__main__":
     process_alignment(
         base_folder=args.base_folder,
         template=args.template,
-        template_ligand=args.template_ligand,
+        ligand=args.ligand,
         query=args.query,
         scannet_dir=args.scannet_dir,
         model_output_path=args.model_output_path
