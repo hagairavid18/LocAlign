@@ -307,9 +307,13 @@ class Protein:
         return ligand_model, num_atoms
    
     @staticmethod
-    def create_non_ligand_model(model: Model, ligand_name: str, chain_idx: int) -> tuple[Model, list[int]]:
-        
-        non_ligand_model = Model(model.id)
+    def create_non_ligand_model(model: Model, chain_idx: int) -> tuple[Model, list[int]]:
+        """
+        Build a new Model with a single chain that contains only heavy-atom
+        standard amino-acid residues from the given chain. All ligands,
+        waters, ions, and other hetero residues are excluded.
+        """
+        protein_model = Model(model.id)
         chain: Chain = model[chain_idx]
         protein_chain = Chain(chain.id)
 
