@@ -14,5 +14,5 @@
 
 
 # /home/iscb/wolfson/hagairavid/miniforge3/envs/aligner/bin/python lightning_trainer.py --config configs/soft_bb.yaml
-srun /home/iscb/wolfson/hagairavid/miniforge3/envs/aligner_dl2/bin/python aligner_dl/trainers/lightning_trainer.py --config aligner_dl/configs/loc_align.yaml
+srun /home/iscb/wolfson/hagairavid/miniforge3/envs/localign_infer3/bin/python aligner_dl/trainers/lightning_trainer.py --config aligner_dl/configs/loc_align.yaml
 # /home/iscb/wolfson/hagairavid/miniforge3/envs/aligner_dl2/bin/python aligner_dl/trainers/lightning_trainer.py --config aligner_dl/configs/tm_align.yaml

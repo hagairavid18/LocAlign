@@ -23,7 +23,6 @@ class BasePairDataset(Dataset):
             self, 
             df_path: str, 
             base_data_path: str, 
-            base_embedding_path: str, 
             n_samples: int,
             ligand_column: str = 'Ligand_ID', 
             min_cath: int = 0, 
@@ -34,7 +33,6 @@ class BasePairDataset(Dataset):
             ) -> None:
         self._df_path = df_path
         self._base_data_path = base_data_path
-        self._base_embedding_path = base_embedding_path
         self._n_samples = n_samples
         self._only_one_transformation = only_one_transformation
         self._min_cath = min_cath

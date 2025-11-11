@@ -4,7 +4,6 @@ import argparse
 from datetime import datetime
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import torch
 import yaml
@@ -122,24 +121,27 @@ class InferenceRunner:
     def _save_non_ligand_models(self) -> None:
         """
         Save non-ligand PDB models for all proteins in the dataframe.
+        Only saves unique protein-chain-ligand combinations to avoid duplicates.
         
         Returns:
             None: Downloads and saves PDB files to self._base_save_dir
         """
-        print("Saving non-ligand models...")
+        # Collect unique protein-chain-ligand combinations using a set
+        unique_combinations = set()
         for _, row in self._df.iterrows():
-            protein_chain_pairs = [
-                (row['ref_protein'], row['ref_chain'], row['ligand']),
-                (row['mov_protein'], row['mov_chain'], row['ligand'])
-            ]
-            for protein, chain, ligand in protein_chain_pairs:
-                Protein(
-                    pdb_name=protein,
-                    chain_id=chain,
-                    ligand_name=ligand,
-                    save_models=True,
-                    ligand_dir=self._base_save_dir
-                )
+            unique_combinations.add((row['ref_protein'], row['ref_chain'], row['ligand']))
+            unique_combinations.add((row['mov_protein'], row['mov_chain'], row['ligand']))
+        
+        # Save models with progress bar
+        print(f"Saving {len(unique_combinations)} unique non-ligand models...")
+        for protein, chain, ligand in tqdm(unique_combinations, desc="Downloading PDB files"):
+            Protein(
+                pdb_name=protein,
+                chain_id=chain,
+                ligand_name=ligand,
+                save_models=True,
+                ligand_dir=self._base_save_dir
+            )
     
     def _extract_features(self) -> None:
         """
@@ -172,7 +174,7 @@ class InferenceRunner:
         # Update dataset config for inference
         dataset_config['args']['df_path'] = self._csv_output_path
         dataset_config['args']['base_data_path'] = self._base_save_dir
-        dataset_config['args']['base_embedding_path'] = self._scannet_dir
+        dataset_config['args']['base_scannet_path'] = self._scannet_dir
         dataset_config['args']['inference'] = True
         dataset_config['args']['ligand_column'] = 'ligand'
         
@@ -282,26 +284,22 @@ class InferenceRunner:
 
         trans_dict = preds["transformation_dict"]
 
-        # Save model outputs
-        model_output_path = os.path.join(save_folder, f"{mov}_{ref}_output.npz")
-        np.savez_compressed(
-            model_output_path,
-            top_corr_values=top_corr_values.detach().cpu().numpy(),
-            top_corr_indices=top_corr_indices.detach().cpu().numpy(),
-            top_corr_indices_atom=top_corr_indices_atom.detach().cpu().numpy(),
-            R=trans_dict['pred_R'][0].detach().cpu().numpy(),
-            t=trans_dict['pred_t'][0].detach().cpu().numpy()
-        )
-
-        # Generate visualization using Chimera via process_alignment
+        # Convert to numpy arrays without saving to file
+        R_np = trans_dict['pred_R'][0].detach().cpu().numpy()
+        t_np = trans_dict['pred_t'][0].detach().cpu().numpy()
+        
+        # Generate visualization using Chimera via process_alignment (pass arrays directly)
         try:
             process_alignment(
                 base_folder=save_folder,
+                ligand=ligand,
                 scannet_dir=self._scannet_dir,
-                model_output_path=model_output_path,
                 template=ref + metadata['ref_chain'],
-                template_ligand=ligand,
                 query=mov + metadata['mov_chain'],
+                query_transformation=(R_np, t_np),
+                corr_values=top_corr_values.detach().cpu().numpy(),
+                corr_indices=top_corr_indices.detach().cpu().numpy(),
+                atom_indexes_list=top_corr_indices_atom.detach().cpu().numpy()
             )
         except Exception as e:
             print(f"Unexpected error during visualization: {e}")

@@ -22,13 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 class ScanNetDataset(BasePairDataset):
-    _MAX_POCKET_LENGTH = 1000
     _MAX_LIGAND_LENGTH = 500
 
     def __init__(
             self, 
             df_path: str, 
-            base_embedding_path: str = None, 
+            base_scannet_path: str = None, 
             base_data_path: str = LIGAND_DIR, 
             n_samples: int | None = None, 
             min_cath: int = 0, 
@@ -48,7 +47,7 @@ class ScanNetDataset(BasePairDataset):
 
         Args:
             df_path (str): _path to the CSV file containing the dataset metadata.
-            base_embedding_path (str): 
+            base_scannet_path (str): 
             base_data_path (str, optional): _description_. Defaults to LIGAND_DIR.
             n_samples (int | None, optional): _description_. Defaults to None.
             min_cath (int, optional): _description_. Defaults to 0.
@@ -65,7 +64,6 @@ class ScanNetDataset(BasePairDataset):
         super().__init__(
             df_path, 
             base_data_path, 
-            base_embedding_path, 
             n_samples,
             ligand_column=ligand_column, 
             min_cath=min_cath, 
@@ -76,6 +74,7 @@ class ScanNetDataset(BasePairDataset):
         
         self._mmcif_parser = PDBParser()
         self._max_atoms = max_length 
+        self._scannet_dir = base_scannet_path
                 
         self._with_esm = use_esm
         if esm_model is not None:
@@ -122,18 +121,6 @@ class ScanNetDataset(BasePairDataset):
             print(f"Error reading embeddings for {row['ref_protein']} {row['mov_protein']}: {e}")
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
-        
-        # if not self.inference:
-            # try:
-            #     pocket_data = {
-            #         "src": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['mov_protein'] + row['mov_chain']),
-            #         "tar": self._read_pocket_coordinates(ligand_id=row[self._ligand_column], p_name=row['ref_protein'] + row['ref_chain']),
-            #     }
-                
-            # except Exception as e:
-            #     print(f"Error reading pocket data: {e}")
-            #     idx = torch.randint(0, len(self), (1,)).item()
-            #     return self.__getitem__(idx)
 
         ret = {}
         for key in ["src", "tar"]:
@@ -146,44 +133,17 @@ class ScanNetDataset(BasePairDataset):
             ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'atom_residue_indices'], (0, self._max_atoms - n_atoms))
             ret[f'{key}_atom_original_indices'] = F.pad(embedding_dict[f'atom_original_indices'], (0, self._max_atoms - n_atoms))
             ret[f'{key}_mask'] = F.pad(torch.ones(n_atoms), (0, self._max_atoms - n_atoms), value=0).bool()
-            if self.inference:
-                continue
-          
-            # pocket_residue_indices = pocket_data[key]
-            # indices_for_pocket = torch.isin(embedding_dict["atom_residue_indices"], pocket_residue_indices)
-            # if indices_for_pocket.sum() < 10:
-                # print(f"Error: {indices_for_pocket.sum()} indices for pocket")
-                # idx = torch.randint(0, len(self), (1,)).item()
-                # return self.__getitem__(idx)
-            # embedding_dict['pocket_frames'] = embedding_dict['atom_frames'][indices_for_pocket]
-            # n_pocket_atoms = embedding_dict['pocket_frames'].shape[0]
-            # ret[f'{key}_pocket_frames'] = F.pad(embedding_dict['pocket_frames'], (0, 0, 0, 0, 0, self._MAX_POCKET_LENGTH - n_pocket_atoms))
-            # ret[f'{key}_pocket_mask'] = F.pad(torch.ones(n_pocket_atoms), (0, self._MAX_POCKET_LENGTH - n_pocket_atoms), value=0).bool()
 
         ret['metadata'] = row.to_dict()
         if self.inference:
             return ret
         
-        # ret['gt_R'] = torch.Tensor(row['rotations'][0][0])
-        # ret['gt_t'] = torch.Tensor(row['translations'][0][0])
-        
-        # ret['sample_weight'] = torch.tensor(row['sample_weight'])
+
         if len(src_ligand_coordinates) > self._MAX_LIGAND_LENGTH or len(src_ligand_coordinates) == 0:
             print(f"Source ligand length {len(src_ligand_coordinates)} exceeds max length {self._MAX_LIGAND_LENGTH} or is zero")
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
         
-        # check if the input continas nans
-        # for key in ret:
-        #     if isinstance(ret[key], torch.Tensor) and if torch.isnan(ret[key]).any():
-        #     if torch.isnan(ret[key]).any():
-        #         print(f"Found NaNs in {key}, for src chain {row['mov_protein']}{row['mov_chain']} and tar chain {row['ref_protein']}{row['ref_chain']}")
-        #         raise ValueError("Input contains NaNs")
-
-        # if len(src_ligand_coordinates) < 2:
-        #     print(f"Source ligand length {len(src_ligand_coordinates)} is less than 2")
-            # idx = torch.randint(0, len(self), (1,)).item()
-            # return self.__getitem__(idx)
         ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self._MAX_LIGAND_LENGTH - len(src_ligand_coordinates)))
         ret['tar_ligand_coordinates'] = F.pad(tar_ligand_coordinates, (0, 0, 0, self._MAX_LIGAND_LENGTH - len(tar_ligand_coordinates)))
 
@@ -198,14 +158,13 @@ class ScanNetDataset(BasePairDataset):
         ligand_id: str,
         esm_embedding_dict: dict[int, torch.Tensor] | None = None
         ) -> tuple[torch.Tensor, torch.Tensor]:
-        embedding_path = os.path.join(self._base_embedding_path, ligand_id,  chain + '_scannet_atoms.pkl')
-        # embedding_path = os.path.join(self._base_embedding_path, ligand_id,  chain + '.pkl')
-        if not os.path.exists(embedding_path):
+        scannet_embedding_path = os.path.join(self._scannet_dir, ligand_id,  chain + '_scannet_atoms.pkl')
+        if not os.path.exists(scannet_embedding_path):
             logger.info(f"Can't find embedding path for ligand: {ligand_id} protein: {chain}")
             raise ValueError(
                 f"Can't find scannet embedding path for ligand: {ligand_id} protein: {chain}"
             )
-        with open(embedding_path, 'rb') as f:
+        with open(scannet_embedding_path, 'rb') as f:
             data = pickle.load(f)
         
         residue_embeddings = data["residue_embeddings"]
@@ -285,40 +244,6 @@ class ScanNetDataset(BasePairDataset):
                 ids.append(atom.id)
 
         return torch.stack(coordinates), ids
-
-    def _read_pocket_coordinates(self, ligand_id: str, p_name: str) -> torch.Tensor:
-        """
-        Reads pocket CA coordinates and their residue indices from a single saved pickle file.
-
-        Args:
-            ligand_id (str): Identifier for the ligand.
-            p_name (str): Protein name.
-
-        Returns:
-            torch.Tensor: Tensor of residue indices for the pocket.
-        Raises:
-            ValueError: If the pickle file format is invalid or missing expected keys.
-            Exception: If there is an error loading the pickle file.
-        """
-        # Define path to the pickle file
-        pickle_path = f'{self._base_data_path}/{ligand_id}/{p_name}_pocket_data.pkl'
-
-        try:
-            # Load the data from the pickle file
-            with open(pickle_path, 'rb') as f:
-                data = pickle.load(f)
-
-            # Ensure the loaded data contains the expected keys
-            if not isinstance(data, dict)  or 'residue_indices' not in data:
-                raise ValueError("Invalid pickle format. Expected a dictionary with 'pocket_coords' and 'residue_indices' keys.")
-
-            residue_indices = torch.tensor(data['residue_indices'], dtype=torch.int64)
-
-            return residue_indices
-
-        except Exception as e:
-            logging.error(f"Error loading pocket data from {pickle_path}: {e}")
-            raise
 
     def extract_esm_embeddings(self, pdb_file: str, chain_name: str) -> dict:
         """
