@@ -194,6 +194,7 @@ class InferenceRunner:
         dataset_config['args']['df_path'] = self._csv_output_path
         dataset_config['args']['base_data_path'] = self._base_save_dir
         dataset_config['args']['base_scannet_path'] = self._scannet_dir
+        dataset_config['args']['base_esm_embedding_path'] = self._scannet_dir
         dataset_config['args']['inference'] = True
         dataset_config['args']['ligand_column'] = 'ligand'
         
@@ -274,8 +275,13 @@ class InferenceRunner:
 
         # Filter correspondences above threshold (25% of max correlation)
         corr_vals = preds["corr_values"][0]
-        threshold = 0.25 * torch.max(corr_vals)
-        above_threshold_indices = torch.where(corr_vals >= threshold)[0]
+        
+        sorted_corr_vals = torch.sort(corr_vals,0,descending=True)
+        cumulative_corr_vals = torch.cumsum(sorted_corr_vals.values,0)
+        above_threshold_indices = sorted_corr_vals.indices[cumulative_corr_vals <= 0.66]
+        
+        # threshold = 0.25 * torch.max(corr_vals)
+        # above_threshold_indices = torch.where(corr_vals >= threshold)[0]
 
         # Ensure at least 3 correspondences
         if len(above_threshold_indices) < 3:
@@ -369,7 +375,7 @@ def parse_args():
     parser.add_argument(
         "--scannet_dir",
         type=str,
-        default=os.getcwd(),
+        default=os.path.join(os.getcwd(), 'inference_embeddings'),
         help="Directory for saving ScanNet pretrained embedding."
     )
     parser.add_argument(

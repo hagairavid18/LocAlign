@@ -513,8 +513,8 @@ def ScanNet(
         raise ValueError            
     
     model.compile(loss=loss,optimizer=Adam(learning_rate=1e-3),metrics=metrics,jit_compile=jit_compile,run_eagerly=False)
-    # model.get_layer('edges_graph').set_weights(initial_values['dense_graph'])
-    model.summary()
+    model.get_layer('edges_graph').set_weights(initial_values['dense_graph'])
+    # model.summary()
     return model
 
 

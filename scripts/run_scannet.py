@@ -1,15 +1,14 @@
 import os
 import argparse
 import pickle
-
 import numpy as np
 import pandas as pd
 import sys
 sys.path.append(os.getcwd())
-# sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
 os.environ["KERAS_BACKEND"] = "torch"
+import warnings
+warnings.simplefilter("ignore")
 from ScanNet_mini.predict_features import predict_features
-# from predict_features import predict_features
 
 
 def run_scannet(
@@ -49,6 +48,7 @@ def run_scannet(
         model=model,
         output_format='numpy',
         permissive=permissive,
+        logfile=open(os.devnull,'w'),
         # output_predictions=False
     )
 

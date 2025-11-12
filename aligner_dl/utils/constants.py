@@ -1,4 +1,5 @@
-LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_25_10_2025'
+# LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_25_10_2025'
+LIGAND_DIR = 'cache/'
 
 
 # now the invalid ligands are stored as strings, written one by one.
