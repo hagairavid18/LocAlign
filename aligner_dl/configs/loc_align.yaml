@@ -1,5 +1,5 @@
 trainer:
-  exp_name: small-ligands-recycling2-corr01-embed1-gap0025-lig5-bn-val8-real
+  exp_name: small-ligands-recycling2-corr01-embed2-gap01-lig5
   tags: ["atom", "esm", "homology_split", "small_ligands"]
   max_epochs: 10
   validate_only: false
@@ -42,8 +42,8 @@ model:
         return_non_linear: true
         weight_dict:
           corr_rmsd: 0.1
-          embedding: 1.0
-          gap: 0.0025
+          embedding: 2.0
+          gap: 0.01
           ligand_rmsd: 5.0
     metric:
       name: PocketRMSD

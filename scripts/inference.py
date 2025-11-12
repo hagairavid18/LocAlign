@@ -329,7 +329,7 @@ def parse_args():
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="/home/iscb/wolfson/hagairavid/LocAlign/checkpoints/small-ligands-recycling2-corr01-embed1-gap0025-lig5-bn-val8/epoch=9-step=87120.ckpt",
+        default="checkpoints/small-ligands-recycling2-corr01-embed2-gap01-lig5/epoch=9-step=87120.ckpt",
         help="Path to model checkpoint (default: preconfigured baseline)."
     )
     parser.add_argument(

@@ -65,35 +65,3 @@ class HardBB(L.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
     
-
-if __name__ == "__main__":
-    from datasets import ScanNetDataset
-    from utils.misc import save_results_to_csv
-    import logging
-    start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_dir = os.path.join("logs", "bbs")
-    os.makedirs(log_dir, exist_ok=True)
-    logging.basicConfig(filename=os.path.join(log_dir, start_time + ".log"), level=logging.INFO, format='%(message)s')
-
-    logger = logging.getLogger(__name__)
-
-    data_path = '/home/iscb/wolfson/hagairavid/LocAlign/results/baseline_results/2024-07-11_10-55-38_57.csv'
-    # data_path = '/home/iscb/wolfson/hagairavid/LocAlign/results/baseline_results/2024-07-17_16-01-08_3000.csv'
-    # data_path = 'results/soft_bbs_results/2024-08-14_09-48-38_500.csv'
-    data_path = 'results/soft_bbs_results/2024-08-14_22-22-35_2000.csv'
-    base_data_path = os.path.join('/home/iscb/wolfson/hagairavid/ligands')
-    dataset = ScanNetDataset(data_path, base_data_path, 2000)
-    val_loader  = DataLoader(dataset, batch_size=1, collate_fn=custom_collate_fn, num_workers=20)
-    model = HardBB()
-
-    trainer = L.Trainer()
-    trainer.validate(model, dataloaders=val_loader)
-    output_df = dataset._df.copy()
-
-    output_df['HardBBS_rotations'] = [[] for _ in range(len(output_df))]
-    output_df['HardBBS_translations'] = [[] for _ in range(len(output_df))]
-    for row_idx, values in model._validation_outputs.items():
-        output_df.at[row_idx,'HardBBS_translations'] = values['svd_t'].tolist()
-        output_df.at[row_idx,'HardBBS_rotations'] = values['svd_R'].tolist()
-    
-    save_results_to_csv(output_df, start_time, base_dir="hard_bbs_results")

@@ -314,8 +314,8 @@ if __name__ == "__main__":
      # Example data
     from torch.utils.data import DataLoader
 
-    data_path = '/home/iscb/wolfson/hagairavid/ligand_aligner/baseline_results/2024-07-11_10-55-38_57.csv'
-    data_path = '/home/iscb/wolfson/hagairavid/ligand_aligner/baseline_results/2024-07-17_16-01-08_3000.csv'
+    data_path = 'LocAlign/baseline_results/2024-07-11_10-55-38_57.csv'
+    data_path = 'LocAlign/baseline_results/2024-07-17_16-01-08_3000.csv'
     base_data_path = LIGAND_DIR
 
 
