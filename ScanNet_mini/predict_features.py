@@ -9,7 +9,7 @@ def predict_features(list_queries,layer='SCAN_filter_activity_aa',
                      output_format='dictionary',
                      model_folder=model_folder,
                      biounit=False,
-                     permissive=False):
+                     permissive=False,logfile=None):
     '''
     Usages:
      list_dictionary_features = predict_features(list_queries,output_format='dictionary')
@@ -60,7 +60,8 @@ def predict_features(list_queries,layer='SCAN_filter_activity_aa',
     output_chimera=False,
     permissive=permissive,
     output_predictions=False,
-    output_format = output_format
+    output_format = output_format,
+    logfile=logfile
     )
     if output_format == 'numpy':
         query_pdbs, query_names, query_features, query_residue_ids, query_sequences = query_outputs
