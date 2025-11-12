@@ -1,9 +1,10 @@
 import pickle
-import os,sys,warnings
+import os, warnings
 import numpy as np
-path2libraries = '/home/iscb/wolfson/hagairavid/ScanNet_Ub'
-sys.path.append(path2libraries)
-from preprocessing import PDBio, PDB_processing
+import sys
+sys.path.append(os.getcwd())
+sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
+from  preprocessing import PDBio, PDB_processing
 import Bio.PDB
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
 
