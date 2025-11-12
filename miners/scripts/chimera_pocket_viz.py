@@ -342,16 +342,16 @@ def make_chimera_script(
         colors_and_transparency = {
             'template': {            
                 'receptor': ('cornflower blue', 90),
-                'ligand': ('cyan',0),
+                'ligand': ('dark blue',0),
                 'pocket': ('blue',0),
-                'keypoints': ('dark blue',50)
+                'keypoints': ('cyan',0)
             },
             
             'query': {            
                 'receptor': ('orange red', 90),
-                'ligand': ('orange',0),
+                'ligand': ('dark red',0),
                 'pocket': ('red',0),
-                'keypoints': ('dark red',50)
+                'keypoints': ('orange',0)
             }            
         }        
     elif version == 'motif':
