@@ -346,7 +346,7 @@ class LocAlign(SoftBBBase):
         all_iter_outputs = self._run_step(batch)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_pretrained_embeddings'].dtype)
         for iter_outputs in all_iter_outputs:
-            curr_loss, loss_dict = self._loss(batch, iter_outputs)
+            curr_loss, loss_dict = self._loss(batch, iter_outputs, per_sample=True)
             loss += curr_loss
         loss /= len(all_iter_outputs)  # Average loss over all iterations
 

@@ -491,7 +491,7 @@ def process_alignment(
         template: str, 
         ligand: str, 
         query: str,
-        scannet_dir: str,
+        cache_dir: str,
         query_transformation: tuple[np.ndarray, np.ndarray] | None = None,
         corr_values: np.ndarray | None = None,
         corr_indices: np.ndarray | None = None,
@@ -514,8 +514,8 @@ def process_alignment(
     # Compute atom indexes if scannet_dir is provided and atom_indexes_list not provided
     corr_indices_atom = atom_indexes_list
 
-    ref_scannet_path = os.path.join(scannet_dir, ligand, f"{template}_scannet_atoms.pkl")
-    mov_scannet_path = os.path.join(scannet_dir, ligand, f"{query}_scannet_atoms.pkl")
+    ref_scannet_path = os.path.join(cache_dir, "scannet_embeddings" ,  ligand, f"{template}_scannet_atoms.pkl")
+    mov_scannet_path = os.path.join(cache_dir, "scannet_embeddings" ,  ligand, f"{query}_scannet_atoms.pkl")
 
     # Load ref and mov scannet features
     with open(ref_scannet_path, 'rb') as f:
@@ -538,7 +538,7 @@ def process_alignment(
         atom_indexes_list[i, 1] = ref_atom_index
 
     # Get parent parent folder
-    parent_folder = os.path.dirname(os.path.dirname(base_folder))
+    pdb_folder = os.path.join(cache_dir, "pdb_files")
 
     folder = base_folder
     output_folder = folder
@@ -551,24 +551,24 @@ def process_alignment(
     parser = Bio.PDB.PDBParser(QUIET=True)
     
 
-    template_non_ligand_struct = parser.get_structure('name', f"{parent_folder}/{ligand}/{template}_non_ligand_.ent")
+    template_non_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{ligand}/{template}_non_ligand_.ent")
 
     extract_chains_andor_ligand_and_apply_transform(template_non_ligand_struct, template_chain_id, ligand,
                                 os.path.join(output_folder, 'template_receptor.pdb')
                                 ,mode='without_ligand')
-    
-    template_only_ligand_struct = parser.get_structure('name', f"{parent_folder}/{ligand}/{template}_ligand.pdb")
+
+    template_only_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{ligand}/{template}_ligand.pdb")
 
     extract_chains_andor_ligand_and_apply_transform(template_only_ligand_struct, template_chain_id, ligand,
                                 os.path.join(output_folder, 'template_ligand.pdb')
                                 ,mode='only_ligand')
-    
-    query_non_ligand_struct = parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_non_ligand_.ent")
+
+    query_non_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{ligand}/{query}_non_ligand_.ent")
     rot,tran = query_transformation
     for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct,'A'):
         atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
-    
-    query_only_ligand_struct = parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_ligand.pdb")
+
+    query_only_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{ligand}/{query}_ligand.pdb")
     rot,tran = query_transformation
     for atom in Bio.PDB.Selection.unfold_entities(query_only_ligand_struct,'A'):
         atom.set_coord( np.dot(atom.get_coord(), rot) + tran)

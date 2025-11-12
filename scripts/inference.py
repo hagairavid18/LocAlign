@@ -45,10 +45,8 @@ class InferenceRunner:
     def __init__(
         self,
         checkpoint_path: str,
-        scannet_dir: str,
         ligand_id: str,
         base_save_dir: str,
-        save_dir: str | None = None,
         csv_path: str | None = None,
         protein_pair: tuple[str, str, str, str] | None = None
     ) -> None:
@@ -57,19 +55,15 @@ class InferenceRunner:
         
         Args:
             checkpoint_path (str): Path to model checkpoint
-            scannet_dir (str): Directory for ScanNet pretrained embeddings
             ligand_id (str): Ligand PDB name
             base_save_dir (str): Base directory to save inference results
-            save_dir (str | None): Specific directory name for this run (optional)
             csv_path (str | None): Path to CSV file with protein pairs (optional)
             protein_pair (tuple[str, str, str, str] | None): Single protein pair as 
                 (ref, ref_chain, mov, mov_chain) (optional)
         """
         self._checkpoint_path = checkpoint_path
-        self._scannet_dir = scannet_dir
         self._ligand_id = ligand_id
         self._base_save_dir = base_save_dir
-        self._save_dir = save_dir
         self._csv_path = csv_path
         self._protein_pair = protein_pair
         
@@ -125,16 +119,23 @@ class InferenceRunner:
         if not os.path.isdir(self._checkpoint_dir):
             raise FileNotFoundError(f"Checkpoint directory not found: {self._checkpoint_dir}")
         
-        # Determine output directory
-        if self._save_dir:
-            self._output_dir = os.path.join(self._base_save_dir, self._save_dir)
-        else:
-            # Use experiment name with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self._output_dir = os.path.join(self._base_save_dir, f"{self._experiment_name}_{timestamp}")
+        # Determine output directory (always use experiment name + timestamp)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._output_dir = os.path.join(self._base_save_dir, f"{self._experiment_name}_{timestamp}")
         
         os.makedirs(self._output_dir, exist_ok=True)
         print(f"Saving results to: {self._output_dir}")
+        # create a local cache inside the base save dir for embeddings, pdbs and fastas
+        cache_root = os.path.join(self._base_save_dir, '.cache')
+        self._cache_paths = {
+            'esm_embeddings': os.path.join(cache_root, 'esm_embeddings'),
+            'scannet_embeddings': os.path.join(cache_root, 'scannet_embeddings'),
+            'fasta_files': os.path.join(cache_root, 'fasta_files'),
+            'pdb_files': os.path.join(cache_root, 'pdb_files'),
+        }
+        for p in self._cache_paths.values():
+            os.makedirs(p, exist_ok=True)
+        print(f"Created local cache at: {cache_root}")
     
     def _save_non_ligand_models(self) -> None:
         """
@@ -155,7 +156,8 @@ class InferenceRunner:
         total = len(combos)
         print(f"Saving {total} unique non-ligand models (parallel)...")
 
-        args_list = [(p, c, l, self._base_save_dir) for (p, c, l) in combos]
+        # Save PDBs into the local cache pdb_files folder to avoid polluting output dir
+        args_list = [(p, c, l, self._cache_paths['pdb_files']) for (p, c, l) in combos]
         processes = min(total, max(1, cpu_count() - 1))
         with Pool(processes=processes) as pool:
             for success, pdb_name, chain_id, ligand_name, err in tqdm(pool.imap_unordered(_download_non_ligand_worker, args_list), total=total, desc="Downloading PDB files"):
@@ -167,10 +169,11 @@ class InferenceRunner:
         Run ScanNet feature extraction.
         
         Returns:
-            None: Generates feature files in self._scannet_dir
-        """
-        print("Running ScanNet feature extraction...")
-        extract_scannet(self._df, self._base_save_dir, self._scannet_dir)
+            None: Generates feature files in the local ScanNet cache
+    """
+        print("Running ScanNet feature extraction into local cache...")
+        # extract_scannet expects: df, output_dir(with PDBs), scannet_dir(where to save features)
+        extract_scannet(self._df, self._cache_paths['pdb_files'], self._cache_paths['scannet_embeddings'])
     
     def _prepare_dataloader(self) -> None:
         """
@@ -192,9 +195,11 @@ class InferenceRunner:
         
         # Update dataset config for inference
         dataset_config['args']['df_path'] = self._csv_output_path
-        dataset_config['args']['base_data_path'] = self._base_save_dir
-        dataset_config['args']['base_scannet_path'] = self._scannet_dir
-        dataset_config['args']['base_esm_embedding_path'] = self._scannet_dir
+        # point the dataset to the local cached pdb files
+        dataset_config['args']['base_data_path'] = self._cache_paths['pdb_files']
+        # point dataset to the local cache for scannet and esm embeddings
+        dataset_config['args']['base_scannet_path'] = self._cache_paths['scannet_embeddings']
+        dataset_config['args']['base_esm_embedding_path'] = self._cache_paths['esm_embeddings']
         dataset_config['args']['inference'] = True
         dataset_config['args']['ligand_column'] = 'ligand'
         
@@ -276,22 +281,18 @@ class InferenceRunner:
         # Filter correspondences above threshold (25% of max correlation)
         corr_vals = preds["corr_values"][0]
         
-        sorted_corr_vals = torch.sort(corr_vals,0,descending=True)
-        cumulative_corr_vals = torch.cumsum(sorted_corr_vals.values,0)
-        above_threshold_indices = sorted_corr_vals.indices[cumulative_corr_vals <= 0.66]
+        # sorted_corr_vals = torch.sort(corr_vals,0,descending=True)
+        # cumulative_corr_vals = torch.cumsum(sorted_corr_vals.values,0)
+        # above_threshold_indices = sorted_corr_vals.indices[cumulative_corr_vals <= 0.66]
         
-        # threshold = 0.25 * torch.max(corr_vals)
-        # above_threshold_indices = torch.where(corr_vals >= threshold)[0]
+        threshold = 0.25 * torch.max(corr_vals)
+        above_threshold_indices = torch.where(corr_vals >= threshold)[0]
 
         # Ensure at least 3 correspondences
         if len(above_threshold_indices) < 3:
             above_threshold_indices = torch.topk(corr_vals, 3)[1]
 
         num_correspondences = int(above_threshold_indices.numel())
-        # print(
-        #     f"Batch {idx}: Found {num_correspondences} correspondences "
-        #     f"above threshold {threshold.item():.4f}"
-        # )
 
         top_corr_values = preds["corr_values"][0][above_threshold_indices]
         top_corr_indices = preds["corr_indices"][0][above_threshold_indices]
@@ -331,7 +332,7 @@ class InferenceRunner:
             process_alignment(
                 base_folder=save_folder,
                 ligand=ligand,
-                scannet_dir=self._scannet_dir,
+                cache_dir= os.path.join(self._base_save_dir, '.cache'),
                 template=ref + metadata['ref_chain'],
                 query=mov + metadata['mov_chain'],
                 query_transformation=(R_np, t_np),
@@ -373,12 +374,6 @@ def parse_args():
         help="Path to model checkpoint (default: preconfigured baseline)."
     )
     parser.add_argument(
-        "--scannet_dir",
-        type=str,
-        default=os.path.join(os.getcwd(), 'inference_embeddings'),
-        help="Directory for saving ScanNet pretrained embedding."
-    )
-    parser.add_argument(
         "--ligand_id",
         type=str,
         default="general",
@@ -390,12 +385,7 @@ def parse_args():
         default="inference_results",
         help="Base directory to save inference results."
     )
-    parser.add_argument(
-        "--save_dir",
-        type=str,
-        default=None,
-        help="Specific directory name for this inference run. If not provided, will use experiment name with timestamp."
-    )
+    # --save_dir removed: output directory is always created under base_save_dir with a timestamp
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
@@ -420,10 +410,8 @@ def main():
     # Initialize inference runner
     runner = InferenceRunner(
         checkpoint_path=args.checkpoint,
-        scannet_dir=args.scannet_dir,
         ligand_id=args.ligand_id,
         base_save_dir=args.base_save_dir,
-        save_dir=args.save_dir,
         csv_path=args.csv_path,
         protein_pair=args.protein_pair
     )

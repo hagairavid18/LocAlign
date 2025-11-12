@@ -13,34 +13,48 @@ class QualityLoss(nn.Module):
 
     def forward(self, outputs):
         loss_dict = {}
-        corr_rmsd = outputs['corr_rmsd'].mean()
+        loss_dict_per_sample = {}
+        corr_rmsd = outputs['corr_rmsd']
         embedding_similarity = self._embedding_term(outputs)
         gap = self._weight_entropy_term(outputs)
-        loss = - self._weight_dict['embedding'] * embedding_similarity - self._weight_dict['gap'] * gap + self._weight_dict['corr_rmsd'] * corr_rmsd
-        loss_dict['embedding'] = embedding_similarity
-        loss_dict['gap'] = gap
-        loss_dict['corr_rmsd'] = corr_rmsd
+        loss_dict_per_sample.update({
+            'embedding': embedding_similarity,
+            'gap': gap,
+            'corr_rmsd': corr_rmsd,
+        })
+        loss = - self._weight_dict['embedding'] * embedding_similarity.mean() - self._weight_dict['gap'] * gap.mean() + self._weight_dict['corr_rmsd'] * corr_rmsd.mean()
+        loss_dict.update({
+            'embedding': embedding_similarity.mean(),
+            'gap': gap.mean(),
+            'corr_rmsd': corr_rmsd.mean(),
+        })
+        loss_dict['per_sample'] = loss_dict_per_sample
         loss_dict['quality'] = loss
         return loss, loss_dict
 
 class LocAlignLoss(nn.Module):
-    def __init__(self, weight_dict: dict[str, float], return_non_linear: bool = True, reduce: bool = True):
+    def __init__(self, weight_dict: dict[str, float], return_non_linear: bool = True):
         super(LocAlignLoss, self).__init__()
         self._quality_loss = QualityLoss(weight_dict)
 
         self._ligand_loss = LigandLoss(return_non_linear=return_non_linear)
         self._ligand_loss_weight = weight_dict.get('ligand_rmsd', 1.0)
-        self._reduce = reduce
+        # self._reduce = reduce
 
-    def forward(self, batch, outputs, inference: bool = False):
+    def forward(self, batch, outputs, inference: bool = False, per_sample: bool = False):
         rotation_ab_pred = outputs['pred_R']
         translation_ab_pred = outputs['pred_t']
         quality_loss, quality_loss_dict = self._quality_loss(outputs)
         if inference:
             quality_loss_dict['loss'] = quality_loss
             return quality_loss, quality_loss_dict
-        ligand_loss_dict = self._ligand_loss(batch, rotation_ab_pred, translation_ab_pred, reduce=self._reduce)
-        total_loss = quality_loss + self._ligand_loss_weight * ligand_loss_dict['ligand_rmsd']
+        ligand_rmsd = self._ligand_loss(batch, rotation_ab_pred, translation_ab_pred, reduce=False)
+        total_loss = quality_loss + self._ligand_loss_weight * ligand_rmsd.mean()
+        # ligand_loss_dict = {'ligand_rmsd': ligand_rmsd}
+        quality_loss_dict['per_sample']['ligand_rmsd'] = ligand_rmsd
+        ligand_loss_dict = {'ligand_rmsd': ligand_rmsd.mean()}
+        if not per_sample:
+            quality_loss_dict.pop('per_sample', None)
         loss_dict = {**quality_loss_dict, **ligand_loss_dict, 'loss': total_loss}
         return total_loss, loss_dict
 
@@ -98,7 +112,7 @@ class EmbeddingSimilarityLoss(nn.Module):
         src_embeddings = outputs['corr_src_embedding']
         dot_per_m = self.cosine_similarity(tar_embeddings, src_embeddings)
         embedding_cov = (top_corr_values * dot_per_m).sum(dim=-1)
-        return embedding_cov.mean()
+        return embedding_cov
     
 
 class WeightEntropyLoss(nn.Module):
@@ -109,5 +123,5 @@ class WeightEntropyLoss(nn.Module):
         top_corr_values = outputs['top_corr_values']
         N = top_corr_values.size(1)
         H = -(top_corr_values * torch.log(top_corr_values)).sum(dim=-1) / torch.log(torch.tensor(N))
-        return H.mean()
+        return H
 
