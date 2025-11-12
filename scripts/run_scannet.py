@@ -6,7 +6,9 @@ import sys
 import numpy as np
 import pandas as pd
 
-sys.path.append('/home/iscb/wolfson/hagairavid/ScanNet_Ub')
+sys.path.append(os.getcwd())
+sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
+# sys.path.append('/home/iscb/wolfson/hagairavid/ScanNet_Ub')
 os.environ["KERAS_BACKEND"] = "torch"
 
 from predict_features import predict_features
