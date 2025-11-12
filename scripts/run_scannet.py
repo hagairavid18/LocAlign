@@ -6,10 +6,10 @@ import numpy as np
 import pandas as pd
 import sys
 sys.path.append(os.getcwd())
-sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
+# sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
 os.environ["KERAS_BACKEND"] = "torch"
-
-# from ScanNet_mini.predict_features import predict_features
+from ScanNet_mini.predict_features import predict_features
+# from predict_features import predict_features
 
 
 def run_scannet(
@@ -49,7 +49,7 @@ def run_scannet(
         model=model,
         output_format='numpy',
         permissive=permissive,
-        output_predictions=False
+        # output_predictions=False
     )
 
     residues_to_atom_indices_idx = list_layers.index('aa_to_atom_indices')

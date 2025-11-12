@@ -65,7 +65,7 @@ class Protein:
 
         # Run wget command to download the file
         try:
-            subprocess.run(["wget", url, "-O", mmcif_file_path], check=True)
+            subprocess.run(["wget", url, "-O", mmcif_file_path, "--quiet"], check=True)
             logger.info(f"Successfully downloaded {self._pdb_name}.cif")
         except subprocess.CalledProcessError:
             logger.error(f"Failed to download {self._pdb_name}.cif from {url}")

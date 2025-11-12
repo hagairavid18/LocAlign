@@ -1,6 +1,6 @@
 import numpy as np
 from utilities import io_utils
-from utilities.paths import pipeline_folder,MSA_folder,structures_folder
+from utilities.paths import pipeline_folder, MSA_folder,structures_folder
 from utilities.dataset_utils import align_labels
 from utilities.wrappers import wrap_list
 from multiprocessing import Pool

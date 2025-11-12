@@ -1,10 +1,10 @@
 import pickle
-import os, warnings
+import os
+import warnings
 import numpy as np
 import sys
-sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
-from  preprocessing import PDBio, PDB_processing
+from ScanNet_mini.preprocessing import PDBio, PDB_processing
 import Bio.PDB
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
 
@@ -119,10 +119,10 @@ def extract_chains_andor_ligand_and_apply_transform(struct, chain_ids, ligand_id
         
 
 def get_pocket(receptor_file,ligand_file):
-    _,chains1 = PDBio.load_chains(receptor_file)
-    _,chains2 = PDBio.load_chains(ligand_file)
-        
-    
+    _,chains1 = PDBio.load_chains(receptor_file, verbose=False)
+    _,chains2 = PDBio.load_chains(ligand_file, verbose=False)
+
+
     _, _, receptor_atom_coordinates, _, _ = PDB_processing.process_chain(chains1)
     
     ligand_atoms = Bio.PDB.Selection.unfold_entities(chains2,'A')
@@ -236,8 +236,7 @@ def make_pseudo_bond_files(
             f.write(line + '\n')    
     return output_file,template_corr_atoms,query_corr_atoms
     
-import numpy as np
-from Bio.PDB import PDBParser
+    
 def make_pseudo_bond_file_from_residue_indices(
     output_file: str,
     template_receptor_file: str,
@@ -256,7 +255,7 @@ def make_pseudo_bond_file_from_residue_indices(
         corr_residue_indices: np.ndarray – Nx2 array of corresponding residue indices (template_idx, query_idx)
         corr_values: np.ndarray – Nx1 array of correspondence scores (same order)
     """
-    parser = PDBParser(QUIET=True)
+    parser = Bio.PDB.PDBParser(QUIET=True)
 
     template_structure = parser.get_structure("template", template_receptor_file)
     query_structure = parser.get_structure("query", transformed_query_receptor_file)
@@ -312,7 +311,7 @@ def make_pseudo_bond_file_from_residue_indices(
         for line in lines:
             f.write(line + "\n")
 
-    print(f"Saved {len(corr_residue_indices)} pseudobonds to {output_file}")
+    # print(f"Saved {len(corr_residue_indices)} pseudobonds to {output_file}")
     return output_file,template_corr_atoms,query_corr_atoms
 
 
@@ -512,10 +511,6 @@ def process_alignment(
         corr_indices: Correspondence indices
         atom_indexes_list: Atom index mappings
     """
-    import copy
-
-    query_ligand = ligand  # Same ligand for both proteins
-
     # Compute atom indexes if scannet_dir is provided and atom_indexes_list not provided
     corr_indices_atom = atom_indexes_list
 
@@ -546,48 +541,37 @@ def process_alignment(
     parent_folder = os.path.dirname(os.path.dirname(base_folder))
 
     folder = base_folder
-    # query = os.path.join(folder, f'RANSACAlligner_0_protein_0_0.pdb')
     output_folder = folder
     os.makedirs(output_folder, exist_ok = True)
 
-    template_file, template_chain_id = PDBio.getPDB(template[:-1] + '_' + template[-1], biounit=False)
-
+    template_chain_id = [(0, template[-1])]
     
-    query_file, query_chain_id = PDBio.getPDB(query[:-1] + '_' + query[-1], biounit=False)
+    query_chain_id = [(0, query[-1])]
 
-    parser = Bio.PDB.PDBParser()
+    parser = Bio.PDB.PDBParser(QUIET=True)
     
 
-    template_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{template}_non_ligand_.ent"))
+    template_non_ligand_struct = parser.get_structure('name', f"{parent_folder}/{ligand}/{template}_non_ligand_.ent")
 
     extract_chains_andor_ligand_and_apply_transform(template_non_ligand_struct, template_chain_id, ligand,
                                 os.path.join(output_folder, 'template_receptor.pdb')
                                 ,mode='without_ligand')
     
-    template_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{template}_ligand.pdb"))
+    template_only_ligand_struct = parser.get_structure('name', f"{parent_folder}/{ligand}/{template}_ligand.pdb")
 
     extract_chains_andor_ligand_and_apply_transform(template_only_ligand_struct, template_chain_id, ligand,
                                 os.path.join(output_folder, 'template_ligand.pdb')
                                 ,mode='only_ligand')
     
-    parser = Bio.PDB.PDBParser()
-
-    # struct = parser.get_structure('name',query_file)
-    query_non_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_non_ligand_.ent"))
+    query_non_ligand_struct = parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_non_ligand_.ent")
     rot,tran = query_transformation
     for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct,'A'):
         atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
     
-    # query_only_ligand_struct_orig = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_ligand.pdb"))
-    query_only_ligand_struct = copy.deepcopy(parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_ligand.pdb"))
+    query_only_ligand_struct = parser.get_structure('name', f"{parent_folder}/{ligand}/{query}_ligand.pdb")
     rot,tran = query_transformation
     for atom in Bio.PDB.Selection.unfold_entities(query_only_ligand_struct,'A'):
         atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
-    
-    # print(f"mean orig query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct_orig, 'A')]).mean(0)}")
-    # print(f"mean transformed query: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct, 'A')]).mean(0)}")
-    # print(f"mean orig template: {np.array([atom.coord for atom in Bio.PDB.Selection.unfold_entities(template_non_ligand_struct, 'A')]).mean(0)}")
-
 
     extract_chains_andor_ligand_and_apply_transform(query_non_ligand_struct, query_chain_id, ligand,
                                 os.path.join(output_folder, 'transformed_query_receptor.pdb')

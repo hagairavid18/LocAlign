@@ -368,20 +368,6 @@ class LocAlign(SoftBBBase):
         all_iter_results, corr_values, corr_residue_indices, corr_atom_indices = self._run_step(batch, return_correspondences=True)
         curr_loss, loss_dict = self._loss(batch, all_iter_results[-1], inference=True)
         
-        # Compute transformed source coordinates
-        src_transformed = torch.matmul(batch['src_frames'][:, :, 0, :], all_iter_results[-1]['pred_R']) + all_iter_results[-1]['pred_t']
-        tar = batch['tar_frames'][:, :, 0, :]
-
-        # Masks -> expand to match xyz dimension
-        src_mask = batch['src_mask'].unsqueeze(-1)  # [B, N, 1]
-        tar_mask = batch['tar_mask'].unsqueeze(-1)
-
-        # Apply masks before computing the mean
-        src_mean = (src_transformed * src_mask).sum(1) / src_mask.sum(1).clamp(min=1)
-        tar_mean = (tar * tar_mask).sum(1) / tar_mask.sum(1).clamp(min=1)
-
-        print(f"mean src (masked): {src_mean}")
-        print(f"mean tar (masked): {tar_mean}")
 
         outputs = {'transformation_dict': all_iter_results[-1], 'metadata': batch['metadata'], 'corr_values': corr_values, 'corr_indices': corr_residue_indices, 'corr_atom_indices': corr_atom_indices}
         outputs['loss'] = curr_loss

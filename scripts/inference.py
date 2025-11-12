@@ -7,8 +7,10 @@ from typing import Any
 import pandas as pd
 import torch
 import yaml
+import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
 
 sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.getcwd(), 'aligner_dl'))
@@ -19,6 +21,22 @@ from aligner_dl.models.utils.misc import build_object
 from miners.objects import Protein
 from miners.scripts.chimera_pocket_viz import process_alignment
 from scripts.run_scannet import extract_scannet
+
+
+def _download_non_ligand_worker(args):
+    """Top-level worker for multiprocessing (must be picklable)."""
+    pdb_name, chain_id, ligand_name, base_save_dir = args
+    try:
+        Protein(
+            pdb_name=pdb_name,
+            chain_id=chain_id,
+            ligand_name=ligand_name,
+            save_models=True,
+            ligand_dir=base_save_dir,
+        )
+        return True, pdb_name, chain_id, ligand_name, None
+    except Exception as e:
+        return False, pdb_name, chain_id, ligand_name, str(e)
 
 
 class InferenceRunner:
@@ -132,16 +150,17 @@ class InferenceRunner:
             unique_combinations.add((row['ref_protein'], row['ref_chain'], row['ligand']))
             unique_combinations.add((row['mov_protein'], row['mov_chain'], row['ligand']))
         
-        # Save models with progress bar
-        print(f"Saving {len(unique_combinations)} unique non-ligand models...")
-        for protein, chain, ligand in tqdm(unique_combinations, desc="Downloading PDB files"):
-            Protein(
-                pdb_name=protein,
-                chain_id=chain,
-                ligand_name=ligand,
-                save_models=True,
-                ligand_dir=self._base_save_dir
-            )
+        # Save models with multiprocessing and progress bar
+        combos = list(unique_combinations)
+        total = len(combos)
+        print(f"Saving {total} unique non-ligand models (parallel)...")
+
+        args_list = [(p, c, l, self._base_save_dir) for (p, c, l) in combos]
+        processes = min(total, max(1, cpu_count() - 1))
+        with Pool(processes=processes) as pool:
+            for success, pdb_name, chain_id, ligand_name, err in tqdm(pool.imap_unordered(_download_non_ligand_worker, args_list), total=total, desc="Downloading PDB files"):
+                if not success:
+                    print(f"Failed to download {pdb_name} chain {chain_id} ligand {ligand_name}: {err}")
     
     def _extract_features(self) -> None:
         """
@@ -224,12 +243,18 @@ class InferenceRunner:
         """
         print("Running inference...")
         with torch.no_grad():
-            for idx, batch in tqdm(enumerate(self._dataloader), total=len(self._dataloader), desc="Running inference"):
-                self._process_batch(idx, batch)
-        
-        print("✅ All predictions processed and visualized.")
+            pbar = tqdm(self._dataloader, total=len(self._dataloader), desc="Running inference")
+            for idx, batch in enumerate(pbar):
+                num_corr = self._process_batch(idx, batch)
+                # update tqdm description with last batch correspondence count
+                try:
+                    pbar.set_description(f"Running inference | n_corr={num_corr}")
+                except Exception:
+                    pass
+
+        print(f"✅ All predictions processed and visualized, saved to {self._output_dir}")
     
-    def _process_batch(self, idx: int, batch: Any) -> None:
+    def _process_batch(self, idx: int, batch: Any) -> int:
         """
         Process a single batch and save results.
         
@@ -255,11 +280,12 @@ class InferenceRunner:
         # Ensure at least 3 correspondences
         if len(above_threshold_indices) < 3:
             above_threshold_indices = torch.topk(corr_vals, 3)[1]
-        
-        print(
-            f"Batch {idx}: Found {len(above_threshold_indices)} correspondences "
-            f"above threshold {threshold.item():.4f}"
-        )
+
+        num_correspondences = int(above_threshold_indices.numel())
+        # print(
+        #     f"Batch {idx}: Found {num_correspondences} correspondences "
+        #     f"above threshold {threshold.item():.4f}"
+        # )
 
         top_corr_values = preds["corr_values"][0][above_threshold_indices]
         top_corr_indices = preds["corr_indices"][0][above_threshold_indices]
@@ -287,6 +313,12 @@ class InferenceRunner:
         # Convert to numpy arrays without saving to file
         R_np = trans_dict['pred_R'][0].detach().cpu().numpy()
         t_np = trans_dict['pred_t'][0].detach().cpu().numpy()
+        # Save transformation (rotation and translation) for this alignment
+        try:
+            transform_path = os.path.join(save_folder, 'transformation.npz')
+            np.savez_compressed(transform_path, R=R_np, t=t_np)
+        except Exception as e:
+            print(f"Failed to save transformation for batch {idx}: {e}")
         
         # Generate visualization using Chimera via process_alignment (pass arrays directly)
         try:
@@ -303,6 +335,8 @@ class InferenceRunner:
             )
         except Exception as e:
             print(f"Unexpected error during visualization: {e}")
+
+        return num_correspondences
     
     def run(self) -> None:
         """
