@@ -74,11 +74,17 @@ class SoftBBBase(L.LightningModule, ABC):
         for cath_degree in range(0, 9):
             pair_infos = metrics['pair_infos_per_degree'][cath_degree]
             ligand_rmsd_values = metrics['ligand_rmsd_per_degree_protein'][cath_degree]
+            embedding_similarity_values = metrics['embedding_similarity_per_degree_protein'][cath_degree]
+            corr_rmsd_values = metrics['corr_rmsd_per_degree_protein'][cath_degree]
+            gap_values = metrics['gap_per_degree_protein'][cath_degree]
             keys_to_keep = ['Ligand_ID', 'ref_protein', 'ref_chain', 'mov_protein', 'mov_chain', 'cath_degree']
-            for pair_info, ligand_rmsd in zip(pair_infos, ligand_rmsd_values):
+            for pair_info, ligand_rmsd, embedding_similarity, corr_rmsd, gap in zip(pair_infos, ligand_rmsd_values, embedding_similarity_values, corr_rmsd_values, gap_values):
                 protein_rmsd_data.append({
                     **{k: pair_info[k] for k in keys_to_keep},
-                    'Ligand RMSD': ligand_rmsd.item(),
+                    'ligand_rmsd': ligand_rmsd.item(),
+                    'embedding_similarity': embedding_similarity.item(),
+                    'corr_rmsd': corr_rmsd.item(),
+                    'entropy': gap.item(),
                 })
         
         if protein_rmsd_data and hasattr(self.logger.experiment, 'get_name'):
@@ -93,6 +99,7 @@ class SoftBBBase(L.LightningModule, ABC):
     def on_validation_batch_end(self, outputs, batch, batch_idx):
         if 'loss_dict' not in outputs:
             return
+        outputs['loss_dict'].pop('per_sample', None)
         batch_size = batch['tar_pretrained_embeddings'].shape[0]
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)

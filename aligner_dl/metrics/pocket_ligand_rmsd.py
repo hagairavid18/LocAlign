@@ -16,6 +16,8 @@ class PocketRMSD(Module):
         # Initialize metrics for each degree 1 through 8
         self.ligand_rmsd_per_degree = {deg: 0 for deg in range(0, 9)}
         self.corr_rmsd_per_degree = {deg: 0 for deg in range(0, 9)}
+        self.embedding_similarity_per_degree = {deg: 0 for deg in range(0, 9)}
+        self.gap_per_degree = {deg: 0 for deg in range(0, 9)}
         self.count_per_degree = {deg: 0 for deg in range(0, 9)}
         self.total_count = 0
         self.sample_metrics = {'cath_degree_per_sample': [], "ligand_rmsd_per_sample" : [], 'pair_infos': []}
@@ -24,7 +26,9 @@ class PocketRMSD(Module):
         self.pair_infos_per_degree = {deg: [] for deg in range(0, 9)}
         self.ligand_rmsd_per_degree_protein = {deg: [] for deg in range(0, 9)}
         self.corr_rmsd_per_degree_protein = {deg: [] for deg in range(0, 9)}
-        self._ligand_rmsd_metric = LigandLoss()
+        self.gap_per_degree_protein = {deg: [] for deg in range(0, 9)}
+        self.embedding_similarity_per_degree_protein = {deg: [] for deg in range(0, 9)}
+        self._ligand_rmsd_metric = LigandLoss(return_non_linear=False)
 
     def update(self, batch, outputs):
         batch_size = len(batch['metadata'])
@@ -50,6 +54,9 @@ class PocketRMSD(Module):
             # Update the dictionary with protein names and pocket_rmsd per degree
             self.pair_infos_per_degree[cath_degree].append(pair_info)
             self.ligand_rmsd_per_degree_protein[cath_degree].append(ligand_rmsd.cpu())
+            self.embedding_similarity_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['embedding'][batch_id].cpu())
+            self.corr_rmsd_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['corr_rmsd'][batch_id].cpu())
+            self.gap_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['gap'][batch_id].cpu())
 
         self.total_count += batch_size
 
@@ -60,7 +67,9 @@ class PocketRMSD(Module):
         # Calculate per-degree averages, handling zero counts
         per_degree_metrics = {
             'ligand_rmsd': {deg: (self.ligand_rmsd_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
-            'corr_rmsd': {deg: (self.corr_rmsd_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
+            # 'corr_rmsd': {deg: (self.corr_rmsd_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
+            # 'gap': {deg: (self.gap_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
+            # 'embedding_similarity': {deg: (self.embedding_similarity_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0 for deg in range(0, 9)},
         }
         
         counts = {
@@ -83,6 +92,9 @@ class PocketRMSD(Module):
             **total_metrics, **per_degree_metrics, **counts, **self.sample_metrics, 
             'pair_infos_per_degree': self.pair_infos_per_degree, 
             'ligand_rmsd_per_degree_protein': self.ligand_rmsd_per_degree_protein,
+            'corr_rmsd_per_degree_protein': self.corr_rmsd_per_degree_protein,
+            'gap_per_degree_protein': self.gap_per_degree_protein,
+            'embedding_similarity_per_degree_protein': self.embedding_similarity_per_degree_protein,
             'ligand_rmsd_below_4_proportion_per_degree': proportion_below_4_per_degree_ligand,
             'ligand_rmsd_below_4_total_proportion': total_ligand_rmsd_below_4
         }
