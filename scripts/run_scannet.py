@@ -47,9 +47,7 @@ def run_scannet(
         layer=list_layers,
         model=model,
         output_format='numpy',
-        permissive=permissive,
-        logfile=open(os.devnull,'w'),
-        # output_predictions=False
+        permissive=permissive
     )
 
     residues_to_atom_indices_idx = list_layers.index('aa_to_atom_indices')
@@ -109,49 +107,60 @@ def run_scannet(
     return output_paths
 
 
-def extract_scannet(df: pd.DataFrame, output_dir: str, scannet_dir: str) -> None:
+def extract_scannet(pairs, pdb_dir: str, scannet_dir: str) -> None:
     """
-    Run ScanNet feature extraction for proteins in a dataframe that don't have cached features.
-    
+    Run ScanNet feature extraction for proteins described by an iterable of
+    Pair-like objects (dataclass `PairHolder`). The function will only process
+    structures that don't already have cached features.
+
     Args:
-        df: DataFrame with columns 'ref_protein', 'ref_chain', 'mov_protein', 'mov_chain', 'ligand'
-        output_dir: Directory containing the PDB files
+        pairs: An iterable of objects with attributes 'ref_protein','ref_chain',
+               'mov_protein','mov_chain','ligand' (e.g., a list of PairHolder).
+        pdb_dir: Directory containing the non-ligand PDB files (organized by ligand folder).
         scannet_dir: Directory to save ScanNet features
     """
     os.makedirs(scannet_dir, exist_ok=True)
-
     all_paths = []
-    for _, row in df.iterrows():
+
+    # Expect an iterable of Pair-like objects
+    for p in pairs:
+        try:
+            ref_protein, ref_chain = p.ref_protein, p.ref_chain
+            mov_protein, mov_chain = p.mov_protein, p.mov_chain
+            ligand = p.ligand
+        except Exception as e:
+            raise ValueError("Each item in 'pairs' must have attributes ref_protein, ref_chain, mov_protein, mov_chain, ligand") from e
+
         ref_feature_path = os.path.join(
             scannet_dir,
-            row['ligand'],
-            f"{row['ref_protein']}{row['ref_chain']}_scannet_atoms.pkl"
+            ligand,
+            f"{ref_protein}{ref_chain}_scannet_atoms.pkl"
         )
         if not os.path.exists(ref_feature_path):
             ref_pdb_path = os.path.join(
-                output_dir,
-                row['ligand'],
-                f"{row['ref_protein']}{row['ref_chain']}_non_ligand_.ent"
+                pdb_dir,
+                ligand,
+                f"{ref_protein}{ref_chain}_non_ligand_.ent"
             )
             all_paths.append(ref_pdb_path)
-        
+
         mov_feature_path = os.path.join(
             scannet_dir,
-            row['ligand'],
-            f"{row['mov_protein']}{row['mov_chain']}_scannet_atoms.pkl"
+            ligand,
+            f"{mov_protein}{mov_chain}_scannet_atoms.pkl"
         )
         if not os.path.exists(mov_feature_path):
             mov_pdb_path = os.path.join(
-                output_dir,
-                row['ligand'],
-                f"{row['mov_protein']}{row['mov_chain']}_non_ligand_.ent"
+                pdb_dir,
+                ligand,
+                f"{mov_protein}{mov_chain}_non_ligand_.ent"
             )
             all_paths.append(mov_pdb_path)
-    
+
     if len(all_paths) == 0:
         print("❗ No new structures to process. Skipping ScanNet feature extraction.")
         return
-    
+
     run_scannet(
         pdb_paths=all_paths,
         output_dir=scannet_dir,

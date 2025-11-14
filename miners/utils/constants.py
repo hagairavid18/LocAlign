@@ -1,6 +1,28 @@
 from typing import Any
-import numpy as np
+from dataclasses import dataclass
 
+
+@dataclass
+class PairHolder:
+    ref_protein: str
+    ref_chain: str
+    mov_protein: str
+    mov_chain: str
+    ligand: str
+    cath_degree: int = -1
+    ligand_rmsd: float = 0.0
+    message: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            'ref_protein': self.ref_protein,
+            'ref_chain': self.ref_chain,
+            'mov_protein': self.mov_protein,
+            'mov_chain': self.mov_chain,
+            'cath_degree': self.cath_degree,
+            'Ligand RMSD': self.ligand_rmsd,
+            'ligand': self.ligand,
+        }
 
 
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_02_01_2025'
@@ -8,9 +30,8 @@ import numpy as np
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_17_08_2025'
 LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_25_10_2025'
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_24_09_2025_examples'
-RESULTS_COLUMNS = ['Ligand_ID', 'ref_protein', 'mov_protein', 'ref_chain', 'mov_chain',
-                    'n_transformations','rotations', 'translations', 'rmse', 'coverage', 'cath_degree',
-                     'ref_ligand_n_atoms', 'mov_ligand_n_atoms', "failure_message", 'p_rotations', 'p_translations', 'p_rmsd', "p_coverage", "p_message"]
+RESULTS_COLUMNS = ['Ligand_ID', 'ref_protein', 'mov_protein', 'ref_chain', 'mov_chain', 'cath_degree',
+                     'ref_ligand_n_atoms', 'mov_ligand_n_atoms', "failure_message"]
 
 NOT_ENOUGH_ATOMS_MESSAGE = "One of the ligands has less than 3 atoms"
 LIGAND_RESIDUE_IS_MISSED_MESSAGE = "Could not find ligand residue for the given chain"
@@ -25,13 +46,6 @@ class ResultHolder:
         self.mov_protein: str = pair_dict['mov_name']
         self.ref_chain: str = pair_dict['ref_chain']
         self.mov_chain: str = pair_dict['mov_chain']
-        self.n_transformations: int = -1
-        self.rotations: list[list[np.ndarray]] = []
-        self.translations: list[list[np.ndarray]] = []
-        self.rmse: list[list[float]] = []
-        self.coverage: list[list[float]] = []
-        self.bbr: list[list[float]] = []
-        self.bbc: list[list[float]] = []
         self.cath_degree: int = pair_dict['cath_level']
         self.ref_ligand_n_atoms: int = -1
         self.mov_ligand_n_atoms: int = -1
