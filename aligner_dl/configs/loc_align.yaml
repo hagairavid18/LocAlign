@@ -6,7 +6,7 @@ trainer:
   check_val_every_n_epoch: 1
   gradient_clipping: 30.0
   # profiler: false
-  # ckpt_path: "checkpoints/small-ligands-recycling4-GAT-esm18-corr02-embed1-gap0025-lig5-sanity/epoch=2-step=26136.ckpt"
+  # ckpt_path: "/home/iscb/wolfson/hagairavid/LocAlign/checkpoints/ablation-baseline-bn-fixed-bias-embed1/epoch=9-step=87120.ckpt"
 model:
   name: LocAlign
   args:
@@ -43,7 +43,7 @@ model:
         weight_dict:
           corr_rmsd: 0.1
           embedding: 1.0
-          gap: 0.0025
+          gap: 0.01
           ligand_rmsd: 5.0
     metric:
       name: PocketRMSD
