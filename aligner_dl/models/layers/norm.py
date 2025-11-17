@@ -19,15 +19,22 @@ class IdentityLayer(nn.Module):
 
     
 class MaskedBatchNorm1d(nn.Module):
-    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+    def __init__(self, num_features, eps=1e-5, momentum=0.1, learnable_weight=True, learnable_bias=True):
         super(MaskedBatchNorm1d, self).__init__()
         self.num_features = num_features
         self.eps = eps
         self.momentum = momentum
         
         # Learnable parameters
-        self.weight = nn.Parameter(torch.ones(num_features))
-        self.bias = nn.Parameter(torch.zeros(num_features))
+        if learnable_weight:
+            self.weight = nn.Parameter(torch.ones(num_features))
+        else:
+            self.register_buffer('weight', torch.ones(num_features))
+
+        if learnable_bias:
+            self.bias = nn.Parameter(torch.zeros(num_features))
+        else:
+            self.register_buffer('bias', torch.zeros(num_features))
 
     def forward(self, x, mask=None):
         """

@@ -104,7 +104,7 @@ class InferenceRunner:
                     ref_chain=row['ref_chain'],
                     mov_protein=row['mov_protein'],
                     mov_chain=row['mov_chain'],
-                    ligand=row.get('Ligand_ID', self._ligand_id),
+                    ligand=row.get('ligand', self._ligand_id),
                 )
                 self._pairs.append(ph)
             self._df = raw_df
