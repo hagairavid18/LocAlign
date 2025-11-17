@@ -42,8 +42,8 @@ model:
         return_non_linear: true
         weight_dict:
           corr_rmsd: 0.1
-          embedding: 2.0
-          gap: 0.01
+          embedding: 1.0
+          gap: 0.0025
           ligand_rmsd: 5.0
     metric:
       name: PocketRMSD

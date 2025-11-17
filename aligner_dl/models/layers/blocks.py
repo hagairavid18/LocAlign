@@ -1,7 +1,7 @@
 from torch import nn
 import torch
 
-from models.layers.norm import MaskedLayerNorm
+from models.layers.norm import MaskedBatchNorm1d, MaskedLayerNorm
 
 
 class FeatureBlock(nn.Module):
@@ -62,7 +62,8 @@ class EmbeddingBlock(nn.Module):
             if last_norm_learnable:
                 self.norm = nn.LayerNorm(output_dim)
             else:
-                self.norm = MaskedLayerNorm(output_dim, learnable=last_norm_learnable)
+                # self.norm = MaskedLayerNorm(output_dim, learnable=last_norm_learnable)
+                self.norm = MaskedBatchNorm1d(output_dim, learnable_weight=True, learnable_bias=False)
         self.apply(self.init_weights)
 
     @staticmethod
