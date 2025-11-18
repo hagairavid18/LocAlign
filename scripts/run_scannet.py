@@ -32,6 +32,7 @@ def run_scannet(
     os.makedirs(output_dir, exist_ok=True)
 
     list_layers = [
+        'attributes_atom',
         'atom_to_aa_indices',  # The atom to amino acid index correspondence
         'aa_to_atom_indices',
         'frames_atom',  # The frames attached to each atom [4,3] matrix
@@ -83,6 +84,11 @@ def run_scannet(
         atomic_plus_residue_embedding = np.concatenate(
             (atomic_embeddings, residue_embeddings_up_pooled), axis=-1
         )
+        atom_valencies = features[list_layers.index('attributes_atom')][:,0]
+
+        mapping_valency_to_type = np.array([-1, 0,0,0,0,0,1,1,2,2,2,3,3])
+        # 0: C, 1: O, 2:N, 3:S. -1: Masked.
+        atom_types = mapping_valency_to_type[atom_valencies]
         
         # Save
         chain_name = name.split('_')[0]
@@ -98,6 +104,7 @@ def run_scannet(
             "atomic_plus_residue_embedding": atomic_plus_residue_embedding,
             "aa_to_atom_indices": residues_to_atom_indices,
             "atom_nearest_neighbors": knn_atoms,
+            "atom_types":atom_types,
         }
 
         with open(out_path, "wb") as f:
