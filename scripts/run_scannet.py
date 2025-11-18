@@ -165,6 +165,11 @@ def extract_scannet(pairs, pdb_dir: str, scannet_dir: str) -> None:
             )
             all_paths.append(mov_pdb_path)
 
+    # Remove duplicates
+    print(f"❗ Structures to process with ScanNet: {len(all_paths)}")
+    all_paths = list(set(all_paths))
+    print(f"❗ Structures to process with ScanNet after deduplication: {len(all_paths)}")
+
     if len(all_paths) == 0:
         print("❗ No new structures to process. Skipping ScanNet feature extraction.")
         return
