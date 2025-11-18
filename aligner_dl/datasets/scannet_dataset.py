@@ -131,6 +131,7 @@ class ScanNetDataset(BasePairDataset):
             ret[f'{key}_frames'] = F.pad(embedding_dict[f'atom_frames'], (0, 0, 0, 0, 0, self._max_atoms - n_atoms))
             ret[f'{key}_neighbors'] = F.pad(embedding_dict[f'atom_neighbors'], (0, 0, 0, self._max_atoms - n_atoms), value=-1)
             ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'atom_residue_indices'], (0, self._max_atoms - n_atoms))
+            ret[f'{key}_atom_types'] = F.pad(embedding_dict[f'atom_types'], (0, self._max_atoms - n_atoms))
             ret[f'{key}_atom_original_indices'] = F.pad(embedding_dict[f'atom_original_indices'], (0, self._max_atoms - n_atoms))
             ret[f'{key}_mask'] = F.pad(torch.ones(n_atoms), (0, self._max_atoms - n_atoms), value=0).bool()
 
@@ -173,6 +174,7 @@ class ScanNetDataset(BasePairDataset):
         atom_residue_index = data["sequence_indices_atom"]  # Residue index for each atom
         atom_frames = data["atomic_frames"]
         atom_neighbors = data["atom_nearest_neighbors"]
+        atom_types = data["atom_types"]
 
         # oringal_atom_indices = np.arange(len(atom_embeddings))
 
@@ -197,6 +199,7 @@ class ScanNetDataset(BasePairDataset):
         atom_embeddings = atom_embeddings[kept_idx]
         atom_frames = atom_frames[kept_idx]
         atom_residue_index = atom_residue_index[kept_idx]
+        atom_types = atom_types[kept_idx]
 
         # Remap and filter neighbors
         remapped_neighbors = orig2new[atom_neighbors]
@@ -219,6 +222,7 @@ class ScanNetDataset(BasePairDataset):
 
         ret_dict = {
             'atom_frames': atom_frames,
+            'atom_types': atom_types,
             'atom_embeddings': atomic_plus_residue_embedding,
             'residue_embeddings': residue_embeddings,
             'residue_residue_indices': residue_indices,

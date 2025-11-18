@@ -46,8 +46,18 @@ model:
           gap: 0.01
           ligand_rmsd: 5.0
     metric:
-      name: PocketRMSD
-      args: {}
+      name: MetricsCollection
+      module: metrics.collection
+      args:
+        metrics:
+          pocket:
+            name: PocketRMSD
+            module: metrics.pocket_ligand_rmsd
+            args: {}
+          atom_type:
+            name: AtomTypeCorrespondence
+            module: metrics.atom_type_correspondence
+            args: {}
      
     optimizer:
       name: Adam
@@ -71,7 +81,7 @@ dataset:
     name: ScanNetDataset
     args:
       df_path: datasets/csv_files/homology_25_10/train.csv
-      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_knn_25_10_2025'
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_atom_types'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       esm_layer: 18
@@ -85,7 +95,7 @@ dataset:
     name: ScanNetDataset
     args:
       df_path: datasets/csv_files/homology_25_10/val.csv
-      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_knn_25_10_2025'
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_atom_types'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       # n_samples: 10

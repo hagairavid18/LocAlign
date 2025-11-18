@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import sys
 sys.path.append(os.getcwd())
+sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
 os.environ["KERAS_BACKEND"] = "torch"
 import warnings
 warnings.simplefilter("ignore")
