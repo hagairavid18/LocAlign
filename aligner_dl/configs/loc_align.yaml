@@ -1,5 +1,5 @@
 trainer:
-  exp_name: ablation-recycle0-lig3
+  exp_name: baseline-atom-types-mini-test
   tags: ["baseline", "homology_split", "small_ligands"]
   max_epochs: 10
   validate_only: false
