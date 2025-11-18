@@ -1,6 +1,6 @@
 trainer:
-  exp_name: small-ligands-recycling2-corr01-embed2-gap01-lig5
-  tags: ["atom", "esm", "homology_split", "small_ligands"]
+  exp_name: ablation-recycle0-lig3
+  tags: ["baseline", "homology_split", "small_ligands"]
   max_epochs: 10
   validate_only: false
   check_val_every_n_epoch: 1
@@ -61,6 +61,7 @@ model:
             max_lr: 0.0005
             epochs: 10
             steps_per_epoch: 8712 
+            # steps_per_epoch: 10779 
             # steps_per_epoch: 4356 
             div_factor: 25
             # final_div_factor: 1e4

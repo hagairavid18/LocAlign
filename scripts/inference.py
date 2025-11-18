@@ -18,6 +18,7 @@ sys.path.append(os.path.join(os.getcwd(), 'aligner_dl'))
 from aligner_dl.datasets import ScanNetDataset
 from aligner_dl.models.utils.collate import custom_collate_fn
 from aligner_dl.models.utils.misc import build_object
+from miners.utils.constants import PairHolder
 from miners.objects import Protein
 from miners.scripts.chimera_pocket_viz import process_alignment
 from scripts.run_scannet import extract_scannet
@@ -83,25 +84,31 @@ class InferenceRunner:
         Returns:
             None: Sets self._df and self._csv_output_path
         """
+        # Build PairHolder list from CSV or single pair input.
+        self._pairs: list[PairHolder] = []
         if not self._csv_path:
             ref, ref_chain, mov, mov_chain = self._protein_pair
-            self._df = pd.DataFrame([{
-                "ref_protein": ref,
-                "mov_protein": mov,
-                "ref_chain": ref_chain,
-                "mov_chain": mov_chain,
-                "cath_degree": -1,
-                "Ligand RMSD": 0.0,
-                "ligand": self._ligand_id
-            }])
+            ph = PairHolder(ref_protein=ref, ref_chain=ref_chain,
+                            mov_protein=mov, mov_chain=mov_chain,
+                            ligand=self._ligand_id)
+            self._pairs.append(ph)
+            # create initial dataframe and csv path (temporary)
+            self._df = pd.DataFrame([ph.to_dict()])
             self._csv_output_path = "temp_csv.csv"
         else:
-            self._df = pd.read_csv(self._csv_path)
+            raw_df = pd.read_csv(self._csv_path)
             # Rename columns to match expected format
-            self._df.rename(columns={'Ligand_ID': 'ligand'}, inplace=True)
+            for _, row in raw_df.iterrows():
+                ph = PairHolder(
+                    ref_protein=row['ref_protein'],
+                    ref_chain=row['ref_chain'],
+                    mov_protein=row['mov_protein'],
+                    mov_chain=row['mov_chain'],
+                    ligand=row.get('ligand', self._ligand_id),
+                )
+                self._pairs.append(ph)
+            self._df = raw_df
             self._csv_output_path = self._csv_path
-        
-        self._df.to_csv(self._csv_output_path, index=False)
     
     def _setup_directories(self) -> None:
         """
@@ -145,12 +152,12 @@ class InferenceRunner:
         Returns:
             None: Downloads and saves PDB files to self._base_save_dir
         """
-        # Collect unique protein-chain-ligand combinations using a set
+        # Collect unique protein-chain-ligand combinations from PairHolder list
         unique_combinations = set()
-        for _, row in self._df.iterrows():
-            unique_combinations.add((row['ref_protein'], row['ref_chain'], row['ligand']))
-            unique_combinations.add((row['mov_protein'], row['mov_chain'], row['ligand']))
-        
+        for ph in self._pairs:
+            unique_combinations.add((ph.ref_protein, ph.ref_chain, ph.ligand))
+            unique_combinations.add((ph.mov_protein, ph.mov_chain, ph.ligand))
+
         # Save models with multiprocessing and progress bar
         combos = list(unique_combinations)
         total = len(combos)
@@ -159,10 +166,37 @@ class InferenceRunner:
         # Save PDBs into the local cache pdb_files folder to avoid polluting output dir
         args_list = [(p, c, l, self._cache_paths['pdb_files']) for (p, c, l) in combos]
         processes = min(total, max(1, cpu_count() - 1))
+        # collect failed combos with error messages
+        failed_combos: list[tuple[str, str, str, str]] = []
         with Pool(processes=processes) as pool:
             for success, pdb_name, chain_id, ligand_name, err in tqdm(pool.imap_unordered(_download_non_ligand_worker, args_list), total=total, desc="Downloading PDB files"):
                 if not success:
                     print(f"Failed to download {pdb_name} chain {chain_id} ligand {ligand_name}: {err}")
+                    failed_combos.append((pdb_name, chain_id, ligand_name, err))
+
+        if failed_combos:
+            failed_set = set((p, c, l) for p, c, l, _ in failed_combos)
+            err_map = {(p, c, l): err for p, c, l, err in failed_combos}
+
+            # mark PairHolder.message for any pair referencing a failed combo
+            for ph in self._pairs:
+                ref_combo = (ph.ref_protein, ph.ref_chain, ph.ligand)
+                mov_combo = (ph.mov_protein, ph.mov_chain, ph.ligand)
+                msgs = []
+                if ref_combo in failed_set:
+                    msgs.append(f"ref_missing:{err_map.get(ref_combo)}")
+                if mov_combo in failed_set:
+                    msgs.append(f"mov_missing:{err_map.get(mov_combo)}")
+                if msgs:
+                    ph.message = ';'.join(msgs)
+
+            # Build removed and filtered dataframes from PairHolder list
+            kept = [p for p in self._pairs if p.message is None]
+
+            self._pairs = kept
+
+            if not kept:
+                raise RuntimeError("All protein pairs were removed because required non-ligand models failed to download. Aborting inference.")
     
     def _extract_features(self) -> None:
         """
@@ -172,8 +206,29 @@ class InferenceRunner:
             None: Generates feature files in the local ScanNet cache
     """
         print("Running ScanNet feature extraction into local cache...")
-        # extract_scannet expects: df, output_dir(with PDBs), scannet_dir(where to save features)
-        extract_scannet(self._df, self._cache_paths['pdb_files'], self._cache_paths['scannet_embeddings'])
+
+        extract_scannet(self._pairs, self._cache_paths['pdb_files'], self._cache_paths['scannet_embeddings'])
+
+    def _write_removed_pairs(self) -> None:
+        """
+        Persist removed pairs (those with non-empty message) to the output directory.
+        This is called after preprocessing and before model/dataloader creation.
+        """
+        removed = [p for p in getattr(self, '_pairs', []) if p.message is not None]
+        if not removed:
+            return
+
+        # Include the message in the saved CSV for debugging
+        rows = []
+        for p in removed:
+            d = p.to_dict()
+            d['message'] = p.message
+            rows.append(d)
+
+        removed_df = pd.DataFrame(rows)
+        removed_path = os.path.join(self._output_dir, 'removed_pairs_due_to_download_failures.csv')
+        removed_df.to_csv(removed_path, index=False)
+        print(f"Wrote {len(removed_df)} removed pairs to: {removed_path}")
     
     def _prepare_dataloader(self) -> None:
         """
@@ -192,7 +247,18 @@ class InferenceRunner:
         
         with open(dataset_config_path) as f:
             dataset_config = yaml.safe_load(f)
-        
+
+        # Build and persist the filtered dataframe from PairHolder objects here
+        kept_pairs = [p for p in getattr(self, '_pairs', []) if p.message is None]
+        if not kept_pairs:
+            raise RuntimeError("No valid protein pairs remain to build the dataset.")
+
+        filtered_df = pd.DataFrame([p.to_dict() for p in kept_pairs])
+        filtered_csv = os.path.join(self._output_dir, 'filtered_pairs.csv')
+        filtered_df.to_csv(filtered_csv, index=False)
+        self._df = filtered_df
+        self._csv_output_path = filtered_csv
+
         # Update dataset config for inference
         dataset_config['args']['df_path'] = self._csv_output_path
         # point the dataset to the local cached pdb files
@@ -303,15 +369,14 @@ class InferenceRunner:
         mov = metadata["mov_protein"]
         ligand = metadata.get("ligand", "general")
 
-        ligand_rmsd = metadata.get('Ligand RMSD', 0)
         corr_rmsd = preds['loss_dict']['corr_rmsd'].item()
         gap = preds['loss_dict']['gap'].item()
         emb = preds['loss_dict']['embedding'].item()
 
         save_folder = os.path.join(
             self._output_dir,
-            f"{ref}_{mov}_cath{metadata['cath_degree']}_{ligand}_"
-            f"rmsd{ligand_rmsd:.1f}_corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}"
+            f"{ref}_{mov}_{ligand}_"
+            f"corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}"
         )
         os.makedirs(save_folder, exist_ok=True)
 
@@ -357,8 +422,10 @@ class InferenceRunner:
         
         if self._ligand_id:
             self._save_non_ligand_models()
-        
+
         self._extract_features()
+        # persist removed pairs (with messages) now, before creating the dataloader/model
+        self._write_removed_pairs()
         self._prepare_dataloader()
         self._load_model()
         self._run_inference()
