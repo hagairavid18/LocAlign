@@ -112,7 +112,11 @@ class EmbeddingSimilarityLoss(nn.Module):
         src_embeddings = outputs['corr_src_embedding']
         dot_per_m = self.cosine_similarity(tar_embeddings, src_embeddings)
         embedding_cov = (top_corr_values * dot_per_m).sum(dim=-1)
-        return embedding_cov
+        average_similarity = self.cosine_similarity( 
+        torch.einsum('bi,bij->bj', top_corr_values, tar_embeddings ),
+        torch.einsum('bi,bij->bj', top_corr_values, src_embeddings )
+)
+        return embedding_cov - average_similarity
     
 
 class WeightEntropyLoss(nn.Module):

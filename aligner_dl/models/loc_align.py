@@ -27,6 +27,7 @@ class LocAlign(SoftBBBase):
 
         self._n_recycling_iterations = n_iter_recycling
         self._corr_dropout = torch.nn.Dropout(p=0.1)
+        self._keypoint_bn = torch.nn.BatchNorm1d(num_features=self._keypoints_selection._embedding_size)
         # self.automatic_optimization = False  # We will handle the optimization manually
     
     def _get_soft_correspondences(
@@ -284,11 +285,24 @@ class LocAlign(SoftBBBase):
             kp_src_emb, kp_src_frames, kp_src_mask = self._gather_keypoint_data(src_embedding, batch['src_frames'], batch['src_mask'], topk_src_indices)
             kp_tar_emb, kp_tar_frames, kp_tar_mask = self._gather_keypoint_data(tar_embedding, batch['tar_frames'], batch['tar_mask'], topk_tar_indices)
             
-            # Prepare embeddings (concatenate with recycled if not first iteration)
-            kp_src_emb = self._prepare_embeddings_for_iteration(kp_src_emb, recycling_state['src_embedding'], topk_src_indices, is_first_iteration)
-            kp_tar_emb = self._prepare_embeddings_for_iteration(kp_tar_emb, recycling_state['tar_embedding'], topk_tar_indices, is_first_iteration)
+            # apply BN to keypoint embeddings src and tar concatenated. input is 3d BXNXD
+            concated = torch.cat([kp_src_emb, kp_tar_emb], dim=1)
+            B, N, D = concated.shape
+
+            x_reshaped = concated.reshape(B * N, D)  # flatten tokens
+            x_reshaped = self._keypoint_bn(x_reshaped)
             
-            soft_correspondences = self._get_soft_correspondences(kp_src_emb, kp_tar_emb, topk_src_values, topk_tar_values, kp_src_mask, kp_tar_mask)
+            #split back
+            x_normalized = x_reshaped.reshape(B, N, D)
+            kp_src_emb = x_normalized[:, :N//2, :]
+            kp_tar_emb = x_normalized[:, N//2:, :]
+                        
+
+            # Prepare embeddings (concatenate with recycled if not first iteration)
+            kp_src_emb_concated = self._prepare_embeddings_for_iteration(kp_src_emb, recycling_state['src_embedding'], topk_src_indices, is_first_iteration)
+            kp_tar_emb_concated = self._prepare_embeddings_for_iteration(kp_tar_emb, recycling_state['tar_embedding'], topk_tar_indices, is_first_iteration)
+            
+            soft_correspondences = self._get_soft_correspondences(kp_src_emb_concated, kp_tar_emb_concated, topk_src_values, topk_tar_values, kp_src_mask, kp_tar_mask)
             
             top_corr_values, top_corr_indices, _ = self._denoiser(soft_correspondences, kp_src_frames, kp_tar_frames)
             

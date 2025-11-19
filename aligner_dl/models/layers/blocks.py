@@ -1,7 +1,7 @@
 from torch import nn
 import torch
 
-from models.layers.norm import MaskedLayerNorm
+from models.layers.norm import MaskedBatchNorm1d, MaskedLayerNorm
 
 
 class FeatureBlock(nn.Module):

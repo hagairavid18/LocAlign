@@ -18,55 +18,106 @@ class IdentityLayer(nn.Module):
         return x  # Simply return the input as output
 
     
+# class MaskedBatchNorm1d(nn.Module):
+#     def __init__(self, num_features, eps=1e-5, momentum=0.1, learnable_weight=True, learnable_bias=True):
+#         super(MaskedBatchNorm1d, self).__init__()
+#         self.num_features = num_features
+#         self.eps = eps
+#         self.momentum = momentum
+        
+#         # Learnable parameters
+#         if learnable_weight:
+#             self.weight = nn.Parameter(torch.ones(num_features))
+#         else:
+#             self.register_buffer('weight', torch.ones(num_features))
+
+#         if learnable_bias:
+#             self.bias = nn.Parameter(torch.zeros(num_features))
+#         else:
+#             self.register_buffer('bias', torch.zeros(num_features))
+
+#     def forward(self, x, mask=None):
+#         """
+#         Forward pass for masked batch normalization.
+
+#         Parameters:
+#         - x (torch.Tensor): Input tensor of shape (B, N, C), where C is the number of channels/features.
+#         - mask (torch.Tensor, optional): A tensor of shape (B, N) indicating which elements are unmasked (1 for unmasked, 0 for masked).
+
+#         Returns:
+#         - torch.Tensor: Normalized tensor.
+#         """
+#         B, N, C = x.shape
+
+#         if mask is not None:
+#             # Ensure mask is of shape (B, N) and broadcast it to match the input shape (B, N, C)
+#             mask = mask.unsqueeze(-1)  # Shape (B, N, 1)
+#             x = x * mask  # Mask the input tensor (0 for masked positions)
+
+#             # Compute mean and variance for unmasked elements
+#             sum_mask = mask.sum(dim=(0, 1), keepdim=True)  # Sum of valid elements for each channel
+#             masked_mean = x.sum(dim=(0, 1), keepdim=True) / sum_mask
+#             masked_var = ((x - masked_mean) ** 2).sum(dim=(0, 1), keepdim=True) / sum_mask
+#         else:
+#             # Standard BN without mask
+#             masked_mean = x.mean(dim=(0, 1), keepdim=True)
+#             masked_var = x.var(dim=(0, 1), keepdim=True, unbiased=False)
+
+#         # Normalize
+#         x_normalized = (x - masked_mean) / torch.sqrt(masked_var + self.eps)
+#         return self.weight * x_normalized + self.bias
+
 class MaskedBatchNorm1d(nn.Module):
-    def __init__(self, num_features, eps=1e-5, momentum=0.1, learnable_weight=True, learnable_bias=True):
-        super(MaskedBatchNorm1d, self).__init__()
+    def __init__(self, num_features, eps=1e-5, momentum=0.1,
+                 learnable_weight=True, learnable_bias=True):
+        super().__init__()
         self.num_features = num_features
         self.eps = eps
-        self.momentum = momentum
-        
-        # Learnable parameters
+        self.momentum = momentum  # currently unused unless you add running stats
+
         if learnable_weight:
             self.weight = nn.Parameter(torch.ones(num_features))
         else:
-            self.register_buffer('weight', torch.ones(num_features))
+            self.register_buffer("weight", torch.ones(num_features))
 
         if learnable_bias:
             self.bias = nn.Parameter(torch.zeros(num_features))
         else:
-            self.register_buffer('bias', torch.zeros(num_features))
+            self.register_buffer("bias", torch.zeros(num_features))
 
     def forward(self, x, mask=None):
         """
-        Forward pass for masked batch normalization.
-
-        Parameters:
-        - x (torch.Tensor): Input tensor of shape (B, N, C), where C is the number of channels/features.
-        - mask (torch.Tensor, optional): A tensor of shape (B, N) indicating which elements are unmasked (1 for unmasked, 0 for masked).
-
-        Returns:
-        - torch.Tensor: Normalized tensor.
+        x: (B, N, C)
+        mask: (B, N) with 1 for valid, 0 for masked, or None
         """
         B, N, C = x.shape
 
         if mask is not None:
-            # Ensure mask is of shape (B, N) and broadcast it to match the input shape (B, N, C)
-            mask = mask.unsqueeze(-1)  # Shape (B, N, 1)
-            x = x * mask  # Mask the input tensor (0 for masked positions)
+            # (B, N, 1) and same dtype as x
+            mask = mask.unsqueeze(-1).to(x.dtype)
 
-            # Compute mean and variance for unmasked elements
-            sum_mask = mask.sum(dim=(0, 1), keepdim=True)  # Sum of valid elements for each channel
-            masked_mean = x.sum(dim=(0, 1), keepdim=True) / sum_mask
-            masked_var = ((x - masked_mean) ** 2).sum(dim=(0, 1), keepdim=True) / sum_mask
+            # number of valid elements (shared across channels if mask is channel-agnostic)
+            sum_mask = mask.sum(dim=(0, 1), keepdim=True).clamp_min(1.0)
+
+            # mean over unmasked elements
+            masked_sum = (x * mask).sum(dim=(0, 1), keepdim=True)
+            masked_mean = masked_sum / sum_mask
+
+            # variance over unmasked elements
+            diff = (x - masked_mean) * mask
+            masked_var = (diff ** 2).sum(dim=(0, 1), keepdim=True) / sum_mask
         else:
-            # Standard BN without mask
             masked_mean = x.mean(dim=(0, 1), keepdim=True)
             masked_var = x.var(dim=(0, 1), keepdim=True, unbiased=False)
 
-        # Normalize
         x_normalized = (x - masked_mean) / torch.sqrt(masked_var + self.eps)
-        return self.weight * x_normalized + self.bias
 
+        if mask is not None:
+            x_normalized = x_normalized * mask  # keep masked positions off
+
+        weight = self.weight.view(1, 1, -1)
+        bias = self.bias.view(1, 1, -1)
+        return weight * x_normalized + bias
 
 class MaskedLayerNorm(nn.Module):
     def __init__(self, normalized_shape, eps=1e-3, learnable=True):
