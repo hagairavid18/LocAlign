@@ -4,6 +4,9 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+# constant per-atom-type importance weights: 0:C, 1:O, 2:N, 3:S
+ATOM_TYPE_WEIGHTS = torch.tensor([1.0, 3.0, 4.0, 50.0], dtype=torch.float32)
+
 
 class AtomTypeCorrespondence(Module):
     """Compute weighted fraction of correspondences preserving atom type.
@@ -44,12 +47,23 @@ class AtomTypeCorrespondence(Module):
             corr_vals_b = corr_values[batch_id]
             corr_types_b = corr_atom_types[batch_id]
 
-            # determine same-type mask: corr_types_b may be Nx2 (types for each side)
+            # same-type mask
             same_type = (corr_types_b[:, 0] == corr_types_b[:, 1]).float()
 
-            weights = corr_vals_b
-            weighted_same_val = (weights * same_type).sum()
+            # per-pair importance weight: average of src/tar atom-type weights
+            src_types = corr_types_b[:, 0].long()
+            tar_types = corr_types_b[:, 1].long()
+            tw = ATOM_TYPE_WEIGHTS.to(src_types.device)
+            wt_src = tw[src_types.clamp(min=0, max=len(tw)-1)]
+            wt_tar = tw[tar_types.clamp(min=0, max=len(tw)-1)]
+            pair_weight = (wt_src + wt_tar) * 0.5
 
+            # multiply correspondence scores by per-pair importance and compute weighted sum (no normalization)
+            weights = corr_vals_b.float()
+            weights_eff = weights * pair_weight
+            weighted_sum = (weights_eff * same_type).sum()
+            # store as python float for accumulators
+            weighted_same_val = weighted_sum / weights_eff.sum()
             # record metrics
             self.count_per_degree[cath_degree] += 1
             self.sample_metrics['weighted_same_type_per_sample'].append(weighted_same_val)
@@ -61,7 +75,7 @@ class AtomTypeCorrespondence(Module):
 
     def compute(self):
         weighted_same_per_degree_avg = {
-            deg: (self.weighted_same_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else torch.tensor(0.0) 
+            deg: (self.weighted_same_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0.0
             for deg in range(0, 9)
         }
 

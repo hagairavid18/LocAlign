@@ -347,16 +347,17 @@ class InferenceRunner:
         # Filter correspondences above threshold (25% of max correlation)
         corr_vals = preds["corr_values"][0]
         
-        # sorted_corr_vals = torch.sort(corr_vals,0,descending=True)
-        # cumulative_corr_vals = torch.cumsum(sorted_corr_vals.values,0)
-        # above_threshold_indices = sorted_corr_vals.indices[cumulative_corr_vals <= 0.66]
+        sorted_corr_vals = torch.sort(corr_vals,0,descending=True)
+        cumulative_corr_vals = torch.cumsum(sorted_corr_vals.values,0)
+        above_threshold_indices = sorted_corr_vals.indices[cumulative_corr_vals <= 0.66]
         
-        threshold = 0.25 * torch.max(corr_vals)
-        above_threshold_indices = torch.where(corr_vals >= threshold)[0]
-
         # Ensure at least 3 correspondences
         if len(above_threshold_indices) < 3:
             above_threshold_indices = torch.topk(corr_vals, 3)[1]
+
+        # take up to 20 correspondences
+        if len(above_threshold_indices) > 20:
+            above_threshold_indices = above_threshold_indices[:20]
 
         num_correspondences = int(above_threshold_indices.numel())
 
@@ -372,11 +373,15 @@ class InferenceRunner:
         corr_rmsd = preds['loss_dict']['corr_rmsd'].item()
         gap = preds['loss_dict']['gap'].item()
         emb = preds['loss_dict']['embedding'].item()
+        radius = preds['loss_dict']['radius'].item()
+
+        # create a score based on the three metrics, between 0 and 1, higher is better
+        
 
         save_folder = os.path.join(
             self._output_dir,
             f"{ref}_{mov}_{ligand}_"
-            f"corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}"
+            f"corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}_radius{radius:.2f}"
         )
         os.makedirs(save_folder, exist_ok=True)
 

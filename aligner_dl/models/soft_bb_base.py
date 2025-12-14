@@ -44,6 +44,8 @@ class SoftBBBase(L.LightningModule, ABC):
 
         current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log('learning_rate', current_lr, on_step=True, on_epoch=True, logger=True)
+        self._loss.update_lambda(self.global_step, self.total_steps)
+        self.log('corr_lambda', self._loss._quality_loss.corr_lambda.item(), on_step=True, on_epoch=True, logger=True)
     
     def on_validation_epoch_end(self):
         metrics = self._metrics.compute()
@@ -79,8 +81,9 @@ class SoftBBBase(L.LightningModule, ABC):
             corr_rmsd_values = metrics['corr_rmsd_per_degree_protein'][cath_degree]
             gap_values = metrics['gap_per_degree_protein'][cath_degree]
             atom_type_values = metrics['weighted_same_type_per_degree_protein'][cath_degree]
+            radius_values = metrics['radius_per_degree_protein'][cath_degree]
             keys_to_keep = ['Ligand_ID', 'ref_protein', 'ref_chain', 'mov_protein', 'mov_chain', 'cath_degree']
-            for pair_info, ligand_rmsd, embedding_similarity, corr_rmsd, gap, atom_val in zip(pair_infos, ligand_rmsd_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values):
+            for pair_info, ligand_rmsd, embedding_similarity, corr_rmsd, gap, atom_val, radius in zip(pair_infos, ligand_rmsd_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values):
                 protein_rmsd_data.append({
                     **{k: pair_info[k] for k in keys_to_keep},
                     'ligand_rmsd': ligand_rmsd.item(),
@@ -88,14 +91,15 @@ class SoftBBBase(L.LightningModule, ABC):
                     'corr_rmsd': corr_rmsd.item(),
                     'entropy': gap.item(),
                     'atom_type_fraction': atom_val.item(),
+                    'radius_of_gyration': radius.item(),
                 })
         
         if protein_rmsd_data and hasattr(self.logger.experiment, 'get_name'):
             dir_path = os.path.join("results", "validation_results", self.logger.experiment.get_name())
             os.makedirs(dir_path, exist_ok=True)
             df = pd.DataFrame(protein_rmsd_data)
-            df.to_csv(os.path.join(dir_path, f"Protein_RMSD_Results_{self.current_epoch}.csv"))
-            self.logger.experiment.log_table(f"Protein_RMSD_Results_{self.current_epoch}.csv", df)
+            df.to_csv(os.path.join(dir_path, f"per_sample_results_{self.current_epoch}.csv"))
+            self.logger.experiment.log_table(f"per_sample_results_{self.current_epoch}.csv", df)
       
         self._metrics.reset()
     

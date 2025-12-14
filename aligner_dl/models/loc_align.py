@@ -15,7 +15,7 @@ class LocAlign(SoftBBBase):
         input_layer: dict[str, Any], 
         keypoints_selection: dict[str, Any], 
         denoiser: dict[str, Any],
-        metric: dict[str, Any] = {"name": "PocketRMSD", "args": {}},
+        metric: dict[str, Any] = {},
         n_iter_recycling: int = 3
         ) -> None:
 
@@ -27,7 +27,6 @@ class LocAlign(SoftBBBase):
 
         self._n_recycling_iterations = n_iter_recycling
         self._corr_dropout = torch.nn.Dropout(p=0.1)
-        self._keypoint_bn = torch.nn.BatchNorm1d(num_features=self._keypoints_selection._embedding_size)
         # self.automatic_optimization = False  # We will handle the optimization manually
     
     def _get_soft_correspondences(
@@ -285,17 +284,6 @@ class LocAlign(SoftBBBase):
             kp_src_emb, kp_src_frames, kp_src_mask = self._gather_keypoint_data(src_embedding, batch['src_frames'], batch['src_mask'], topk_src_indices)
             kp_tar_emb, kp_tar_frames, kp_tar_mask = self._gather_keypoint_data(tar_embedding, batch['tar_frames'], batch['tar_mask'], topk_tar_indices)
             
-            # apply BN to keypoint embeddings src and tar concatenated. input is 3d BXNXD
-            concated = torch.cat([kp_src_emb, kp_tar_emb], dim=1)
-            B, N, D = concated.shape
-
-            x_reshaped = concated.reshape(B * N, D)  # flatten tokens
-            x_reshaped = self._keypoint_bn(x_reshaped)
-            
-            #split back
-            x_normalized = x_reshaped.reshape(B, N, D)
-            kp_src_emb = x_normalized[:, :N//2, :]
-            kp_tar_emb = x_normalized[:, N//2:, :]
                         
 
             # Prepare embeddings (concatenate with recycled if not first iteration)
@@ -316,6 +304,8 @@ class LocAlign(SoftBBBase):
                 'top_corr_indices': top_corr_indices,
                 'corr_tar_embedding': kp_tar_emb[batch_indices, top_corr_indices[:, :, 0]],
                 'corr_src_embedding': kp_src_emb[batch_indices, top_corr_indices[:, :, 1]],
+                'corr_src_coordinates': corr_src_coord,
+                'corr_tar_coordinates': corr_tar_coord,
             })
             all_iter_outputs.append(step_outputs)
             

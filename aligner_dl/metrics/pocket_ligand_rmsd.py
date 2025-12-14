@@ -28,6 +28,7 @@ class PocketRMSD(Module):
         self.corr_rmsd_per_degree_protein = {deg: [] for deg in range(0, 9)}
         self.gap_per_degree_protein = {deg: [] for deg in range(0, 9)}
         self.embedding_similarity_per_degree_protein = {deg: [] for deg in range(0, 9)}
+        self.radius_of_gyration_per_degree_protein = {deg: [] for deg in range(0, 9)}
         self._ligand_rmsd_metric = LigandLoss(return_non_linear=False)
 
     def update(self, batch, outputs):
@@ -57,6 +58,7 @@ class PocketRMSD(Module):
             self.embedding_similarity_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['embedding'][batch_id].cpu())
             self.corr_rmsd_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['corr_rmsd'][batch_id].cpu())
             self.gap_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['gap'][batch_id].cpu())
+            self.radius_of_gyration_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['radius'][batch_id].cpu())
 
         self.total_count += batch_size
 
@@ -94,6 +96,7 @@ class PocketRMSD(Module):
             'ligand_rmsd_per_degree_protein': self.ligand_rmsd_per_degree_protein,
             'corr_rmsd_per_degree_protein': self.corr_rmsd_per_degree_protein,
             'gap_per_degree_protein': self.gap_per_degree_protein,
+            'radius_per_degree_protein': self.radius_of_gyration_per_degree_protein,
             'embedding_similarity_per_degree_protein': self.embedding_similarity_per_degree_protein,
             'ligand_rmsd_below_4_proportion_per_degree': proportion_below_4_per_degree_ligand,
             'ligand_rmsd_below_4_total_proportion': total_ligand_rmsd_below_4

@@ -70,6 +70,9 @@ def main():
     # Build model
     model = build_object(config['model'], 'models')
 
+    # update number of training step per epoch by dividing the number of samples by batch size
+    model.total_steps = len(train_loader) * config['trainer']['max_epochs']
+
     # Setup logging with Comet
     log_exp = "delete" not in config['trainer']['exp_name']
     if log_exp:
