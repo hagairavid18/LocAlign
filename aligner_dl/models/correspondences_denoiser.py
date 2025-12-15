@@ -80,7 +80,7 @@ class CDM(nn.Module):
 
         if self._n_gnn_layers == 0:
             graph_data.x = graph_data.x.reshape(B, self._n_nodes)
-            graph_data.x = self.safe_softmax(graph_data.x, top_k_values, dim=-1)
+            graph_data.x = self.safe_softmax(graph_data.x, top_k_values, dim=-1) + 1e-8
             graph_data.x = graph_data.x.reshape(B * self._n_nodes, 1) 
         # Step 4: Update soft correspondences
         updated_correspondences = graph_data.x.squeeze(-1).view(B, -1) # Shape: [B, K]
