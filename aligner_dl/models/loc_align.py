@@ -323,9 +323,9 @@ class LocAlign(SoftBBBase):
                     batch, step_outputs, topk_src_indices, topk_tar_indices, 
                     top_corr_indices, top_corr_values
                 )
-                if batch.get('tar_initial_importance'):
+                if batch.get('tar_initial_importance') is not None:
                     recycling_state['tar_importance'] += batch['tar_initial_importance']
-                if batch.get('src_initial_importance'):
+                if batch.get('src_initial_importance') is not None:
                     recycling_state['src_importance'] += batch['src_initial_importance']
         
         # Return with correspondence metadata if requested

@@ -149,7 +149,7 @@ class ScanNetDataset(BasePairDataset):
                 initial_importance = torch.zeros(n_atoms, dtype=torch.float32)
                 # Set importance to high value for atoms in motif residues
                 for res_id in motif_residues:
-                    initial_importance[residue_indices == res_id] = 1e-6
+                    initial_importance[residue_indices == res_id] = 1e6
                 ret[f'{key}_initial_importance'] = F.pad(initial_importance, (0, self._max_atoms - n_atoms))
         
         if self.inference:
