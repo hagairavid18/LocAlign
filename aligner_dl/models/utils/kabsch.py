@@ -78,7 +78,7 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     # Compute determinant signs: (B,)
     det_sign = torch.sign(torch.det(torch.bmm(raw_Vt.transpose(1, 2), U.transpose(1, 2))))
 
-    # Fix reflection by adjusting the last row of Vt
+    # Fix tarlection by adjusting the last row of Vt
     eye = torch.eye(3, device=H.device, dtype=H.dtype).unsqueeze(0).repeat(H.shape[0], 1, 1)
     eye[:, -1, -1] = det_sign  # last singular value sign correction
 

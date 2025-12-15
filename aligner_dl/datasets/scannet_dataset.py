@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 import pickle
 import numpy as np
+import pandas as pd
 from Bio.PDB.Atom import PDBConstructionWarning
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Structure import Structure
@@ -95,21 +96,21 @@ class ScanNetDataset(BasePairDataset):
 
         try:
             esm_embeddings_tar = self.extract_esm_embeddings(
-                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['ref_protein'] + row['ref_chain'] + '_non_ligand_.ent'),
-                chain_name=row['ref_protein'] + '_' + row['ref_chain']
+                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['tar_protein'] + row['tar_chain'] + '_non_ligand_.ent'),
+                chain_name=row['tar_protein'] + '_' + row['tar_chain']
             )
             esm_embeddings_src = self.extract_esm_embeddings(
-                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['mov_protein'] + row['mov_chain'] + '_non_ligand_.ent'),
-                chain_name=row['mov_protein'] + '_' + row['mov_chain']
+                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['src_protein'] + row['src_chain'] + '_non_ligand_.ent'),
+                chain_name=row['src_protein'] + '_' + row['src_chain']
             ) 
             embedding_dicts = {
-                "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['ref_protein'] + row['ref_chain'], esm_embedding_dict=esm_embeddings_tar),
-                "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['mov_protein'] + row['mov_chain'], esm_embedding_dict=esm_embeddings_src),
+                "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['tar_protein'] + row['tar_chain'], esm_embedding_dict=esm_embeddings_tar),
+                "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['src_protein'] + row['src_chain'], esm_embedding_dict=esm_embeddings_src),
             }
-            # print(f"Read embeddings for {row[self._ligand_column]} {row['mov_protein']} {row['ref_protein']}")
+            # print(f"Read embeddings for {row[self._ligand_column]} {row['src_protein']} {row['tar_protein']}")
             if not self.inference:
-                src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['mov_protein'] + row['mov_chain'])
-                tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['ref_protein'] + row['ref_chain'])
+                src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['src_protein'] + row['src_chain'])
+                tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['tar_protein'] + row['tar_chain'])
                 if not src_atom_ids == tar_atom_ids:
                     shared_atom_ids = set(src_atom_ids).intersection(tar_atom_ids)
                     src_ligand_coordinates = src_ligand_coordinates[torch.tensor([src_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
@@ -118,7 +119,7 @@ class ScanNetDataset(BasePairDataset):
                         raise ValueError("Mismatched ligand coordinates after filtering to shared atoms")
 
         except Exception as e:
-            print(f"Error reading embeddings for {row['ref_protein']} {row['mov_protein']}: {e}")
+            print(f"Error reading embeddings for {row['tar_protein']} {row['src_protein']}: {e}")
             idx = torch.randint(0, len(self), (1,)).item()
             return self.__getitem__(idx)
 
@@ -136,6 +137,21 @@ class ScanNetDataset(BasePairDataset):
             ret[f'{key}_mask'] = F.pad(torch.ones(n_atoms), (0, self._max_atoms - n_atoms), value=0).bool()
 
         ret['metadata'] = row.to_dict()
+        
+        # Handle motifs for initial atom importance
+        # import pd
+        
+        for key, motif_col in [("src", "src_motif"), ("tar", "tar_motif")]:
+            if motif_col in row and pd.notna(row[motif_col]):
+                motif_residues = [int(r.strip()) for r in str(row[motif_col]).split(',')]
+                residue_indices = embedding_dicts[key]['atom_residue_indices']
+                n_atoms = embedding_dicts[key]['atom_embeddings'].shape[0]
+                initial_importance = torch.zeros(n_atoms, dtype=torch.float32)
+                # Set importance to high value for atoms in motif residues
+                for res_id in motif_residues:
+                    initial_importance[residue_indices == res_id] = 1e-6
+                ret[f'{key}_initial_importance'] = F.pad(initial_importance, (0, self._max_atoms - n_atoms))
+        
         if self.inference:
             return ret
         

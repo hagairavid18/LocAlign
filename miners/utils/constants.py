@@ -4,21 +4,25 @@ from dataclasses import dataclass
 
 @dataclass
 class PairHolder:
-    ref_protein: str
-    ref_chain: str
-    mov_protein: str
-    mov_chain: str
+    tar_protein: str
+    tar_chain: str
+    src_protein: str
+    src_chain: str
     ligand: str
     cath_degree: int = -1
     ligand_rmsd: float = 0.0
+    tar_motif: list[int] = None
+    src_motif: list[int] = None
     message: str | None = None
 
     def to_dict(self) -> dict:
         return {
-            'ref_protein': self.ref_protein,
-            'ref_chain': self.ref_chain,
-            'mov_protein': self.mov_protein,
-            'mov_chain': self.mov_chain,
+            'tar_protein': self.tar_protein,
+            'tar_chain': self.tar_chain,
+            'tar_motif': self.tar_motif,
+            'src_protein': self.src_protein,
+            'src_chain': self.src_chain,
+            'src_motif': self.src_motif,
             'cath_degree': self.cath_degree,
             'Ligand RMSD': self.ligand_rmsd,
             'ligand': self.ligand,
@@ -30,8 +34,8 @@ class PairHolder:
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_17_08_2025'
 LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_25_10_2025'
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_24_09_2025_examples'
-RESULTS_COLUMNS = ['Ligand_ID', 'ref_protein', 'mov_protein', 'ref_chain', 'mov_chain', 'cath_degree',
-                     'ref_ligand_n_atoms', 'mov_ligand_n_atoms', "failure_message"]
+RESULTS_COLUMNS = ['Ligand_ID', 'tar_protein', 'src_protein', 'tar_chain', 'src_chain', 'cath_degree',
+                     'tar_ligand_n_atoms', 'src_ligand_n_atoms', "failure_message"]
 
 NOT_ENOUGH_ATOMS_MESSAGE = "One of the ligands has less than 3 atoms"
 LIGAND_RESIDUE_IS_MISSED_MESSAGE = "Could not find ligand residue for the given chain"
@@ -42,23 +46,23 @@ LIGAND_OVERLAP_MESSAGE = "The lignad atoms lack sufficient overlap, with less th
 class ResultHolder:
     def __init__(self, pair_dict: dict[str, Any], ligand: str):
         self.Ligand_ID: str = ligand
-        self.ref_protein: str = pair_dict['ref_name']
-        self.mov_protein: str = pair_dict['mov_name']
-        self.ref_chain: str = pair_dict['ref_chain']
-        self.mov_chain: str = pair_dict['mov_chain']
+        self.tar_protein: str = pair_dict['tar_name']
+        self.src_protein: str = pair_dict['src_name']
+        self.tar_chain: str = pair_dict['tar_chain']
+        self.src_chain: str = pair_dict['src_chain']
         self.cath_degree: int = pair_dict['cath_level']
-        self.ref_ligand_n_atoms: int = -1
-        self.mov_ligand_n_atoms: int = -1
-        self.n_residues_ref_ligand: int = -1
-        self.n_residues_mov_ligand: int = -1
+        self.tar_ligand_n_atoms: int = -1
+        self.src_ligand_n_atoms: int = -1
+        self.n_residues_tar_ligand: int = -1
+        self.n_residues_src_ligand: int = -1
         self.failure_message: str = ""
 
 class BaselineHolder:
     def __init__(self, pair_dict: dict[str, Any], ligand: str):
         self.Ligand_ID: str = ligand
-        self.ref_protein: str = pair_dict['ref_name']
-        self.mov_protein: str = pair_dict['mov_name']
-        self.ref_chain: str = pair_dict['ref_chain']
-        self.mov_chain: str = pair_dict['mov_chain']
+        self.tar_protein: str = pair_dict['tar_name']
+        self.src_protein: str = pair_dict['src_name']
+        self.tar_chain: str = pair_dict['tar_chain']
+        self.src_chain: str = pair_dict['src_chain']
         self.cath_degree: int = pair_dict['cath_level']
         self.failure_message: str = ""

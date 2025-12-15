@@ -5,7 +5,7 @@ from models.utils.kabsch import weighted_kabsch_torch
 def compute_transformation_from_corr_and_coord(soft_corr: torch.Tensor, src_coordinates: torch.Tensor, tar_coordinates: torch.Tensor) -> dict[str, torch.Tensor]:
     """
     Compute the transformation matrices from the soft correspondences and the source and target coordinates.
-    First iteration uses only soft correspondences, while the rest use also the transformed source coordinates to refine the transformation. 
+    First iteration uses only soft correspondences, while the rest use also the transformed source coordinates to tarine the transformation. 
 
     Args:
         max_protein_length (int): maximum length of the protein, for d0 factor calculation.

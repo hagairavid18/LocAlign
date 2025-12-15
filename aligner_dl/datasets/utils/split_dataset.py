@@ -94,7 +94,7 @@ def split_csv(
     df = pd.read_csv(input_csv)
     # df = df[:50]
     print(f"Read CSV with {len(df)} rows")
-    df = df.drop_duplicates(subset=['ref_protein', 'mov_protein'], keep=False)
+    df = df.drop_duplicates(subset=['tar_protein', 'src_protein'], keep=False)
     print(f"Removed duplicates, {len(df)} rows remaining")
     # remove n_transforamtions != 1
     # df = df[df['n_transformations'] == 1]
@@ -120,7 +120,7 @@ def split_csv(
     # df = df[df['bbc'] > 10]
     # print(f"Filtered Best BBR and BBC, {len(df)} rows remaining")
     high_cath_degree = df[df['cath_degree'] > 3]
-    print(f"Grouped by ref_protein and mov_protein, {len(df)} rows remaining")
+    print(f"Grouped by tar_protein and src_protein, {len(df)} rows remaining")
     high_cath_degree = high_cath_degree.groupby('Ligand_ID').head(1000)
     df = pd.concat([df[df['cath_degree'] < 4], high_cath_degree])
     print(f"Grouped by Ligand_ID, {len(df)} rows remaining")
@@ -172,7 +172,7 @@ def split_csv(
         # else:
         print("No cached sequences found, extracting from PDB files")
         for row_idx, row in df.iterrows():
-            for prot_col, chain_col in [('ref_protein', 'ref_chain'), ('mov_protein', 'mov_chain')]:
+            for prot_col, chain_col in [('tar_protein', 'tar_chain'), ('src_protein', 'src_chain')]:
                 protein_id = row[prot_col]
                 chain_id = row[chain_col]
                 ligand_id = row['Ligand_ID']
@@ -200,13 +200,13 @@ def split_csv(
         triple_to_cluster = {triple: cluster_ids[i] for i, triple in enumerate(unique_triples.keys())}
 
         # Assign clusters to df
-        df['ref_cluster'] = np.nan
-        df['mov_cluster'] = np.nan
+        df['tar_cluster'] = np.nan
+        df['src_cluster'] = np.nan
 
         for row_idx, row in df.iterrows():
             for cluster_col, prot_col, chain_col in [
-                ('ref_cluster', 'ref_protein', 'ref_chain'),
-                ('mov_cluster', 'mov_protein', 'mov_chain')
+                ('tar_cluster', 'tar_protein', 'tar_chain'),
+                ('src_cluster', 'src_protein', 'src_chain')
             ]:
                 ligand_id = row['Ligand_ID']
                 protein_id = row[prot_col]
@@ -218,9 +218,9 @@ def split_csv(
                     df.at[row_idx, cluster_col] = cluster
 
         # Filter out rows where either protein has no cluster
-        df = df.dropna(subset=['ref_cluster', 'mov_cluster'])
-        df['ref_cluster'] = df['ref_cluster'].astype(int)
-        df['mov_cluster'] = df['mov_cluster'].astype(int)
+        df = df.dropna(subset=['tar_cluster', 'src_cluster'])
+        df['tar_cluster'] = df['tar_cluster'].astype(int)
+        df['src_cluster'] = df['src_cluster'].astype(int)
 
         # Group by clusters
         cluster_to_proteins_and_chains = defaultdict(set)
@@ -257,10 +257,10 @@ def split_csv(
             # Only keep rows where both proteins are from same split
             split_dfs = {'train': [], 'val': [], 'test': []}
             for _, row in df.iterrows():
-                ref_split = protein_to_split.get(row['ref_protein'] + row['ref_chain'])
-                mov_split = protein_to_split.get(row['mov_protein'] + row['mov_chain'])
-                if ref_split is not None and ref_split == mov_split:
-                    split_dfs[ref_split].append(row)
+                tar_split = protein_to_split.get(row['tar_protein'] + row['tar_chain'])
+                src_split = protein_to_split.get(row['src_protein'] + row['src_chain'])
+                if tar_split is not None and tar_split == src_split:
+                    split_dfs[tar_split].append(row)
 
             train_df = pd.DataFrame(split_dfs['train'])
             val_df = pd.DataFrame(split_dfs['val'])

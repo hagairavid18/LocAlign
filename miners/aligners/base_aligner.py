@@ -12,7 +12,7 @@ class BaseStructureAligner:
         self.name: str = "base"
         pass
     
-    def impose_structure(self, fix_points: list[Atom], mov_points: list[Atom]) -> tuple[np.ndarray, np.ndarray]:
+    def impose_structure(self, fix_points: list[Atom], src_points: list[Atom]) -> tuple[np.ndarray, np.ndarray]:
         raise NotImplementedError("Subclass must implement abstract method")
 
 

@@ -43,14 +43,14 @@ class RecyclingModule(nn.Module):
 
         
         
-    def _build_reference_frame(self, coordinates):
+    def _build_tarerence_frame(self, coordinates):
         mean = torch.mean(coordinates, axis=-2)
         U, eigenvalues, Vh = torch.linalg.svd(coordinates - mean.unsqueeze(-2))
         V = torch.swapaxes(Vh,-2,-1)
         return torch.cat([mean.unsqueeze(-2),V],axis=-2)
     
-    def _global_to_local(self,coordinates, reference_frame):
-        return  torch.einsum('ijk,ikl->ijl', (coordinates - reference_frame[:,0,:].unsqueeze(-2)), reference_frame[:,1:,:])    
+    def _global_to_local(self,coordinates, tarerence_frame):
+        return  torch.einsum('ijk,ikl->ijl', (coordinates - tarerence_frame[:,0,:].unsqueeze(-2)), tarerence_frame[:,1:,:])    
                 
     def _fourier_encode(self, coordinates):
         fourier_vectors_dot_coords = torch.matmul(coordinates,self.fourier_vectors)
@@ -68,7 +68,7 @@ class RecyclingModule(nn.Module):
     def forward(self, src_coords: torch.Tensor, tgt_coords: torch.Tensor,
                 top_corr_values: torch.Tensor | None = None, top_corr_indices: torch.Tensor | None=None):
                 
-        tgt_frame = self._build_reference_frame(tgt_coords)        
+        tgt_frame = self._build_tarerence_frame(tgt_coords)        
         tgt_coords_local = self._global_to_local(tgt_coords, tgt_frame)
         src_coords_local = self._global_to_local(src_coords, tgt_frame)
         

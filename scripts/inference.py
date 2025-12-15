@@ -49,7 +49,9 @@ class InferenceRunner:
         ligand_id: str,
         base_save_dir: str,
         csv_path: str | None = None,
-        protein_pair: tuple[str, str, str, str] | None = None
+        protein_pair: tuple[str, str, str, str] | None = None,
+        src_motif: str | None = None,
+        tar_motif: str | None = None
     ) -> None:
         """
         Initialize the inference runner.
@@ -60,13 +62,17 @@ class InferenceRunner:
             base_save_dir (str): Base directory to save inference results
             csv_path (str | None): Path to CSV file with protein pairs (optional)
             protein_pair (tuple[str, str, str, str] | None): Single protein pair as 
-                (ref, ref_chain, mov, mov_chain) (optional)
+                (tar, tar_chain, src, src_chain) (optional)
+            src_motif (str | None): Comma-separated residue IDs for source motif (optional)
+            tar_motif (str | None): Comma-separated residue IDs for target motif (optional)
         """
         self._checkpoint_path = checkpoint_path
         self._ligand_id = ligand_id
         self._base_save_dir = base_save_dir
         self._csv_path = csv_path
         self._protein_pair = protein_pair
+        self._src_motif = src_motif
+        self._tar_motif = tar_motif
         
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self._df = None
@@ -87,23 +93,30 @@ class InferenceRunner:
         # Build PairHolder list from CSV or single pair input.
         self._pairs: list[PairHolder] = []
         if not self._csv_path:
-            ref, ref_chain, mov, mov_chain = self._protein_pair
-            ph = PairHolder(ref_protein=ref, ref_chain=ref_chain,
-                            mov_protein=mov, mov_chain=mov_chain,
+            tar, tar_chain, src, src_chain = self._protein_pair
+            ph = PairHolder(tar_protein=tar, tar_chain=tar_chain, tar_motif=self._tar_motif,
+                            src_protein=src, src_chain=src_chain, src_motif=self._src_motif,
                             ligand=self._ligand_id)
             self._pairs.append(ph)
             # create initial dataframe and csv path (temporary)
-            self._df = pd.DataFrame([ph.to_dict()])
+            df_dict = ph.to_dict()
+            # if self._src_motif:
+            #     df_dict['src_motif'] = self._src_motif
+            # if self._tar_motif:
+            #     df_dict['tar_motif'] = self._tar_motif
+            self._df = pd.DataFrame([df_dict])
             self._csv_output_path = "temp_csv.csv"
         else:
             raw_df = pd.read_csv(self._csv_path)
             # Rename columns to match expected format
             for _, row in raw_df.iterrows():
                 ph = PairHolder(
-                    ref_protein=row['ref_protein'],
-                    ref_chain=row['ref_chain'],
-                    mov_protein=row['mov_protein'],
-                    mov_chain=row['mov_chain'],
+                    tar_protein=row['tar_protein'],
+                    tar_chain=row['tar_chain'],
+                    tar_motif=row.get('tar_motif', None),
+                    src_protein=row['src_protein'],
+                    src_chain=row['src_chain'],
+                    src_motif=row.get('src_motif', None),
                     ligand=row.get('ligand', self._ligand_id),
                 )
                 self._pairs.append(ph)
@@ -155,8 +168,11 @@ class InferenceRunner:
         # Collect unique protein-chain-ligand combinations from PairHolder list
         unique_combinations = set()
         for ph in self._pairs:
-            unique_combinations.add((ph.ref_protein, ph.ref_chain, ph.ligand))
-            unique_combinations.add((ph.mov_protein, ph.mov_chain, ph.ligand))
+            unique_combinations.add((ph.tar_protein, ph.tar_chain, ph.ligand))
+            unique_combinations.add((ph.src_protein, ph.src_chain, ph.ligand))
+
+        # avoid redownloading cached structures
+        unique_combinations = {combo for combo in unique_combinations if not os.path.exists(os.path.join(self._cache_paths['pdb_files'], combo[2], f"{combo[0]}{combo[1]}_non_ligand_.ent"))}
 
         # Save models with multiprocessing and progress bar
         combos = list(unique_combinations)
@@ -168,35 +184,36 @@ class InferenceRunner:
         processes = min(total, max(1, cpu_count() - 1))
         # collect failed combos with error messages
         failed_combos: list[tuple[str, str, str, str]] = []
-        with Pool(processes=processes) as pool:
-            for success, pdb_name, chain_id, ligand_name, err in tqdm(pool.imap_unordered(_download_non_ligand_worker, args_list), total=total, desc="Downloading PDB files"):
-                if not success:
-                    print(f"Failed to download {pdb_name} chain {chain_id} ligand {ligand_name}: {err}")
-                    failed_combos.append((pdb_name, chain_id, ligand_name, err))
+        if combos:
+            with Pool(processes=processes) as pool:
+                for success, pdb_name, chain_id, ligand_name, err in tqdm(pool.imap_unordered(_download_non_ligand_worker, args_list), total=total, desc="Downloading PDB files"):
+                    if not success:
+                        print(f"Failed to download {pdb_name} chain {chain_id} ligand {ligand_name}: {err}")
+                        failed_combos.append((pdb_name, chain_id, ligand_name, err))
 
         if failed_combos:
             failed_set = set((p, c, l) for p, c, l, _ in failed_combos)
             err_map = {(p, c, l): err for p, c, l, err in failed_combos}
 
-            # mark PairHolder.message for any pair referencing a failed combo
+            # mark PairHolder.message for any pair tarerencing a failed combo
             for ph in self._pairs:
-                ref_combo = (ph.ref_protein, ph.ref_chain, ph.ligand)
-                mov_combo = (ph.mov_protein, ph.mov_chain, ph.ligand)
+                tar_combo = (ph.tar_protein, ph.tar_chain, ph.ligand)
+                src_combo = (ph.src_protein, ph.src_chain, ph.ligand)
                 msgs = []
-                if ref_combo in failed_set:
-                    msgs.append(f"ref_missing:{err_map.get(ref_combo)}")
-                if mov_combo in failed_set:
-                    msgs.append(f"mov_missing:{err_map.get(mov_combo)}")
+                if tar_combo in failed_set:
+                    msgs.append(f"tar_missing:{err_map.get(tar_combo)}")
+                if src_combo in failed_set:
+                    msgs.append(f"src_missing:{err_map.get(src_combo)}")
                 if msgs:
                     ph.message = ';'.join(msgs)
 
-            # Build removed and filtered dataframes from PairHolder list
+            # Build resrced and filtered dataframes from PairHolder list
             kept = [p for p in self._pairs if p.message is None]
 
             self._pairs = kept
 
             if not kept:
-                raise RuntimeError("All protein pairs were removed because required non-ligand models failed to download. Aborting inference.")
+                raise RuntimeError("All protein pairs were resrced because required non-ligand models failed to download. Aborting inference.")
     
     def _extract_features(self) -> None:
         """
@@ -209,26 +226,26 @@ class InferenceRunner:
 
         extract_scannet(self._pairs, self._cache_paths['pdb_files'], self._cache_paths['scannet_embeddings'])
 
-    def _write_removed_pairs(self) -> None:
+    def _write_resrced_pairs(self) -> None:
         """
-        Persist removed pairs (those with non-empty message) to the output directory.
+        Persist resrced pairs (those with non-empty message) to the output directory.
         This is called after preprocessing and before model/dataloader creation.
         """
-        removed = [p for p in getattr(self, '_pairs', []) if p.message is not None]
-        if not removed:
+        resrced = [p for p in getattr(self, '_pairs', []) if p.message is not None]
+        if not resrced:
             return
 
         # Include the message in the saved CSV for debugging
         rows = []
-        for p in removed:
+        for p in resrced:
             d = p.to_dict()
             d['message'] = p.message
             rows.append(d)
 
-        removed_df = pd.DataFrame(rows)
-        removed_path = os.path.join(self._output_dir, 'removed_pairs_due_to_download_failures.csv')
-        removed_df.to_csv(removed_path, index=False)
-        print(f"Wrote {len(removed_df)} removed pairs to: {removed_path}")
+        resrced_df = pd.DataFrame(rows)
+        resrced_path = os.path.join(self._output_dir, 'resrced_pairs_due_to_download_failures.csv')
+        resrced_df.to_csv(resrced_path, index=False)
+        print(f"Wrote {len(resrced_df)} resrced pairs to: {resrced_path}")
     
     def _prepare_dataloader(self) -> None:
         """
@@ -283,7 +300,7 @@ class InferenceRunner:
         Build model and load checkpoint.
         
         Returns:
-            None: Sets self._model and moves it to device
+            None: Sets self._model and srces it to device
         
         Raises:
             FileNotFoundError: If model config file doesn't exist
@@ -337,7 +354,7 @@ class InferenceRunner:
         Returns:
             None: Saves predictions and visualizations to self._output_dir
         """
-        # Move tensors to device (model also handles this internally, but we keep it explicit here)
+        # srce tensors to device (model also handles this internally, but we keep it explicit here)
         batch = {k: v.to(self._device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
         # Run model inference for this batch (batch_size is 1)
@@ -366,8 +383,8 @@ class InferenceRunner:
         top_corr_indices_atom = preds["corr_atom_indices"][0][above_threshold_indices]
 
         # Prepare save paths and folder name
-        ref = metadata["ref_protein"]
-        mov = metadata["mov_protein"]
+        tar = metadata["tar_protein"]
+        src = metadata["src_protein"]
         ligand = metadata.get("ligand", "general")
 
         corr_rmsd = preds['loss_dict']['corr_rmsd'].item()
@@ -380,7 +397,7 @@ class InferenceRunner:
 
         save_folder = os.path.join(
             self._output_dir,
-            f"{ref}_{mov}_{ligand}_"
+            f"{tar}_{src}_{ligand}_"
             f"corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}_radius{radius:.2f}"
         )
         os.makedirs(save_folder, exist_ok=True)
@@ -403,8 +420,8 @@ class InferenceRunner:
                 base_folder=save_folder,
                 ligand=ligand,
                 cache_dir= os.path.join(self._base_save_dir, '.cache'),
-                template=ref + metadata['ref_chain'],
-                query=mov + metadata['mov_chain'],
+                template=tar + metadata['tar_chain'],
+                query=src + metadata['src_chain'],
                 query_transformation=(R_np, t_np),
                 corr_values=top_corr_values.detach().cpu().numpy(),
                 corr_indices=top_corr_indices.detach().cpu().numpy(),
@@ -429,8 +446,8 @@ class InferenceRunner:
             self._save_non_ligand_models()
 
         self._extract_features()
-        # persist removed pairs (with messages) now, before creating the dataloader/model
-        self._write_removed_pairs()
+        # persist resrced pairs (with messages) now, before creating the dataloader/model
+        self._write_resrced_pairs()
         self._prepare_dataloader()
         self._load_model()
         self._run_inference()
@@ -457,7 +474,7 @@ def parse_args():
         default="inference_results",
         help="Base directory to save inference results."
     )
-    # --save_dir removed: output directory is always created under base_save_dir with a timestamp
+    # --save_dir resrced: output directory is always created under base_save_dir with a timestamp
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
@@ -470,6 +487,19 @@ def parse_args():
         nargs=4,
         metavar=("TAR_PROTEIN", "TAR_CHAIN", "SRC_PROTEIN", "SRC_CHAIN"),
         help="Specify a single protein pair instead of a CSV."
+    )
+    
+    parser.add_argument(
+        "--src_motif",
+        type=str,
+        default=None,
+        help="Comma-separated residue IDs for source motif (e.g., '10,11,12'). Only used with --protein_pair."
+    )
+    parser.add_argument(
+        "--tar_motif",
+        type=str,
+        default=None,
+        help="Comma-separated residue IDs for target motif (e.g., '20,21,22'). Only used with --protein_pair."
     )
     
     return parser.parse_args()
@@ -485,7 +515,9 @@ def main():
         ligand_id=args.ligand_id,
         base_save_dir=args.base_save_dir,
         csv_path=args.csv_path,
-        protein_pair=args.protein_pair
+        protein_pair=args.protein_pair,
+        src_motif=args.src_motif,
+        tar_motif=args.tar_motif
     )
     
     # Run the complete inference pipeline

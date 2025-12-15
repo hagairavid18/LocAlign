@@ -1,5 +1,5 @@
 trainer:
-  exp_name: baseline-embed01-ligand5-corr1-recycle4-radius035-sched-corr2
+  exp_name: baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr-0gnn-ligand-split
   tags: ["baseline", "ligand_split", "small_ligands"]
   max_epochs: 10
   validate_only: false
@@ -27,7 +27,7 @@ model:
         CDM
       args:
         n_nodes: 400
-        n_gnn_layers: 10
+        n_gnn_layers: 0
         n_rbf_functions: 32
         with_angles: true
     keypoints_selection:
@@ -45,7 +45,7 @@ model:
           embedding: 0.5
           gap: 0.0
           ligand_rmsd: 5.0
-          radius: 0.35
+          radius: 0.5
         embedding_method: 'contrastive_clip_normalized'
     metric:
       name: MetricsCollection
@@ -72,8 +72,8 @@ model:
 
             max_lr: 0.0005
             epochs: 10
-            steps_per_epoch: 8712 
-            # steps_per_epoch: 10779 
+            # steps_per_epoch: 8712 
+            steps_per_epoch: 10779 
             # steps_per_epoch: 4356 
             div_factor: 25
             # final_div_factor: 1e4
@@ -82,7 +82,7 @@ dataset:
   train:
     name: ScanNetDataset
     args:
-      df_path: datasets/csv_files/homology_25_10/train.csv
+      df_path: datasets/csv_files/ligand_25_10/train.csv
       base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_atom_types'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
@@ -96,7 +96,7 @@ dataset:
   validation:
     name: ScanNetDataset
     args:
-      df_path: datasets/csv_files/homology_25_10/val.csv
+      df_path: datasets/csv_files/ligand_25_10/val.csv
       base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_atom_types'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true

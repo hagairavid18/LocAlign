@@ -10,10 +10,10 @@ def parse_protein_pairs(pairs_df: pd.DataFrame, prev_df: pd.DataFrame | None = N
         pairs.append(
             dict(
                 ligand_id = line['ligand_id'],
-                ref_name = line['ref_protein'],
-                ref_chain = line['ref_chain'],
-                mov_name = line['mov_protein'],
-                mov_chain = line['mov_chain'],
+                tar_name = line['tar_protein'],
+                tar_chain = line['tar_chain'],
+                src_name = line['src_protein'],
+                src_chain = line['src_chain'],
                 cath_level = line['CATH_degree'],
             ))
     # logging.info(f"found {len(pairs)} pairs for {ligand}")
@@ -24,10 +24,10 @@ def parse_protein_pairs(pairs_df: pd.DataFrame, prev_df: pd.DataFrame | None = N
         prev_pairs.append(
             dict(
                 ligand_id = line['Ligand_ID'],
-                ref_name = line['ref_protein'],
-                ref_chain = line['ref_chain'],
-                mov_name = line['mov_protein'],
-                mov_chain = line['mov_chain'],
+                tar_name = line['tar_protein'],
+                tar_chain = line['tar_chain'],
+                src_name = line['src_protein'],
+                src_chain = line['src_chain'],
                 cath_level = line['cath_degree'],
             ))
     new_pairs = [pair for pair in pairs if pair not in prev_pairs]

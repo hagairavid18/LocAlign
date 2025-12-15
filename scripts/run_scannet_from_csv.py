@@ -22,29 +22,29 @@ from scripts.run_scannet import extract_scannet
 
 @dataclass
 class Pair:
-    ref_protein: str
-    ref_chain: str
-    mov_protein: str
-    mov_chain: str
+    tar_protein: str
+    tar_chain: str
+    src_protein: str
+    src_chain: str
     ligand: str
 
 
 def read_pairs_from_csv(csv_path: str,
                         ligand_col: str = 'Ligand_ID',
-                        ref_protein_col: str = 'ref_protein',
-                        ref_chain_col: str = 'ref_chain',
-                        mov_protein_col: str = 'mov_protein',
-                        mov_chain_col: str = 'mov_chain') -> list[Pair]:
+                        tar_protein_col: str = 'tar_protein',
+                        tar_chain_col: str = 'tar_chain',
+                        src_protein_col: str = 'src_protein',
+                        src_chain_col: str = 'src_chain') -> list[Pair]:
     """Read CSV and return list of Pair objects (uses pandas for robustness)."""
     import pandas as pd
     df = pd.read_csv(csv_path)
     pairs: list[Pair] = []
     for _, row in df.iterrows():
         pairs.append(Pair(
-            ref_protein=str(row[ref_protein_col]),
-            ref_chain=str(row[ref_chain_col]),
-            mov_protein=str(row[mov_protein_col]),
-            mov_chain=str(row[mov_chain_col]),
+            tar_protein=str(row[tar_protein_col]),
+            tar_chain=str(row[tar_chain_col]),
+            src_protein=str(row[src_protein_col]),
+            src_chain=str(row[src_chain_col]),
             ligand=str(row[ligand_col])
         ))
     return pairs
@@ -57,20 +57,20 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument('--scannet-dir', required=True, help='Output directory for ScanNet .pkl files')
     parser.add_argument('--atom-types', action='store_true', help='Compute and include atom type labels in output')
     parser.add_argument('--ligand-col', default='Ligand_ID')
-    parser.add_argument('--ref-protein-col', default='ref_protein')
-    parser.add_argument('--ref-chain-col', default='ref_chain')
-    parser.add_argument('--mov-protein-col', default='mov_protein')
-    parser.add_argument('--mov-chain-col', default='mov_chain')
+    parser.add_argument('--tar-protein-col', default='tar_protein')
+    parser.add_argument('--tar-chain-col', default='tar_chain')
+    parser.add_argument('--src-protein-col', default='src_protein')
+    parser.add_argument('--src-chain-col', default='src_chain')
 
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     pairs = read_pairs_from_csv(
         args.csv,
         ligand_col=args.ligand_col,
-        ref_protein_col=args.ref_protein_col,
-        ref_chain_col=args.ref_chain_col,
-        mov_protein_col=args.mov_protein_col,
-        mov_chain_col=args.mov_chain_col,
+        tar_protein_col=args.tar_protein_col,
+        tar_chain_col=args.tar_chain_col,
+        src_protein_col=args.src_protein_col,
+        src_chain_col=args.src_chain_col,
     )
 
     # Ensure output dir exists

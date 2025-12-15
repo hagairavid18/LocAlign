@@ -162,7 +162,7 @@ class Protein:
         Extract atoms within a specified distance from the given center point.
         
         Args:
-            center: A 3D coordinate representing the reference point.
+            center: A 3D coordinate representing the tarerence point.
             distance_thresh: The threshold distance to include atoms.
             
         Returns:

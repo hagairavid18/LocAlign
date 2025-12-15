@@ -16,8 +16,8 @@ def add_has_scannet_embedding_column(df_path: str, base_data_path: str) -> None:
     for idx, row in df.iterrows():
         try:
             # Try reading the embeddings for the ligand and proteins
-            read_embedding(ligand_id=row['Ligand_ID'], chain=row['ref_protein'])
-            read_embedding(ligand_id=row['Ligand_ID'], chain=row['mov_protein'])
+            read_embedding(ligand_id=row['Ligand_ID'], chain=row['tar_protein'])
+            read_embedding(ligand_id=row['Ligand_ID'], chain=row['src_protein'])
             has_embedding_column.append(True)
         except:
             has_embedding_column.append(False)

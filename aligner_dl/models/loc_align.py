@@ -256,13 +256,18 @@ class LocAlign(SoftBBBase):
             should_recycle = (iteration < self._n_recycling_iterations)
             
             # Select keypoints
+            # Use initial importance from batch on first iteration if available, otherwise use recycling state
+            src_importance = batch.get('src_initial_importance') if is_first_iteration else recycling_state['src_importance']
+        
+            tar_importance =batch.get('tar_initial_importance') if is_first_iteration else recycling_state['tar_importance']
+            
             topk_src_indices, topk_src_values, cache['src_value_key_query'], cache['src_local_scalar_edges'] = (
                 self._keypoints_selection(
                     src_embedding, 
                     batch['src_frames'], 
                     batch['src_neighbors'], 
                     batch['src_mask'],
-                    previous_importance=recycling_state['src_importance'],
+                    previous_importance=src_importance,
                     cached_value_key_query=cache['src_value_key_query'],
                     cached_local_scalar_edges=cache['src_local_scalar_edges']
                 )
@@ -274,7 +279,7 @@ class LocAlign(SoftBBBase):
                     batch['tar_frames'],
                     batch['tar_neighbors'],
                     batch['tar_mask'],
-                    previous_importance=recycling_state['tar_importance'],
+                    previous_importance=tar_importance,
                     cached_value_key_query=cache['tar_value_key_query'],
                     cached_local_scalar_edges=cache['tar_local_scalar_edges']
                 )
@@ -318,6 +323,10 @@ class LocAlign(SoftBBBase):
                     batch, step_outputs, topk_src_indices, topk_tar_indices, 
                     top_corr_indices, top_corr_values
                 )
+                if batch.get('tar_initial_importance'):
+                    recycling_state['tar_importance'] += batch['tar_initial_importance']
+                if batch.get('src_initial_importance'):
+                    recycling_state['src_importance'] += batch['src_initial_importance']
         
         # Return with correspondence metadata if requested
         if return_correspondences:

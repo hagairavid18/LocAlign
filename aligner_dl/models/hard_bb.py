@@ -16,19 +16,19 @@ class HardBB(L.LightningModule):
     def validation_step(self, batch: dict[torch.Tensor], batch_idx: int):
         tar_embedding, src_embedding  = batch['tar_embedding'], batch['src_embedding']
         bsize = tar_embedding.shape[0]
-        ref_expanded = tar_embedding.unsqueeze(2)  # Shape: (BATCH, A, 1, C)
-        mov_expanded = src_embedding.unsqueeze(1)  # Shape: (BATCH, 1, B, C)
+        tar_expanded = tar_embedding.unsqueeze(2)  # Shape: (BATCH, A, 1, C)
+        src_expanded = src_embedding.unsqueeze(1)  # Shape: (BATCH, 1, B, C)
 
         # Calculate squared differences
-        l2_distances = torch.sqrt(torch.sum((ref_expanded - mov_expanded) ** 2, dim=-1))  # Shape: (BATCH, A, B)
-        min_indices_ref_to_mov = torch.argmin(l2_distances, axis=-1)
-        min_indices_mov_to_ref = torch.argmin(l2_distances, axis=-2)
+        l2_distances = torch.sqrt(torch.sum((tar_expanded - src_expanded) ** 2, dim=-1))  # Shape: (BATCH, A, B)
+        min_indices_tar_to_src = torch.argmin(l2_distances, axis=-1)
+        min_indices_src_to_tar = torch.argmin(l2_distances, axis=-2)
         # Find reciprocal pairs
         reciprocal_pairs = []
         for batch_id in range(bsize):
             for a_index in range(tar_embedding.shape[1]):
-                b_index = min_indices_ref_to_mov[batch_id, a_index].item()
-                if min_indices_mov_to_ref[batch_id, b_index] == a_index:
+                b_index = min_indices_tar_to_src[batch_id, a_index].item()
+                if min_indices_src_to_tar[batch_id, b_index] == a_index:
                     reciprocal_pairs.append((batch_id, a_index, b_index, l2_distances[batch_id, a_index, b_index]))
         curr_num_pairs = len(reciprocal_pairs) + 1
         

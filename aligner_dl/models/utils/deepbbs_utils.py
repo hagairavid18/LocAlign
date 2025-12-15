@@ -8,8 +8,8 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 
-# Part of the code is referred from: https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py
-# Part of the code is referred from: https://github.com/WangYueFt/dcp
+# Part of the code is tarerred from: https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py
+# Part of the code is tarerred from: https://github.com/WangYueFt/dcp
 
 def quat2mat(quat):
     x, y, z, w = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]

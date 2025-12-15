@@ -122,8 +122,8 @@ def extract_scannet(pairs, pdb_dir: str, scannet_dir: str) -> None:
     structures that don't already have cached features.
 
     Args:
-        pairs: An iterable of objects with attributes 'ref_protein','ref_chain',
-               'mov_protein','mov_chain','ligand' (e.g., a list of PairHolder).
+        pairs: An iterable of objects with attributes 'tar_protein','tar_chain',
+               'src_protein','src_chain','ligand' (e.g., a list of PairHolder).
         pdb_dir: Directory containing the non-ligand PDB files (organized by ligand folder).
         scannet_dir: Directory to save ScanNet features
     """
@@ -133,39 +133,39 @@ def extract_scannet(pairs, pdb_dir: str, scannet_dir: str) -> None:
     # Expect an iterable of Pair-like objects
     for p in pairs:
         try:
-            ref_protein, ref_chain = p.ref_protein, p.ref_chain
-            mov_protein, mov_chain = p.mov_protein, p.mov_chain
+            tar_protein, tar_chain = p.tar_protein, p.tar_chain
+            src_protein, src_chain = p.src_protein, p.src_chain
             ligand = p.ligand
         except Exception as e:
-            raise ValueError("Each item in 'pairs' must have attributes ref_protein, ref_chain, mov_protein, mov_chain, ligand") from e
+            raise ValueError("Each item in 'pairs' must have attributes tar_protein, tar_chain, src_protein, src_chain, ligand") from e
 
-        ref_feature_path = os.path.join(
+        tar_feature_path = os.path.join(
             scannet_dir,
             ligand,
-            f"{ref_protein}{ref_chain}_scannet_atoms.pkl"
+            f"{tar_protein}{tar_chain}_scannet_atoms.pkl"
         )
-        if not os.path.exists(ref_feature_path):
-            ref_pdb_path = os.path.join(
+        if not os.path.exists(tar_feature_path):
+            tar_pdb_path = os.path.join(
                 pdb_dir,
                 ligand,
-                f"{ref_protein}{ref_chain}_non_ligand_.ent"
+                f"{tar_protein}{tar_chain}_non_ligand_.ent"
             )
-            all_paths.append(ref_pdb_path)
+            all_paths.append(tar_pdb_path)
 
-        mov_feature_path = os.path.join(
+        src_feature_path = os.path.join(
             scannet_dir,
             ligand,
-            f"{mov_protein}{mov_chain}_scannet_atoms.pkl"
+            f"{src_protein}{src_chain}_scannet_atoms.pkl"
         )
-        if not os.path.exists(mov_feature_path):
-            mov_pdb_path = os.path.join(
+        if not os.path.exists(src_feature_path):
+            src_pdb_path = os.path.join(
                 pdb_dir,
                 ligand,
-                f"{mov_protein}{mov_chain}_non_ligand_.ent"
+                f"{src_protein}{src_chain}_non_ligand_.ent"
             )
-            all_paths.append(mov_pdb_path)
+            all_paths.append(src_pdb_path)
 
-    # Remove duplicates
+    # Resrce duplicates
     print(f"❗ Structures to process with ScanNet: {len(all_paths)}")
     all_paths = list(set(all_paths))
     print(f"❗ Structures to process with ScanNet after deduplication: {len(all_paths)}")

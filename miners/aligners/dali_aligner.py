@@ -48,24 +48,24 @@ class DaliAligner():
                 return np.array(matrices), rmsd, z
         return None, None, None
 
-    def impose_structure(self, ref_protein, mov_protein, ligand_dir: str) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    def impose_structure(self, tar_protein, src_protein, ligand_dir: str) -> tuple[list[np.ndarray], list[np.ndarray]]:
        
-        mov_name, mov_chain = mov_protein._pdb_name, mov_protein._chain_id
-        ref_name, ref_chain = ref_protein._pdb_name, ref_protein._chain_id
-        mov_path = os.path.join('..', mov_name + mov_chain + '_non_ligand_.ent')
-        ref_path = os.path.join('..', ref_name + ref_chain + '_non_ligand_.ent')
+        src_name, src_chain = src_protein._pdb_name, src_protein._chain_id
+        tar_name, tar_chain = tar_protein._pdb_name, tar_protein._chain_id
+        src_path = os.path.join('..', src_name + src_chain + '_non_ligand_.ent')
+        tar_path = os.path.join('..', tar_name + tar_chain + '_non_ligand_.ent')
         try:
-            temp_dir = tempfile.mkdtemp(prefix=os.path.join(self.HOME_PATH, "ligand_aligner", ligand_dir + '/'))
+            temp_dir = tempfile.mkdtemp(ptarix=os.path.join(self.HOME_PATH, "ligand_aligner", ligand_dir + '/'))
             os.makedirs(temp_dir, exist_ok=True)
             os.chdir(temp_dir)
-            import_1 = subprocess.run([self.IMPORT_PATH, '--pdbfile', mov_path, '--pdbid', mov_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
-            import_2 = subprocess.run([self.IMPORT_PATH, '--pdbfile', ref_path, '--pdbid', ref_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
-            align_log = subprocess.run([self.DALI_PATH, '--cd1', ref_name + ref_chain , '--cd2', mov_name + mov_chain,
+            import_1 = subprocess.run([self.IMPORT_PATH, '--pdbfile', src_path, '--pdbid', src_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
+            import_2 = subprocess.run([self.IMPORT_PATH, '--pdbfile', tar_path, '--pdbid', tar_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
+            align_log = subprocess.run([self.DALI_PATH, '--cd1', tar_name + tar_chain , '--cd2', src_name + src_chain,
                                           '--dat1', self.DAT_PATH, '--dat2', self.DAT_PATH, '--title',
                                             "output options" ,'--outfmt', "summary,alignments,equivalences,transrot", "--clean"
                                               ], capture_output=True, text=True, check=True)
 
-            matrix, rmsd, _ = DaliAligner.extract_matrices_combined(f'{ref_name}{ref_chain}.txt')
+            matrix, rmsd, _ = DaliAligner.extract_matrices_combined(f'{tar_name}{tar_chain}.txt')
             os.chdir('/home/iscb/wolfson/hagairavid/LocAlign')
             try:
                 shutil.rmtree(temp_dir)

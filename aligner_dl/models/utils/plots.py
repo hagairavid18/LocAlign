@@ -69,7 +69,7 @@ def plot_correspondences(soft_correspondences_list: list[torch.Tensor], mask: to
             fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
         # Generate filename
-        name = f"{metadata[0]['Ligand_ID']}_{metadata[0]['mov_protein']}_{metadata[0]['ref_protein']}_{metadata[0]['cath_degree']}"
+        name = f"{metadata[0]['Ligand_ID']}_{metadata[0]['src_protein']}_{metadata[0]['tar_protein']}_{metadata[0]['cath_degree']}"
         plt.suptitle(f"Soft Correspondences Cath: {metadata[0]['cath_degree']}")
 
         # Save figure
@@ -116,7 +116,7 @@ def plot_offsets(offsets, frames, metadata, plot_dir) -> None:
         axes[2].set_ylabel("Frequency")
 
         plt.tight_layout()
-        name = f"{metadata[0]['Ligand_ID']}_{metadata[0]['mov_protein']}_{metadata[0]['ref_protein']}_{metadata[0]['cath_degree']}_offsets"
+        name = f"{metadata[0]['Ligand_ID']}_{metadata[0]['src_protein']}_{metadata[0]['tar_protein']}_{metadata[0]['cath_degree']}_offsets"
         plt.savefig(os.path.join(plot_dir, f"{name}.png"), dpi=500)
         plt.show()
 
@@ -142,7 +142,7 @@ def plot_offsets(offsets, frames, metadata, plot_dir) -> None:
         ax.legend()
 
         # Save the 3D scatter plot
-        name = f"{metadata[0]['Ligand_ID']}_{metadata[0]['mov_protein']}_{metadata[0]['ref_protein']}_{metadata[0]['cath_degree']}_histograms"
+        name = f"{metadata[0]['Ligand_ID']}_{metadata[0]['src_protein']}_{metadata[0]['tar_protein']}_{metadata[0]['cath_degree']}_histograms"
         plt.savefig(os.path.join(plot_dir, f"{name}.png"), dpi=500)
         plt.show()
         plt.close()
@@ -334,7 +334,7 @@ def plot_correspondences(batch, src_coordinates, tar_coordinates, soft_correspon
     plt.scatter(orig_top_values, gt_vals_np, color='green', label='Original Soft Correspondences', alpha=0.4, s=10)
 
     # plt.plot(x_range, trend_orig, color='blue', linestyle='--', label='Original Trend')
-    plt.plot(x_range, trend_new, color='red', linestyle='--', label='Refined Trend')
+    plt.plot(x_range, trend_new, color='red', linestyle='--', label='tarined Trend')
     plt.xscale('log')
     plt.xlabel("Soft Correspondence Value (log scale)")
     plt.ylabel("Ground Truth Distance")

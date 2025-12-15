@@ -32,13 +32,13 @@ class RANSACAligner(BaseStructureAligner):
                                 plot_save_dir: str|None = None) -> list[np.ndarray]:
         """
         First, calculates and MSE matrix between all transformations. The MSE is between the locations of the transformed point.
-        Later it use Hirechical Clustering and fcluster to cluster the points into different clusters, which refers to different
+        Later it use Hirechical Clustering and fcluster to cluster the points into different clusters, which tarers to different
         groups of transformations. The purpose is to get n_clusters that corresponds to the possible alignments in the 3d space
         of the two proteins. Finally, for each cluster we select a representative transformation by a criterion.
 
         Args:
             ransac_results (list[RegistrationResult]): Each results contains the RT that will be later clustered.
-            mov_points (list[np.ndarray]): NX3 array contains all xyz coordinates of the ligand we try to align.
+            src_points (list[np.ndarray]): NX3 array contains all xyz coordinates of the ligand we try to align.
             plot_save_dir (str | None, optional): If give, plots related the clustering will be saved. Defaults to None.
 
         Returns:
@@ -46,7 +46,7 @@ class RANSACAligner(BaseStructureAligner):
         """        
         
         transformations = [np.asarray(res.transformation) for res in ransac_results]
-        mse_matrix = create_transformation_mse_matrix(transformations, np.stack(mov_points))
+        mse_matrix = create_transformation_mse_matrix(transformations, np.stack(src_points))
             
         linkage_matrix = hierarchy.linkage(mse_matrix, method='average')
         
@@ -73,17 +73,17 @@ class RANSACAligner(BaseStructureAligner):
         representative_results: list[RegistrationResult] = [ransac_results[index] for index in list(cluster_representative.astype('int'))]
         return representative_results
         
-    def impose_structure(self, fix_points: list[Atom], mov_points: list[Atom],
+    def impose_structure(self, fix_points: list[Atom], src_points: list[Atom],
                          save_dir: str | None = None) -> tuple[list[np.ndarray], list[np.ndarray]]:
                 
         fixed_coord = [points.get_coord() for points in fix_points]
-        moving_coord = [points.get_coord() for points in mov_points]
+        srcing_coord = [points.get_coord() for points in src_points]
         
         fixed_coord_o3d, moving_coord_o3d = o3d.geometry.PointCloud(), o3d.geometry.PointCloud()
         moving_coord_o3d.points = o3d.utility.Vector3dVector(moving_coord)
         fixed_coord_o3d.points = o3d.utility.Vector3dVector(fixed_coord)
 
-        id_to_index_map = {atom.id: index for index, atom in enumerate(mov_points)}
+        id_to_index_map = {atom.id: index for index, atom in enumerate(src_points)}
         correspondence_list = [[index1, id_to_index_map[atom.id]] for index1, atom in enumerate(fix_points) if atom.id in id_to_index_map]
         corr = o3d.cpu.pybind.utility.Vector2iVector(correspondence_list)
 

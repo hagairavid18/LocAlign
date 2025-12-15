@@ -38,6 +38,7 @@ class QualityLoss(nn.Module):
             'corr_rmsd': corr_rmsd.mean(),
             'radius': radius_term.mean(),
         })
+        print(loss_dict)
         loss_dict['per_sample'] = loss_dict_per_sample
         loss_dict['quality'] = loss
         return loss, loss_dict
@@ -338,7 +339,7 @@ class RadiusGyrationLoss(nn.Module):
         radius_gyration_corr_tar = torch.sqrt(  (mean2_corr_tar_coordinates - mean_corr_tar_coordinates**2).sum(-1) + self.eps )
         radius_gyration_corr = 0.5 * (radius_gyration_corr_tar + radius_gyration_corr_src)
         Neff_atoms = torch.exp( (- torch.log( top_corr_values + self.eps ) * top_corr_values).sum(-1) ) # Effective number of atoms	
-        reference_radius_gyration = 1.3 * Neff_atoms ** (0.4) # A typical scaling value to expect from a compact alignment.
-        score = radius_gyration_corr / reference_radius_gyration # Values above 1 indicate spread out alignment. Typically between 0.7 and 3.
+        tarerence_radius_gyration = 1.3 * Neff_atoms ** (0.4) # A typical scaling value to expect from a compact alignment.
+        score = radius_gyration_corr / tarerence_radius_gyration # Values above 1 indicate spread out alignment. Typically between 0.7 and 3.
 
         return score

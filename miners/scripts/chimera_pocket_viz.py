@@ -514,28 +514,28 @@ def process_alignment(
     # Compute atom indexes if scannet_dir is provided and atom_indexes_list not provided
     corr_indices_atom = atom_indexes_list
 
-    ref_scannet_path = os.path.join(cache_dir, "scannet_embeddings" ,  ligand, f"{template}_scannet_atoms.pkl")
-    mov_scannet_path = os.path.join(cache_dir, "scannet_embeddings" ,  ligand, f"{query}_scannet_atoms.pkl")
+    tar_scannet_path = os.path.join(cache_dir, "scannet_embeddings" ,  ligand, f"{template}_scannet_atoms.pkl")
+    src_scannet_path = os.path.join(cache_dir, "scannet_embeddings" ,  ligand, f"{query}_scannet_atoms.pkl")
 
-    # Load ref and mov scannet features
-    with open(ref_scannet_path, 'rb') as f:
-        ref_scannet = pickle.load(f)
-    with open(mov_scannet_path, 'rb') as f:
-        mov_scannet = pickle.load(f)
+    # Load tar and src scannet features
+    with open(tar_scannet_path, 'rb') as f:
+        tar_scannet = pickle.load(f)
+    with open(src_scannet_path, 'rb') as f:
+        src_scannet = pickle.load(f)
     
     atom_indexes_list = np.zeros((corr_indices_atom.shape[0], 2), dtype=int)
     for i in range(corr_indices.shape[0]):
-        ref_res_idx = ref_scannet['sequence_indices_atom'][corr_indices_atom[i, 1]]
-        mov_res_idx = mov_scannet['sequence_indices_atom'][corr_indices_atom[i, 0]]
+        tar_res_idx = tar_scannet['sequence_indices_atom'][corr_indices_atom[i, 1]]
+        src_res_idx = src_scannet['sequence_indices_atom'][corr_indices_atom[i, 0]]
 
-        ref_atom_list = ref_scannet['aa_to_atom_indices'][ref_res_idx]
-        mov_atom_list = mov_scannet['aa_to_atom_indices'][mov_res_idx]
+        tar_atom_list = tar_scannet['aa_to_atom_indices'][tar_res_idx]
+        src_atom_list = src_scannet['aa_to_atom_indices'][src_res_idx]
 
-        ref_atom_index = np.where(ref_atom_list == corr_indices_atom[i, 1])[0][0]
-        mov_atom_index = np.where(mov_atom_list == corr_indices_atom[i, 0])[0][0]
+        tar_atom_index = np.where(tar_atom_list == corr_indices_atom[i, 1])[0][0]
+        src_atom_index = np.where(src_atom_list == corr_indices_atom[i, 0])[0][0]
 
-        atom_indexes_list[i, 0] = mov_atom_index
-        atom_indexes_list[i, 1] = ref_atom_index
+        atom_indexes_list[i, 0] = src_atom_index
+        atom_indexes_list[i, 1] = tar_atom_index
 
     # Get parent parent folder
     pdb_folder = os.path.join(cache_dir, "pdb_files")

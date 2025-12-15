@@ -26,29 +26,29 @@ def run(pairs_df: pd.DataFrame, debug: bool = False) -> None:
         logging.info(f"\nProcess ligand: {ligand}\n")
 
         for row_idx, row in ligand_pairs.iterrows():
-            logging.info(f"Processing: ref: {row['ref_protein']} mov: {row['mov_protein']}")
+            logging.info(f"Processing: tar: {row['tar_protein']} src: {row['src_protein']}")
             n_trans = row['n_transformations']
             if n_trans != 1:
-                logging.warning(f"Skipping {row['ref_protein']} and {row['mov_protein']}. had {n_trans}")
+                logging.warning(f"Skipping {row['tar_protein']} and {row['src_protein']}. had {n_trans}")
                 continue
 
             try:
                 # Save pocket for each protein
                 save_pockets(
-                    row['mov_protein'],
-                    row['mov_chain'],
+                    row['src_protein'],
+                    row['src_chain'],
                     ligand=ligand,
                     ligand_res_idx=0,  # Or any other logic for ligand residue index
                 )
                 # Save pocket for each protein
                 save_pockets(
-                    row['ref_protein'],
-                    row['ref_chain'],
+                    row['tar_protein'],
+                    row['tar_chain'],
                     ligand=ligand,
                     ligand_res_idx=0,  # Or any other logic for ligand residue index
                 )
             except Exception as e:
-                logging.error(f"Error processing ligand {ligand}, protein {row['mov_protein']}: {e}")
+                logging.error(f"Error processing ligand {ligand}, protein {row['src_protein']}: {e}")
                 
     logging.info("Pocket saving completed!")
 
