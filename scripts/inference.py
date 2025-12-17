@@ -121,7 +121,7 @@ class InferenceRunner:
             self._df = pd.DataFrame([df_dict])
             # self._csv_output_path = "temp_csv.csv"
         elif self._csv_path is not None:
-            raw_df = pd.read_csv(self._csv_path)
+            raw_df = pd.read_csv(self._csv_path,dtype=str)
             # Rename columns to match expected format
             for _, row in raw_df.iterrows():
                 ph = PairHolder(
@@ -139,7 +139,7 @@ class InferenceRunner:
         elif self._protein_database_search is not None:
             src,src_chain,protein_template_database_path = self._protein_database_search
             src_motif = self._src_motif
-            df = pd.read_csv(protein_template_database_path)
+            df = pd.read_csv(protein_template_database_path,dtype=str)
             df['src_protein'] = src
             df['src_chain'] = src_chain
             df['src_motif'] = src_motif
