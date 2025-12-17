@@ -404,7 +404,7 @@ def predict_interface_residues(
     else:
         Lmax = max([max(sequence_length)
                  for sequence_length in sequence_lengths])
-    Lmax = max(Lmax,32)
+    Lmax = min( max(Lmax,32), 2048)
 
 
 
