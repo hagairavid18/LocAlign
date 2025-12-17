@@ -10,8 +10,9 @@ os.environ["KERAS_BACKEND"] = "torch"
 import warnings
 warnings.simplefilter("ignore")
 from ScanNet_mini.predict_features import predict_features
+import torch
 
-
+@torch.inference_mode()
 def run_scannet(
     pdb_paths: list[str],
     output_dir: str,
@@ -44,7 +45,7 @@ def run_scannet(
 
     # Predict features
     print("Predicting features...")
-    _, list_features, list_residue_ids = predict_features(
+    pdb_paths, list_features, list_residue_ids = predict_features(
         pdb_paths,
         layer=list_layers,
         model=model,

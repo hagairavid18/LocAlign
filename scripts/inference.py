@@ -603,7 +603,7 @@ def parse_args():
     
     return parser.parse_args()
 
-
+@torch.inference_mode()
 def main():
     """Main entry point for the inference script."""
     args = parse_args()
