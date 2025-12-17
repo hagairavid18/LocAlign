@@ -39,3 +39,5 @@ miners/scripts/tmp.py
 inference_embeddings/
 inference_results/
 cache/
+slurm*
+submit_job.sh

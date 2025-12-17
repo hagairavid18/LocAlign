@@ -131,6 +131,14 @@ class Pipeline():
         self.requirements = []
         self.padded = False
         return
+    
+    def safe_process_example(self,*args,**kwargs):
+        try:
+            return self.process_example(*args,**kwargs)
+        except Exception as e:
+            print('Failed to process sample')
+            return False,False
+            
 
 
     def build_processed_dataset(self,
