@@ -1,5 +1,5 @@
 import os
-cores = 5  # Set number of CPUs to use!
+cores = os.cpu_count()  # Set number of CPUs to use!
 if __name__ == '__main__':
     os.environ["MKL_NUM_THREADS"] = "%s" % cores
     os.environ["NUMEXPR_NUM_THREADS"] = "%s" % cores

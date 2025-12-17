@@ -58,6 +58,11 @@ def run_scannet(
 
     # Save each structure's features
     for i, (path, features, res_ids) in enumerate(zip(pdb_paths, list_features, list_residue_ids)):
+        # Skip if features failed to generate
+        if features is None or res_ids is None:
+            print(f"Skipping {path}: features could not be generated")
+            continue
+            
         residues_to_atom_indices = features[residues_to_atom_indices_idx] - features[residues_to_atom_indices_idx][0][0]
         name = os.path.splitext(os.path.basename(path))[0]
         ligand_name = path.split('/')[-2]
