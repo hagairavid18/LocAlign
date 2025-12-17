@@ -1,5 +1,5 @@
 import os
-cores = os.cpu_count()  # Set number of CPUs to use!
+cores = min(os.cpu_count(),32)  # Set number of CPUs to use!
 if __name__ == '__main__':
     os.environ["MKL_NUM_THREADS"] = "%s" % cores
     os.environ["NUMEXPR_NUM_THREADS"] = "%s" % cores
@@ -483,12 +483,36 @@ def predict_interface_residues(
 
 
     if assembly:
-        inputs = wrappers.stack_list_of_arrays([x[0] for x in
-        pool.starmap(pipeline.process_example,
-            zip(query_chain_objs,query_sequences,query_MSAs,[None for _ in query_chain_objs],
-                [None for _ in query_chain_objs],query_PWMs,[None for _ in query_chain_objs]))
-            ],padded=padded
-            )
+        if permissive & (nqueries>1):
+            input_list = [x[0] for x in pool.starmap(pipeline.safe_process_example,
+                    zip(query_chain_objs,query_sequences,query_MSAs,[None for _ in query_chain_objs],
+                        [None for _ in query_chain_objs],query_PWMs,[None for _ in query_chain_objs]))
+            ]
+            
+            successful_examples = [i for i in range( nqueries ) if input_list[i] ]
+            unsucessful_examples = [i for i in range( nqueries ) if not input_list[i] ]
+            print(f'Discarding {len(unsucessful_examples)} that failed pipeline.process_example:')
+            print([query_names[i] for i in unsucessful_examples] )
+            if predict_from_pdb:
+                query_pdbs = [query_pdbs[i] for i in successful_examples]
+            query_sequences = [query_sequences[i] for i in successful_examples]            
+            query_chain_ids = [query_chain_ids[i] for i in successful_examples]
+            query_chain_objs = [query_chain_objs[i] for i in successful_examples]
+            query_names = [query_names[i] for i in successful_examples]
+            query_MSAs = [query_MSAs[i] for i in successful_examples]
+            query_PWMs = [query_PWMs[i] for i in successful_examples]
+            query_chain_names = [query_chain_names[i] for i in successful_examples]
+            nqueries = len(successful_examples)
+            
+            inputs = wrappers.stack_list_of_arrays(
+                [input_list[i] for i in successful_examples],padded=padded)                
+        else:        
+            inputs = wrappers.stack_list_of_arrays([x[0] for x in
+            pool.starmap(pipeline.process_example,
+                zip(query_chain_objs,query_sequences,query_MSAs,[None for _ in query_chain_objs],
+                    [None for _ in query_chain_objs],query_PWMs,[None for _ in query_chain_objs]))
+                ],padded=padded
+                )
         pool.close()
         if multi_models:
             if aggregate_models:
