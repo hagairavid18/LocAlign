@@ -11,7 +11,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
-
+import pickle
 sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.getcwd(), 'aligner_dl'))
 
@@ -50,8 +50,11 @@ class InferenceRunner:
         base_save_dir: str,
         csv_path: str | None = None,
         protein_pair: tuple[str, str, str, str] | None = None,
+        protein_database_search: tuple[str, str, str] | None = None,
         src_motif: str | None = None,
-        tar_motif: str | None = None
+        tar_motif: str | None = None,
+        calibration_model_path: str | None = None,
+        max_pLRMSD: float | None = None,
     ) -> None:
         """
         Initialize the inference runner.
@@ -71,8 +74,11 @@ class InferenceRunner:
         self._base_save_dir = base_save_dir
         self._csv_path = csv_path
         self._protein_pair = protein_pair
+        self._protein_database_search = protein_database_search
+        self._calibration_model_path = calibration_model_path
         self._src_motif = src_motif
         self._tar_motif = tar_motif
+        self._max_pLRMSD = max_pLRMSD
         
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self._df = None
@@ -81,7 +87,15 @@ class InferenceRunner:
         self._checkpoint_dir = None
         self._output_dir = None
         self._model = None
+        self._calibration_model = None        
         self._dataloader = None
+        
+        if self._calibration_model_path is not None:
+            try:            
+                self._calibration_model = pickle.load( open(self._calibration_model_path,'rb') )
+                print('Successfully loaded calibration model')
+            except Exception as e:
+                print(f'Could not load calibration model, {e}')
     
     def _prepare_dataframe(self) -> None:
         """
@@ -92,7 +106,7 @@ class InferenceRunner:
         """
         # Build PairHolder list from CSV or single pair input.
         self._pairs: list[PairHolder] = []
-        if not self._csv_path:
+        if self._protein_pair is not None:
             tar, tar_chain, src, src_chain = self._protein_pair
             ph = PairHolder(tar_protein=tar, tar_chain=tar_chain, tar_motif=self._tar_motif,
                             src_protein=src, src_chain=src_chain, src_motif=self._src_motif,
@@ -105,9 +119,9 @@ class InferenceRunner:
             # if self._tar_motif:
             #     df_dict['tar_motif'] = self._tar_motif
             self._df = pd.DataFrame([df_dict])
-            self._csv_output_path = "temp_csv.csv"
-        else:
-            raw_df = pd.read_csv(self._csv_path)
+            # self._csv_output_path = "temp_csv.csv"
+        elif self._csv_path is not None:
+            raw_df = pd.read_csv(self._csv_path,dtype=str)
             # Rename columns to match expected format
             for _, row in raw_df.iterrows():
                 ph = PairHolder(
@@ -121,7 +135,43 @@ class InferenceRunner:
                 )
                 self._pairs.append(ph)
             self._df = raw_df
-            self._csv_output_path = self._csv_path
+            # self._csv_output_path = self._csv_path                
+        elif self._protein_database_search is not None:
+            src_protein, src_chain, protein_template_database_path = self._protein_database_search
+            src_motif = self._src_motif
+            df = pd.read_csv(protein_template_database_path,dtype=str)
+            df['src_protein'] = src_protein
+            df['src_chain'] = src_chain
+            df['src_motif'] = src_motif
+            del df['ligand'] # For now... Only to avoid crashing                        
+            for _, row in df.iterrows():
+                ph = PairHolder(
+                    tar_protein=row['tar_protein'],
+                    tar_chain=row['tar_chain'],
+                    tar_motif=row.get('tar_motif', None),
+                    src_protein=row['src_protein'],
+                    src_chain=row['src_chain'],
+                    src_motif=row.get('src_motif', None),
+                    ligand=row.get('ligand', self._ligand_id),
+                )
+                self._pairs.append(ph)            
+            self._df = df
+            
+        self._csv_output_path = "inference_results.csv"
+                        
+        self._results_df = self._df.copy()
+        for metric in ['pLRMSD','perplexity','attribute_similarity','correspondence_rmsd','radius_gyration',
+                        '_embedding','_gap','_corr_rmsd','_radius']:
+            self._results_df[metric] = np.nan
+        self._results_df['index'] = self._results_df['tar_protein'] + '_' +\
+                                            self._results_df['tar_chain'] + '_' +\
+                                            self._results_df['tar_motif'].map(lambda x: 'none' if ( isinstance(x,float) or  (x in [None,'nan','None'] ) ) else str(x) ) + '_' +\
+                                            self._results_df['src_protein'] + '_' +\
+                                            self._results_df['src_chain'] + '_' +\
+                                            self._results_df['src_motif'].map(lambda x: 'none' if (isinstance(x,float) or  (x in [None,'nan','None']) ) else str(x) )
+                                            
+                        
+            
     
     def _setup_directories(self) -> None:
         """
@@ -142,6 +192,9 @@ class InferenceRunner:
         # Determine output directory (always use experiment name + timestamp)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self._output_dir = os.path.join(self._base_save_dir, f"{self._experiment_name}_{timestamp}")
+        if self._protein_database_search is not None:
+            protein, chain, _ = self._protein_database_search
+            self._output_dir = os.path.join(self._base_save_dir, f"database_search_{protein}_{chain}_{timestamp}")
         
         os.makedirs(self._output_dir, exist_ok=True)
         print(f"Saving results to: {self._output_dir}")
@@ -274,10 +327,10 @@ class InferenceRunner:
         filtered_csv = os.path.join(self._output_dir, 'filtered_pairs.csv')
         filtered_df.to_csv(filtered_csv, index=False)
         self._df = filtered_df
-        self._csv_output_path = filtered_csv
+        # self._csv_output_path = filtered_csv
 
         # Update dataset config for inference
-        dataset_config['args']['df_path'] = self._csv_output_path
+        dataset_config['args']['df_path'] = filtered_csv
         # point the dataset to the local cached pdb files
         dataset_config['args']['base_data_path'] = self._cache_paths['pdb_files']
         # point dataset to the local cache for scannet and esm embeddings
@@ -391,9 +444,39 @@ class InferenceRunner:
         gap = preds['loss_dict']['gap'].item()
         emb = preds['loss_dict']['embedding'].item()
         radius = preds['loss_dict']['radius'].item()
-
-        # create a score based on the three metrics, between 0 and 1, higher is better
         
+        # Transformation of variables for interpretability
+        perplexity = int( np.exp(gap * np.log(400)) )
+        attribute_similarity = emb / (gap * np.log(400) )
+        radius_gyration = radius * ( 1.3 * perplexity ** (0.4) )
+        if self._calibration_model is not None:
+            features = np.array([attribute_similarity,corr_rmsd,radius,perplexity])[None] # ['normalized_embedding_similarity','corr_rmsd','radius_of_gyration','perplexity']
+            pLRMSD = self._calibration_model.predict(features)[0]
+        else:
+            pLRMSD = (  2 *  (1 - emb / np.log(400) ) + 2 * corr_rmsd + 1 * radius_gyration ) # A dummy formula.
+            
+        clean_motif_name = lambda x: 'none' if ( isinstance(x,float) or  (x in [None,'nan','None'] ) ) else str(x)
+        index = metadata["tar_protein"] + '_' +\
+                metadata['tar_chain'] + '_' +\
+                clean_motif_name(metadata['tar_motif']) + '_' +\
+                metadata['src_protein'] + '_' +\
+                metadata['src_chain'] + '_' +\
+                clean_motif_name(metadata['src_motif'])
+        bool_index = (self._results_df['index']==index)
+        self._results_df['pLRMSD'][bool_index] = pLRMSD
+        self._results_df['perplexity'][bool_index] = perplexity
+        self._results_df['attribute_similarity'][bool_index] = attribute_similarity
+        self._results_df['correspondence_rmsd'][bool_index] = corr_rmsd
+        self._results_df['radius_gyration'][bool_index] = radius_gyration                
+        self._results_df['_embedding'][bool_index] = emb
+        self._results_df['_gap'][bool_index] = gap        
+        self._results_df['_corr_rmsd'][bool_index] = corr_rmsd
+        self._results_df['_radius'][bool_index] = radius
+        
+        if (self._protein_database_search is not None ) & (self._max_pLRMSD is not None): 
+            if pLRMSD>= self._max_pLRMSD: # Skip building output file in this case.
+                return num_correspondences
+                
 
         save_folder = os.path.join(
             self._output_dir,
@@ -432,6 +515,12 @@ class InferenceRunner:
 
         return num_correspondences
     
+    def _save_results(self) -> None:
+        del self._results_df['index']        
+        self._results_df = self._results_df.sort_values(by='pLRMSD',ascending=True)
+        self._results_df['perplexity'] = self._results_df['perplexity'].astype(int)
+        self._results_df.to_csv( os.path.join(self._output_dir,"inference_results.csv"),index=False,float_format='%.3f')
+    
     def run(self) -> None:
         """
         Execute the complete inference pipeline.
@@ -451,6 +540,7 @@ class InferenceRunner:
         self._prepare_dataloader()
         self._load_model()
         self._run_inference()
+        self._save_results()
 
 
 def parse_args():
@@ -459,7 +549,7 @@ def parse_args():
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="checkpoints/small-ligands-recycling2-corr01-embed2-gap01-lig5/epoch=9-step=87120.ckpt",
+        default="checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt",
         help="Path to model checkpoint (default: preconfigured baseline)."
     )
     parser.add_argument(
@@ -488,6 +578,12 @@ def parse_args():
         metavar=("TAR_PROTEIN", "TAR_CHAIN", "SRC_PROTEIN", "SRC_CHAIN"),
         help="Specify a single protein pair instead of a CSV."
     )
+    group.add_argument(
+        '--protein_database_search',
+        nargs=3,
+        metavar=("SRC_PROTEIN","SRC_CHAIN","DATABASE"),
+        help="Search a specific protein pair against a database of protein chains (.csv file)"
+    )
     
     parser.add_argument(
         "--src_motif",
@@ -501,7 +597,19 @@ def parse_args():
         default=None,
         help="Comma-separated residue IDs for target motif (e.g., '20,21,22'). Only used with --protein_pair."
     )
+    parser.add_argument(
+        "--max_pLRMSD",
+        type=float,
+        default = 4.,
+        help = 'In protein_database_search mode, do not generate output directory if pLRMSD is above this threshold'
+    )
     
+    parser.add_argument(
+        "--calibration_model_path",
+        type=str,
+        default=None,
+        help="Path to calibration model (pickle file) for pLRMSD prediction."
+    )
     return parser.parse_args()
 
 
@@ -512,10 +620,13 @@ def main():
     # Initialize inference runner
     runner = InferenceRunner(
         checkpoint_path=args.checkpoint,
+        calibration_model_path= args.calibration_model_path,
         ligand_id=args.ligand_id,
         base_save_dir=args.base_save_dir,
         csv_path=args.csv_path,
         protein_pair=args.protein_pair,
+        protein_database_search=args.protein_database_search,
+        max_pLRMSD = args.max_pLRMSD,
         src_motif=args.src_motif,
         tar_motif=args.tar_motif
     )
