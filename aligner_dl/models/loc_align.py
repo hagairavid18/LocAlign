@@ -260,7 +260,11 @@ class LocAlign(SoftBBBase):
             src_importance = batch.get('src_initial_importance') if is_first_iteration else recycling_state['src_importance']
         
             tar_importance =batch.get('tar_initial_importance') if is_first_iteration else recycling_state['tar_importance']
-            
+            # if batch.get('src_initial_importance') is not None:
+            #     batch['src_mask'] *= (batch.get('src_initial_importance')>0)
+            # if batch.get('tar_initial_importance') is not None:
+            #     batch['tar_mask'] *= (batch.get('tar_initial_importance')>0)
+                            
             topk_src_indices, topk_src_values, cache['src_value_key_query'], cache['src_local_scalar_edges'] = (
                 self._keypoints_selection(
                     src_embedding, 
