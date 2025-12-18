@@ -55,9 +55,6 @@ class InferenceRunner:
         tar_motif: str | None = None,
         calibration_model_path: str | None = None,
         max_pLRMSD: float | None = None,
-        tar_motif: str | None = None,
-        calibration_model_path: str | None = None,
-        max_pLRMSD: float | None = None,
     ) -> None:
         """
         Initialize the inference runner.
