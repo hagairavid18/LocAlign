@@ -150,6 +150,7 @@ class ScanNetDataset(BasePairDataset):
                 # Set importance to high value for atoms in motif residues
                 for res_id in motif_residues:
                     initial_importance[residue_indices == res_id] = 1e6
+                # initial_importance = initial_importance * ~self.get_backbone_mask(residue_indices)
                 ret[f'{key}_initial_importance'] = F.pad(initial_importance, (0, self._max_atoms - n_atoms))
         
         if self.inference:
@@ -328,6 +329,16 @@ class ScanNetDataset(BasePairDataset):
                     f.write(sequence[i:i+60] + "\n")
 
         return embedding_dict
+    
+    def get_backbone_mask(self, residue_indices ):
+        is_n_ca_c_o = torch.zeros([residue_indices.shape[0],4],dtype=bool)
+        is_n_ca_c_o[1:,0] = residue_indices[1:]>residue_indices[:-1]
+        is_n_ca_c_o[0,0] = 1
+        is_n_ca_c_o[ 1:, 1] = is_n_ca_c_o[:-1,0]
+        is_n_ca_c_o[2:, 2] = is_n_ca_c_o[:-2,0]
+        is_n_ca_c_o[3:, 3] = is_n_ca_c_o[:-3,0]
+        is_backbone = torch.max(is_n_ca_c_o,axis=-1).values
+        return is_backbone    
 
    
 if __name__ == "__main__":

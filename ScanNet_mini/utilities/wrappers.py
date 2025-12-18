@@ -1,6 +1,7 @@
 import numpy as np
 from utilities import io_utils
 import os
+import gc
 
 def slice_list_of_arrays(arrays, mask):
     if isinstance(arrays, tuple) | isinstance(arrays, list):
@@ -535,8 +536,20 @@ class grouped_Predictor_wrapper(Predictor_wrapper):
             print('Grouping and padding...')
         grouped_inputs = self.group_and_padd(inputs,groups)
         if self.verbose:
-            print('Performing prediction...')
-        grouped_outputs = self.model.predict(grouped_inputs,batch_size=batch_size,verbose=True)
+            print('Performing prediction...')     
+        meta_batch_size = 1000
+        if len(groups)>meta_batch_size: # For very large predictions, can run into memory error due to leakage.
+            nbatches = int(np.ceil( len(groups) / meta_batch_size) )
+            print(f'Dividing prediction into {nbatches} meta_batches')
+            grouped_outputs = []
+            for batch in range(nbatches):
+                start, end = batch*meta_batch_size, min( (batch+1) * meta_batch_size, len(groups) )
+                grouped_outputs.append(  self.model.predict([x[start:end] for x in grouped_inputs],batch_size=batch_size,verbose=True) )            
+                print(f'Collecting garbage after meta_batch {batch}/{nbatches}')
+                gc.collect()
+            grouped_outputs = [np.concatenate(  [g[k] for g in grouped_outputs],axis=0  ) for k in range(noutputs) ]
+        else:                    
+            grouped_outputs = self.model.predict(grouped_inputs,batch_size=batch_size,verbose=True)
 
 
         if self.verbose:

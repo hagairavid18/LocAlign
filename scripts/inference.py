@@ -50,8 +50,11 @@ class InferenceRunner:
         base_save_dir: str,
         csv_path: str | None = None,
         protein_pair: tuple[str, str, str, str] | None = None,
-        protein_database_search: tuple[str, str, str] | None = None,
+        protein_database_search: tuple[str,str,str] | None = None,
         src_motif: str | None = None,
+        tar_motif: str | None = None,
+        calibration_model_path: str | None = None,
+        max_pLRMSD: float | None = None,
         tar_motif: str | None = None,
         calibration_model_path: str | None = None,
         max_pLRMSD: float | None = None,
@@ -137,10 +140,10 @@ class InferenceRunner:
             self._df = raw_df
             # self._csv_output_path = self._csv_path                
         elif self._protein_database_search is not None:
-            src_protein, src_chain, protein_template_database_path = self._protein_database_search
+            src,src_chain,protein_template_database_path = self._protein_database_search
             src_motif = self._src_motif
             df = pd.read_csv(protein_template_database_path,dtype=str)
-            df['src_protein'] = src_protein
+            df['src_protein'] = src
             df['src_chain'] = src_chain
             df['src_motif'] = src_motif
             del df['ligand'] # For now... Only to avoid crashing                        
@@ -612,7 +615,7 @@ def parse_args():
     )
     return parser.parse_args()
 
-
+@torch.inference_mode()
 def main():
     """Main entry point for the inference script."""
     args = parse_args()
@@ -620,7 +623,7 @@ def main():
     # Initialize inference runner
     runner = InferenceRunner(
         checkpoint_path=args.checkpoint,
-        calibration_model_path= args.calibration_model_path,
+        calibration_model_path= os.path.join( os.path.dirname(args.checkpoint)  , 'calibration_model.pkl' ),
         ligand_id=args.ligand_id,
         base_save_dir=args.base_save_dir,
         csv_path=args.csv_path,

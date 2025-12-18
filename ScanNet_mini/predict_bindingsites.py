@@ -502,6 +502,7 @@ def predict_interface_residues(
             query_MSAs = [query_MSAs[i] for i in successful_examples]
             query_PWMs = [query_PWMs[i] for i in successful_examples]
             query_chain_names = [query_chain_names[i] for i in successful_examples]
+            query_residue_ids = [query_residue_ids[i] for i in successful_examples]
             nqueries = len(successful_examples)
             
             inputs = wrappers.stack_list_of_arrays(
