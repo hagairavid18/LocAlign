@@ -164,7 +164,7 @@ def predict_interface_residues(
     else:
         print('No input provided for interface prediction using %s' %
               model_name, file=logfile)
-        return
+        return ([],[],[]) if output_format == 'dictionary' else ([],[],[],[],[])
 
     if query_names is None:
         if predict_from_pdb:
@@ -194,7 +194,7 @@ def predict_interface_residues(
             if not os.path.exists(location):
                 print('i=%s,file:%s not found' %
                       (i, location), file=logfile)
-                if permissive & (npdbs > 1):
+                if permissive:
                     del query_pdbs[i]
                     del query_chain_ids[i]
                     del query_names[i]
@@ -203,7 +203,7 @@ def predict_interface_residues(
                         del query_PWMs[i]
                     npdbs -= 1
                 else:
-                    return
+                    return ([],[],[]) if output_format == 'dictionary' else ([],[],[],[],[])
             else:
                 pdb_file_locations.append(location)
                 i += 1
@@ -261,7 +261,7 @@ def predict_interface_residues(
                 except:
                     print('Failed to parse i=%s,%s, %s' %
                           (i, query_names[i], pdb_file_locations[i]), file=logfile)
-                    if permissive & (npdbs > 1):
+                    if permissive:
                         del query_pdbs[i]
                         del query_chain_ids[i]
                         del query_names[i]
@@ -270,7 +270,7 @@ def predict_interface_residues(
                             del query_PWMs[i]
                         npdbs -= 1
                     else:
-                        return
+                        return ([],[],[]) if output_format == 'dictionary' else ([],[],[],[],[])
 
         query_sequences = [[PDB_processing.process_chain(chain_obj)[0]
                             for chain_obj in chain_objs] for chain_objs in query_chain_objs]
@@ -302,7 +302,7 @@ def predict_interface_residues(
         while i < npdbs:
             if not len(query_sequences[i]) > 0:
                 print('PDB %s has no chains remaining!' % (query_pdbs[i]))
-                if permissive & (npdbs > 1):
+                if permissive:
                     del query_pdbs[i]
                     del query_sequences[i]
                     del query_chain_ids[i]
@@ -314,7 +314,7 @@ def predict_interface_residues(
                     del query_chain_names[i]
                     npdbs -= 1
                 else:
-                    return
+                    return ([],[],[]) if output_format == 'dictionary' else ([],[],[],[],[])
             else:
                 i += 1
 
@@ -329,6 +329,9 @@ def predict_interface_residues(
     print('List of inputs:', file=logfile)
     for i in range(nqueries):
         print(query_chain_names[i], file=logfile)
+    if nqueries == 0:
+        print('No remaining queries, returning...')
+        return ([],[],[]) if output_format == 'dictionary' else ([],[],[],[],[])
 
     if use_MSA:
         i = 0
@@ -344,7 +347,7 @@ def predict_interface_residues(
                     if not os.path.exists(query_MSAs[i][j]):
                         print('i=%s,file:%s not found' %
                               (i, query_MSAs[i][j]), file=logfile)
-                        if permissive & (nqueries > 1):
+                        if permissive:
                             if predict_from_pdb:
                                 del query_pdbs[i]
                             del query_sequences[i]
@@ -357,7 +360,7 @@ def predict_interface_residues(
                             nqueries -= 1
                             break
                         else:
-                            return
+                            return ([],[],[]) if output_format == 'dictionary' else ([],[],[],[],[])
                     else:
                           if j == len(query_MSAs[i]) - 1:
                               i += 1
@@ -483,7 +486,7 @@ def predict_interface_residues(
 
 
     if assembly:
-        if permissive & (nqueries>1):
+        if permissive:
             input_list = [x[0] for x in pool.starmap(pipeline.safe_process_example,
                     zip(query_chain_objs,query_sequences,query_MSAs,[None for _ in query_chain_objs],
                         [None for _ in query_chain_objs],query_PWMs,[None for _ in query_chain_objs]))
@@ -503,8 +506,10 @@ def predict_interface_residues(
             query_PWMs = [query_PWMs[i] for i in successful_examples]
             query_chain_names = [query_chain_names[i] for i in successful_examples]
             query_residue_ids = [query_residue_ids[i] for i in successful_examples]
-            nqueries = len(successful_examples)
-            
+            nqueries = len(successful_examples)        
+            if nqueries == 0:
+                print('No remaining queries, returning...')
+                return ([],[],[]) if output_format == 'dictionary' else ([],[],[],[],[])            
             inputs = wrappers.stack_list_of_arrays(
                 [input_list[i] for i in successful_examples],padded=padded)                
         else:        
@@ -514,7 +519,7 @@ def predict_interface_residues(
                     [None for _ in query_chain_objs],query_PWMs,[None for _ in query_chain_objs]))
                 ],padded=padded
                 )
-        pool.close()
+        pool.close()        
         if multi_models:
             if aggregate_models:
                  query_predictions = model_objs[0].predict(inputs, batch_size=1,return_all=return_all)
