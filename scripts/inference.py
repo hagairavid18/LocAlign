@@ -423,8 +423,8 @@ class InferenceRunner:
             above_threshold_indices = torch.topk(corr_vals, 3)[1]
 
         # take up to 20 correspondences
-        if len(above_threshold_indices) > 20:
-            above_threshold_indices = above_threshold_indices[:20]
+        # if len(above_threshold_indices) > 20:
+        #     above_threshold_indices = above_threshold_indices[:20]
 
         num_correspondences = int(above_threshold_indices.numel())
 
@@ -433,8 +433,8 @@ class InferenceRunner:
         top_corr_indices_atom = preds["corr_atom_indices"][0][above_threshold_indices]
 
         # Prepare save paths and folder name
-        tar = metadata["tar_protein"]
-        src = metadata["src_protein"]
+        tar,tar_chain = metadata["tar_protein"], metadata["tar_chain"]
+        src,src_chain = metadata["src_protein"], metadata["src_chain"]
         ligand = metadata.get("ligand", "general")
 
         corr_rmsd = preds['loss_dict']['corr_rmsd'].item()
@@ -474,12 +474,17 @@ class InferenceRunner:
             if pLRMSD>= self._max_pLRMSD: # Skip building output file in this case.
                 return num_correspondences
                 
-
         save_folder = os.path.join(
             self._output_dir,
-            f"{tar}_{src}_{ligand}_"
-            f"corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}_radius{radius:.2f}"
+            f"{tar.lower()}{tar_chain}_{src.lower()}{src_chain}_{ligand}_"
+            f"pLRMSD{pLRMSD:.2f}_perp{perplexity:03d}_attr{attribute_similarity:.2f}_corr{corr_rmsd:.2f}_rad{radius:.2f}"
         )
+
+        # save_folder = os.path.join(
+        #     self._output_dir,
+        #     f"{tar}_{src}_{ligand}_"
+        #     f"corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}_radius{radius:.2f}"
+        # )
         os.makedirs(save_folder, exist_ok=True)
 
         trans_dict = preds["transformation_dict"]
@@ -515,7 +520,7 @@ class InferenceRunner:
     def _save_results(self) -> None:
         del self._results_df['index']        
         self._results_df = self._results_df.sort_values(by='pLRMSD',ascending=True)
-        self._results_df['perplexity'] = self._results_df['perplexity'].astype(int)
+        self._results_df['perplexity'] = self._results_df['perplexity']
         self._results_df.to_csv( os.path.join(self._output_dir,"inference_results.csv"),index=False,float_format='%.3f')
     
     def run(self) -> None:
