@@ -192,6 +192,9 @@ class InferenceRunner:
         # Determine output directory (always use experiment name + timestamp)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self._output_dir = os.path.join(self._base_save_dir, f"{self._experiment_name}_{timestamp}")
+        if self._protein_database_search is not None:
+            protein, chain, _ = self._protein_database_search
+            self._output_dir = os.path.join(self._base_save_dir, f"database_search_{protein}_{chain}_{timestamp}")
         
         os.makedirs(self._output_dir, exist_ok=True)
         print(f"Saving results to: {self._output_dir}")
@@ -606,6 +609,12 @@ def parse_args():
         help = 'In protein_database_search mode, do not generate output directory if pLRMSD is above this threshold'
     )
     
+    parser.add_argument(
+        "--calibration_model_path",
+        type=str,
+        default=None,
+        help="Path to calibration model (pickle file) for pLRMSD prediction."
+    )
     return parser.parse_args()
 
 @torch.inference_mode()
