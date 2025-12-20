@@ -1,6 +1,6 @@
 import os
 import logging
-import pickle
+import pickle,gzip
 import warnings
 # from scipy.spatial.distance import cdist
 import subprocess
@@ -48,12 +48,12 @@ class Protein:
     def _init_structure(self) -> Structure:
         cache_dir = f"{self._ligand_dir}/{self._ligand_name}/cache"
         os.makedirs(cache_dir, exist_ok=True)
-        cache_file = os.path.join(cache_dir, f"{self._pdb_name}.pkl")
+        cache_file = os.path.join(cache_dir, f"{self._pdb_name}.pkl.gz")
 
         # Check if cached structure exists
         if os.path.exists(cache_file):
             try:
-                with open(cache_file, 'rb') as f:
+                with gzip.open(cache_file, 'rb') as f:
                     logger.info(f"Loading structure {self._pdb_name} from cache.")
                     return pickle.load(f)
             except Exception as e:
@@ -82,7 +82,7 @@ class Protein:
         
         # Save the parsed structure to the cache
         try:
-            with open(cache_file, 'wb') as f:
+            with gzip.open(cache_file, 'wb') as f:
                 pickle.dump(structure, f)
                 logger.info(f"Cached structure {self._pdb_name} to {cache_file}.")
         except Exception as e:

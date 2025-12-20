@@ -12,7 +12,7 @@ from Bio.PDB.Structure import Structure
 import esm
 import hashlib
 from Bio.PDB import PDBParser, PPBuilder
-
+import gzip
 from datasets import BasePairDataset
 from utils.constants import LIGAND_DIR
 
@@ -176,18 +176,23 @@ class ScanNetDataset(BasePairDataset):
         ligand_id: str,
         esm_embedding_dict: dict[int, torch.Tensor] | None = None
         ) -> tuple[torch.Tensor, torch.Tensor]:
-        scannet_embedding_path = os.path.join(self._scannet_dir, ligand_id,  chain + '_scannet_atoms.pkl')
+        scannet_embedding_path = os.path.join(self._scannet_dir, ligand_id,  chain + '_scannet_atoms.pkl.gz')
         if not os.path.exists(scannet_embedding_path):
             logger.info(f"Can't find embedding path for ligand: {ligand_id} protein: {chain}")
             raise ValueError(
                 f"Can't find scannet embedding path for ligand: {ligand_id} protein: {chain}"
             )
-        with open(scannet_embedding_path, 'rb') as f:
+        with gzip.open(scannet_embedding_path, 'rb') as f:
             data = pickle.load(f)
         
         residue_embeddings = data["residue_embeddings"]
         residue_ids = data["residue_ids"]
-        atom_embeddings = data["atomic_plus_residue_embedding"]
+        if "atomic_plus_residue_embedding" in data.keys():
+            atom_embeddings = data["atomic_plus_residue_embedding"]
+        else:
+            atom_embeddings = np.concatenate(
+                (data["atomic_embeddings"], data["residue_embeddings"][data["sequence_indices_atom"]])
+                ,axis=-1 )            
         atom_residue_index = data["sequence_indices_atom"]  # Residue index for each atom
         atom_frames = data["atomic_frames"]
         atom_neighbors = data["atom_nearest_neighbors"]
