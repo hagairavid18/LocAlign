@@ -450,7 +450,7 @@ class InferenceRunner:
         attribute_similarity = emb / (gap * np.log(400) )
         radius_gyration = radius * ( 1.3 * perplexity ** (0.4) )
         if self._calibration_model is not None:
-            features = np.array([attribute_similarity,corr_rmsd,radius,perplexity])[None] # ['normalized_embedding_similarity','corr_rmsd','radius_of_gyration','perplexity']
+            features = np.array([attribute_similarity,corr_rmsd,radius_gyration,perplexity])[None] # ['normalized_embedding_similarity','corr_rmsd','radius_of_gyration','perplexity']
             pLRMSD = self._calibration_model.predict(features)[0]
         else:
             pLRMSD = (  2 *  (1 - emb / np.log(400) ) + 2 * corr_rmsd + 1 * radius_gyration ) # A dummy formula.
