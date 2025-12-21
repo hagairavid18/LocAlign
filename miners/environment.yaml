@@ -8,6 +8,7 @@ channels:
   - pytorch/noarch
   - nvidia/linux-64
   - nvidia/noarch
+  - bioconda
 
 dependencies:
   - python=3.10  
@@ -20,6 +21,7 @@ dependencies:
   - pytorch
   - pytorch-cuda=12.1
   - torchvision
+  - mmseq
 
  
 pip:

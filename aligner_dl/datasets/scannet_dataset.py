@@ -38,6 +38,8 @@ class ScanNetDataset(BasePairDataset):
             seed: int| None = None, 
             inference: bool = False, 
             ligand_column: str = 'Ligand_ID',
+            tar_ligand_column: str | None = None,
+            src_ligand_column: str | None = None,
             esm_model: str = None,
             base_esm_embedding_path: str = LIGAND_DIR,
             use_esm: bool = True,
@@ -72,6 +74,10 @@ class ScanNetDataset(BasePairDataset):
             seed=seed, 
             bbc_filter_ratio=bbc_filter_ratio, 
             inference=inference)
+
+        # Allow per-chain ligand columns; fall back to the shared column for backward compatibility
+        self._tar_ligand_column = tar_ligand_column or ligand_column
+        self._src_ligand_column = src_ligand_column or ligand_column
         
         self._mmcif_parser = PDBParser()
         self._max_atoms = max_length 
@@ -94,23 +100,31 @@ class ScanNetDataset(BasePairDataset):
     def __getitem__(self, idx: int) -> dict[torch.Tensor]:
         row = self._df.iloc[idx]
 
+        tar_ligand_id = row.get(self._tar_ligand_column, row[self._ligand_column])
+        src_ligand_id = row.get(self._src_ligand_column, row[self._ligand_column])
+        
+        # Training mode requires same ligand for both proteins
+        if not self.inference:
+            assert tar_ligand_id == src_ligand_id, \
+                f"Training mode requires tar_ligand == src_ligand, got tar={tar_ligand_id}, src={src_ligand_id} at index {idx}"
+
         try:
             esm_embeddings_tar = self.extract_esm_embeddings(
-                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['tar_protein'] + row['tar_chain'] + '_non_ligand_.ent'),
+                pdb_file=os.path.join(self._base_data_path, tar_ligand_id, row['tar_protein'] + row['tar_chain'] + '_non_ligand_.ent'),
                 chain_name=row['tar_protein'] + '_' + row['tar_chain']
             )
             esm_embeddings_src = self.extract_esm_embeddings(
-                pdb_file=os.path.join(self._base_data_path, row[self._ligand_column], row['src_protein'] + row['src_chain'] + '_non_ligand_.ent'),
+                pdb_file=os.path.join(self._base_data_path, src_ligand_id, row['src_protein'] + row['src_chain'] + '_non_ligand_.ent'),
                 chain_name=row['src_protein'] + '_' + row['src_chain']
             ) 
             embedding_dicts = {
-                "tar": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['tar_protein'] + row['tar_chain'], esm_embedding_dict=esm_embeddings_tar),
-                "src": self._read_embedding(ligand_id=row[self._ligand_column], chain=row['src_protein'] + row['src_chain'], esm_embedding_dict=esm_embeddings_src),
+                "tar": self._read_embedding(ligand_id=tar_ligand_id, chain=row['tar_protein'] + row['tar_chain'], esm_embedding_dict=esm_embeddings_tar),
+                "src": self._read_embedding(ligand_id=src_ligand_id, chain=row['src_protein'] + row['src_chain'], esm_embedding_dict=esm_embeddings_src),
             }
             # print(f"Read embeddings for {row[self._ligand_column]} {row['src_protein']} {row['tar_protein']}")
             if not self.inference:
-                src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['src_protein'] + row['src_chain'])
-                tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=row[self._ligand_column], chain=row['tar_protein'] + row['tar_chain'])
+                src_ligand_coordinates, src_atom_ids = self._read_ligand(ligand_id=src_ligand_id, chain=row['src_protein'] + row['src_chain'])
+                tar_ligand_coordinates, tar_atom_ids = self._read_ligand(ligand_id=tar_ligand_id, chain=row['tar_protein'] + row['tar_chain'])
                 if not src_atom_ids == tar_atom_ids:
                     shared_atom_ids = set(src_atom_ids).intersection(tar_atom_ids)
                     src_ligand_coordinates = src_ligand_coordinates[torch.tensor([src_atom_ids.index(atom_id) for atom_id in shared_atom_ids])]
@@ -137,21 +151,22 @@ class ScanNetDataset(BasePairDataset):
             ret[f'{key}_mask'] = F.pad(torch.ones(n_atoms), (0, self._max_atoms - n_atoms), value=0).bool()
 
         ret['metadata'] = row.to_dict()
+        ret['metadata']['tar_ligand'] = tar_ligand_id
+        ret['metadata']['src_ligand'] = src_ligand_id
         
         # Handle motifs for initial atom importance
         # import pd
         
         for key, motif_col in [("src", "src_motif"), ("tar", "tar_motif")]:
-            if motif_col in row and pd.notna(row[motif_col]):
-                motif_residues = [int(r.strip()) for r in str(row[motif_col]).split(',')]
-                residue_indices = embedding_dicts[key]['atom_residue_indices']
-                n_atoms = embedding_dicts[key]['atom_embeddings'].shape[0]
-                initial_importance = torch.zeros(n_atoms, dtype=torch.float32)
-                # Set importance to high value for atoms in motif residues
-                for res_id in motif_residues:
-                    initial_importance[residue_indices == res_id] = 1e6
-                # initial_importance = initial_importance * ~self.get_backbone_mask(residue_indices)
-                ret[f'{key}_initial_importance'] = F.pad(initial_importance, (0, self._max_atoms - n_atoms))
+            if motif_col in row:
+                motif_val = row[motif_col]
+                if isinstance(motif_val, list) and motif_val:
+                    residue_indices = embedding_dicts[key]['atom_residue_indices']
+                    n_atoms = embedding_dicts[key]['atom_embeddings'].shape[0]
+                    initial_importance = torch.zeros(n_atoms, dtype=torch.float32)
+                    for res_id in motif_val:
+                        initial_importance[residue_indices == res_id] = 1e6
+                    ret[f'{key}_initial_importance'] = F.pad(initial_importance, (0, self._max_atoms - n_atoms))
         
         if self.inference:
             return ret
@@ -176,11 +191,11 @@ class ScanNetDataset(BasePairDataset):
         ligand_id: str,
         esm_embedding_dict: dict[int, torch.Tensor] | None = None
         ) -> tuple[torch.Tensor, torch.Tensor]:
-        scannet_embedding_path = os.path.join(self._scannet_dir, ligand_id,  chain + '_scannet_atoms.pkl')
+        scannet_embedding_path = os.path.join(self._scannet_dir, chain + '_scannet_atoms.pkl')
         if not os.path.exists(scannet_embedding_path):
-            logger.info(f"Can't find embedding path for ligand: {ligand_id} protein: {chain}")
+            logger.info(f"Can't find embedding path for protein: {chain}")
             raise ValueError(
-                f"Can't find scannet embedding path for ligand: {ligand_id} protein: {chain}"
+                f"Can't find scannet embedding path for protein: {chain}"
             )
         with open(scannet_embedding_path, 'rb') as f:
             data = pickle.load(f)

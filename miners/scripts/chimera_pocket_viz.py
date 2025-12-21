@@ -487,24 +487,26 @@ def make_chimera_script(
     return chimera_file
     
 def process_alignment(
-        base_folder: str, 
-        template: str, 
-        ligand: str, 
-        query: str,
-        cache_dir: str,
-        query_transformation: tuple[np.ndarray, np.ndarray] | None = None,
-        corr_values: np.ndarray | None = None,
-        corr_indices: np.ndarray | None = None,
-        atom_indexes_list: np.ndarray | None = None
-        ):
+    base_folder: str, 
+    template: str, 
+    template_ligand: str, 
+    query: str,
+    cache_dir: str,
+    query_ligand: str | None = None,
+    query_transformation: tuple[np.ndarray, np.ndarray] | None = None,
+    corr_values: np.ndarray | None = None,
+    corr_indices: np.ndarray | None = None,
+    atom_indexes_list: np.ndarray | None = None
+    ):
     """
     Process protein alignment and create visualization files for Chimera.
     
     Args:
         base_folder: Base folder for output files
         template: Template protein identifier
-        ligand: Ligand identifier (same for both template and query)
+        template_ligand: Ligand identifier for the template
         query: Query protein identifier
+        query_ligand: Ligand identifier for the query (defaults to template_ligand when None)
         scannet_dir: Directory containing ScanNet features
         query_transformation: Tuple of (R, t) for transformation
         corr_values: Correspondence values
@@ -513,9 +515,10 @@ def process_alignment(
     """
     # Compute atom indexes if scannet_dir is provided and atom_indexes_list not provided
     corr_indices_atom = atom_indexes_list
+    query_ligand = query_ligand or template_ligand
 
-    tar_scannet_path = os.path.join(cache_dir, "scannet_embeddings" ,  ligand, f"{template}_scannet_atoms.pkl")
-    src_scannet_path = os.path.join(cache_dir, "scannet_embeddings" ,  ligand, f"{query}_scannet_atoms.pkl")
+    tar_scannet_path = os.path.join(cache_dir, "scannet_embeddings", f"{template}_scannet_atoms.pkl")
+    src_scannet_path = os.path.join(cache_dir, "scannet_embeddings", f"{query}_scannet_atoms.pkl")
 
     # Load tar and src scannet features
     with open(tar_scannet_path, 'rb') as f:
@@ -551,37 +554,39 @@ def process_alignment(
     parser = Bio.PDB.PDBParser(QUIET=True)
     
 
-    template_non_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{ligand}/{template}_non_ligand_.ent")
+    template_non_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{template_ligand}/{template}_non_ligand_.ent")
 
-    extract_chains_andor_ligand_and_apply_transform(template_non_ligand_struct, template_chain_id, ligand,
+    extract_chains_andor_ligand_and_apply_transform(template_non_ligand_struct, template_chain_id, template_ligand,
                                 os.path.join(output_folder, 'template_receptor.pdb')
                                 ,mode='without_ligand')
 
-    template_only_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{ligand}/{template}_ligand.pdb")
+    template_only_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{template_ligand}/{template}_ligand.pdb")
 
-    extract_chains_andor_ligand_and_apply_transform(template_only_ligand_struct, template_chain_id, ligand,
+    extract_chains_andor_ligand_and_apply_transform(template_only_ligand_struct, template_chain_id, template_ligand,
                                 os.path.join(output_folder, 'template_ligand.pdb')
                                 ,mode='only_ligand')
 
-    query_non_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{ligand}/{query}_non_ligand_.ent")
+    query_non_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{query_ligand}/{query}_non_ligand_.ent")
     rot,tran = query_transformation
     for atom in Bio.PDB.Selection.unfold_entities(query_non_ligand_struct,'A'):
         atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
 
-    query_only_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{ligand}/{query}_ligand.pdb")
+    query_only_ligand_struct = parser.get_structure('name', f"{pdb_folder}/{query_ligand}/{query}_ligand.pdb")
     rot,tran = query_transformation
     for atom in Bio.PDB.Selection.unfold_entities(query_only_ligand_struct,'A'):
         atom.set_coord( np.dot(atom.get_coord(), rot) + tran)
 
-    extract_chains_andor_ligand_and_apply_transform(query_non_ligand_struct, query_chain_id, ligand,
+    extract_chains_andor_ligand_and_apply_transform(query_non_ligand_struct, query_chain_id, query_ligand,
                                 os.path.join(output_folder, 'transformed_query_receptor.pdb')
                                 ,mode='without_ligand')
 
-    extract_chains_andor_ligand_and_apply_transform(query_only_ligand_struct, query_chain_id, ligand,
+    extract_chains_andor_ligand_and_apply_transform(query_only_ligand_struct, query_chain_id, query_ligand,
                                 os.path.join(output_folder, 'transformed_query_ligand.pdb')
                                 ,mode='only_ligand')
 
-    if ligand != 'general':
+    ligand_tag = template_ligand if template_ligand == query_ligand else f"{template_ligand}_src-{query_ligand}"
+
+    if template_ligand != 'general' and query_ligand != 'general':
         template_pocket_residues = get_pocket( os.path.join(output_folder, 'template_receptor.pdb'),
                             os.path.join(output_folder, 'template_ligand.pdb') )
 
@@ -611,7 +616,7 @@ def process_alignment(
 
     make_chimera_script(
                         output_folder,
-                        ligand=ligand,
+                        ligand=ligand_tag,
                         template_pocket_residues=template_pocket_residues,
                         query_pocket_residues=query_pocket_residues,
                         template_corr_atoms = template_corr_atoms,
@@ -621,7 +626,7 @@ def process_alignment(
     
     make_chimera_script(
                         output_folder,
-                        ligand=ligand,
+                        ligand=ligand_tag,
                         template_pocket_residues=template_pocket_residues,
                         query_pocket_residues=query_pocket_residues,
                         template_corr_atoms = template_corr_atoms,
@@ -639,8 +644,9 @@ if __name__ == "__main__":
     parser.add_argument("--scannet_dir", type=str, default=None, help="Directory containing ScanNet features.")
     parser.add_argument("--model_output_path", type=str, default=None, help="Path to model output for correspondences.")
     parser.add_argument("--template", type=str, required=True, help="Template protein identifier.")
-    parser.add_argument("--ligand", type=str, required=True, help="Ligand identifier for the template.")
+    parser.add_argument("--template_ligand", type=str, required=True, help="Ligand identifier for the template.")
     parser.add_argument("--query", type=str, required=True, help="Query protein identifier.")
+    parser.add_argument("--query_ligand", type=str, default=None, help="Ligand identifier for the query (defaults to template_ligand).")
     
     args = parser.parse_args()
 
@@ -648,8 +654,9 @@ if __name__ == "__main__":
     process_alignment(
         base_folder=args.base_folder,
         template=args.template,
-        ligand=args.ligand,
+        template_ligand=args.template_ligand,
         query=args.query,
+        query_ligand=args.query_ligand,
         scannet_dir=args.scannet_dir,
         model_output_path=args.model_output_path
     )

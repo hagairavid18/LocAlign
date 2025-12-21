@@ -280,6 +280,58 @@ class Protein:
         pocket_ca_coords = np.array(pocket_ca_coords)
         return pocket_ca_coords, pocket_ca_residue_indices
 
+    def get_pocket_residue_ids(
+        self,
+        distance_thresh: float = 4.0,
+        ligand_res_idx: int = 0,
+    ) -> list[int]:
+        """
+        Return residue IDs for all residues whose heavy atoms are within
+        ``distance_thresh`` Å of the ligand heavy atoms.
+
+        Args:
+            distance_thresh: Maximum distance in Å to consider a residue part of the pocket (default: 4.0).
+            ligand_res_idx: Index of the ligand residue to use (default: 0).
+
+        Returns:
+            List of residue sequence numbers (Bio.PDB residue.id[1]) that define the pocket.
+        """
+        try:
+            ligand_residue = self.get_ligand_residues()[ligand_res_idx]
+        except Exception:
+            return []
+
+        ligand_coors = np.array([
+            atom.coord for atom in ligand_residue.get_atoms() if getattr(atom, "element", None) != "H"
+        ], dtype=float)
+
+        if ligand_coors.size == 0:
+            return []
+
+        pocket_residue_ids: list[int] = []
+
+        for residue in list(self.get_model(self._model_idx, True)):
+            # Skip ligand residues themselves
+            if residue.resname == self._ligand_name:
+                continue
+
+            res_coors = np.array([
+                atom.coord for atom in residue.get_atoms() if getattr(atom, "element", None) != "H"
+            ], dtype=float)
+
+            if res_coors.size == 0:
+                continue
+
+            # Compute pairwise distances between ligand heavy atoms and residue heavy atoms
+            # Using numpy broadcasting to avoid scipy dependency
+            diff = ligand_coors[:, None, :] - res_coors[None, :, :]
+            dists = np.linalg.norm(diff, axis=-1)
+
+            if np.min(dists) < distance_thresh:
+                pocket_residue_ids.append(residue.id[1])
+
+        return pocket_residue_ids
+
     @staticmethod
     def create_ligand_model(model: Model, ligand_name: str, chain_idx: int) -> tuple[Model, list[int]]:
         

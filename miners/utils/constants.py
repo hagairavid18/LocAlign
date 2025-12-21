@@ -8,12 +8,24 @@ class PairHolder:
     tar_chain: str
     src_protein: str
     src_chain: str
-    ligand: str
+    ligand: str | None = None
+    tar_ligand: str | None = None
+    src_ligand: str | None = None
     cath_degree: int = -1
     ligand_rmsd: float = 0.0
     tar_motif: list[int] = None
     src_motif: list[int] = None
     message: str | None = None
+
+    def __post_init__(self) -> None:
+        # Default to the shared ligand if per-chain ligands are not provided
+        if self.tar_ligand is None:
+            self.tar_ligand = self.ligand
+        if self.src_ligand is None:
+            self.src_ligand = self.ligand
+        # Preserve a single ligand value for backward compatibility and logging
+        if self.ligand is None:
+            self.ligand = self.tar_ligand or self.src_ligand
 
     def to_dict(self) -> dict:
         return {
@@ -26,6 +38,8 @@ class PairHolder:
             'cath_degree': self.cath_degree,
             'Ligand RMSD': self.ligand_rmsd,
             'ligand': self.ligand,
+            'tar_ligand': self.tar_ligand,
+            'src_ligand': self.src_ligand,
         }
 
 
