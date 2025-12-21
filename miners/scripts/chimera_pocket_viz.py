@@ -1,4 +1,4 @@
-import pickle
+import pickle,gzip
 import os
 import warnings
 import numpy as np
@@ -521,9 +521,9 @@ def process_alignment(
     src_scannet_path = os.path.join(cache_dir, "scannet_embeddings", f"{query}_scannet_atoms.pkl")
 
     # Load tar and src scannet features
-    with open(tar_scannet_path, 'rb') as f:
+    with gzip.open(tar_scannet_path, 'rb') as f:
         tar_scannet = pickle.load(f)
-    with open(src_scannet_path, 'rb') as f:
+    with gzip.open(src_scannet_path, 'rb') as f:
         src_scannet = pickle.load(f)
     
     atom_indexes_list = np.zeros((corr_indices_atom.shape[0], 2), dtype=int)

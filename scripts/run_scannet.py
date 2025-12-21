@@ -11,6 +11,7 @@ import warnings
 warnings.simplefilter("ignore")
 from ScanNet_mini.predict_features import predict_features
 import torch
+import gzip
 
 @torch.inference_mode()
 def run_scannet(
@@ -86,11 +87,11 @@ def run_scannet(
                 features[list_layers.index('nearest_neighbor_search_atom')] - 
                 features[list_layers.index('nearest_neighbor_search_atom')].min()
             )
-            residue_embeddings_up_pooled = residue_embeddings[sequence_indices_atom]
+            # residue_embeddings_up_pooled = residue_embeddings[sequence_indices_atom]
             
-            atomic_plus_residue_embedding = np.concatenate(
-                (atomic_embeddings, residue_embeddings_up_pooled), axis=-1
-            )
+            # atomic_plus_residue_embedding = np.concatenate(
+            #     (atomic_embeddings, residue_embeddings_up_pooled), axis=-1
+            # )
             atom_valencies = features[list_layers.index('attributes_atom')][:,0]
 
             mapping_valency_to_type = np.array([-1, 0,0,0,0,0,1,1,2,2,2,3,3])
@@ -108,17 +109,17 @@ def run_scannet(
                 "residue_embeddings": residue_embeddings,
                 "residue_ids": res_ids,
                 "atomic_frames": frames_atom,
-                "atomic_plus_residue_embedding": atomic_plus_residue_embedding,
+                # "atomic_plus_residue_embedding": atomic_plus_residue_embedding,
                 "aa_to_atom_indices": residues_to_atom_indices,
                 "atom_nearest_neighbors": knn_atoms,
                 "atom_types":atom_types,
             }
 
-            with open(out_path, "wb") as f:
+            with gzip.open(out_path, "wb") as f:
                 pickle.dump(data_dict, f)
 
-            print(f"Saved: {out_path}")
-            output_paths.append(out_path)
+                print(f"Saved: {out_path}")
+                output_paths.append(out_path)
         except Exception as e:
             print(f"Error processing {path}: {e}")
             continue

@@ -537,7 +537,7 @@ class grouped_Predictor_wrapper(Predictor_wrapper):
         grouped_inputs = self.group_and_padd(inputs,groups)
         if self.verbose:
             print('Performing prediction...')     
-        meta_batch_size = 1000
+        meta_batch_size = 2000
         if len(groups)>meta_batch_size: # For very large predictions, can run into memory error due to leakage.
             nbatches = int(np.ceil( len(groups) / meta_batch_size) )
             print(f'Dividing prediction into {nbatches} meta_batches')

@@ -462,8 +462,8 @@ class InferenceRunner:
             above_threshold_indices = torch.topk(corr_vals, 3)[1]
 
         # take up to 20 correspondences
-        if len(above_threshold_indices) > 20:
-            above_threshold_indices = above_threshold_indices[:20]
+        # if len(above_threshold_indices) > 20:
+        #     above_threshold_indices = above_threshold_indices[:20]
 
         num_correspondences = int(above_threshold_indices.numel())
 
@@ -474,6 +474,8 @@ class InferenceRunner:
         # Prepare save paths and folder name
         tar = metadata["tar_protein"]
         src = metadata["src_protein"]
+        tar_chain = metadata["tar_chain"]
+        src_chain = metadata["src_chain"]
         tar_ligand = metadata.get("tar_ligand", metadata.get("ligand", "general"))
         src_ligand = metadata.get("src_ligand", metadata.get("ligand", "general"))
         ligand_tag = tar_ligand if tar_ligand == src_ligand else f"{tar_ligand}_{src_ligand}"
@@ -488,7 +490,7 @@ class InferenceRunner:
         attribute_similarity = emb / (gap * np.log(400) )
         radius_gyration = radius * ( 1.3 * perplexity ** (0.4) )
         if self._calibration_model is not None:
-            features = np.array([attribute_similarity,corr_rmsd,radius,perplexity])[None] # ['normalized_embedding_similarity','corr_rmsd','radius_of_gyration','perplexity']
+            features = np.array([attribute_similarity,corr_rmsd,radius_gyration,perplexity])[None] # ['normalized_embedding_similarity','corr_rmsd','radius_of_gyration','perplexity']
             pLRMSD = self._calibration_model.predict(features)[0]
         else:
             pLRMSD = (  2 *  (1 - emb / np.log(400) ) + 2 * corr_rmsd + 1 * radius_gyration ) # A dummy formula.
@@ -508,12 +510,17 @@ class InferenceRunner:
             if pLRMSD>= self._max_pLRMSD: # Skip building output file in this case.
                 return num_correspondences
                 
-
         save_folder = os.path.join(
             self._output_dir,
-            f"{tar}_{src}_{ligand_tag}_"
-            f"corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}_radius{radius:.2f}"
+            f"{tar.lower()}{tar_chain}_{src.lower()}{src_chain}_{ligand_tag}_"
+            f"pLRMSD{pLRMSD:.2f}_perp{perplexity:03d}_attr{attribute_similarity:.2f}_corr{corr_rmsd:.2f}_rad{radius:.2f}"
         )
+
+        # save_folder = os.path.join(
+        #     self._output_dir,
+        #     f"{tar}_{src}_{ligand}_"
+        #     f"corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}_radius{radius:.2f}"
+        # )
         os.makedirs(save_folder, exist_ok=True)
 
         trans_dict = preds["transformation_dict"]

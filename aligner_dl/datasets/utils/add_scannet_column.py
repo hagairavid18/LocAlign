@@ -4,7 +4,7 @@ import torch
 from utils.constants import LIGAND_DIR
 
 def read_embedding(ligand_id: str, chain: str) -> tuple[torch.Tensor, torch.Tensor]:
-        embedding_path_tar = os.path.join(LIGAND_DIR, ligand_id,  chain + '_scannet.pkl')
+        embedding_path_tar = os.path.join(LIGAND_DIR, ligand_id,  chain + '_scannet.pkl.gz')
         if not os.path.exists(embedding_path_tar):
             raise ValueError
 
