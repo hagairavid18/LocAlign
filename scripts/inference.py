@@ -206,10 +206,8 @@ class InferenceRunner:
                 self._pairs.append(ph)
             self._df = df
             
-        self._results_df = self._df.copy()
-        for metric in ['pLRMSD','perplexity','attribute_similarity','correspondence_rmsd','radius_gyration',
-                        '_embedding','_gap','_corr_rmsd','_radius']:
-            self._results_df[metric] = np.nan
+        # Reset index for consistency
+        self._df = self._df.reset_index(drop=True)
                                             
     def _setup_directories(self) -> None:
         """
@@ -286,7 +284,7 @@ class InferenceRunner:
             failed_set = set((p, c, l) for p, c, l, _ in failed_combos)
             err_map = {(p, c, l): err for p, c, l, err in failed_combos}
 
-            # mark PairHolder.message for any pair referencing a failed combo
+            # mark PairHolder.message and failure_message for any pair referencing a failed combo
             for ph in self._pairs:
                 tar_combo = (ph.tar_protein, ph.tar_chain, ph.tar_ligand)
                 src_combo = (ph.src_protein, ph.src_chain, ph.src_ligand)
@@ -296,9 +294,13 @@ class InferenceRunner:
                 if src_combo in failed_set:
                     msgs.append(f"src_missing:{err_map.get(src_combo)}")
                 if msgs:
-                    ph.message = ';'.join(msgs)
+                    failure_msg = ';'.join(msgs)
+                    ph.message = failure_msg
+                    ph.failure_message = failure_msg
 
-            # Build resrced and filtered dataframes from PairHolder list
+            # Preserve all pairs (including failed) for final results
+            self._all_pairs = list(self._pairs)
+            # Build kept list for feature extraction and inference
             kept = [p for p in self._pairs if p.message is None]
 
             self._pairs = kept
@@ -362,6 +364,8 @@ class InferenceRunner:
             raise RuntimeError("No valid protein pairs remain to build the dataset.")
 
         filtered_df = pd.DataFrame([p.to_dict() for p in kept_pairs])
+        # Add stable pair_idx to ensure correct mapping during result processing
+        filtered_df['pair_idx'] = list(range(len(kept_pairs)))
         filtered_csv = os.path.join(self._output_dir, 'filtered_pairs.csv')
         filtered_df.to_csv(filtered_csv, index=False)
         self._df = filtered_df
@@ -381,10 +385,11 @@ class InferenceRunner:
         dataset = ScanNetDataset(**dataset_config['args'])
         self._dataloader = DataLoader(
             dataset,
-            batch_size=1,
+            batch_size=8,
             num_workers=16,
             collate_fn=custom_collate_fn,
-            pin_memory=True
+            pin_memory=True,
+            shuffle=False
         )
     
     def _load_model(self) -> None:
@@ -431,27 +436,32 @@ class InferenceRunner:
                 all_outputs.append(curr_outputs)
         
         for idx, preds in enumerate(tqdm(all_outputs, total=len(all_outputs), desc="Processing and saving results")):
-            self._process_visualization(idx, preds)
+            batch_size = len(preds['metadata'])
+            for b in range(batch_size):
+                pair_idx = preds['metadata'][b]['pair_idx']
+                ph = self._pairs[pair_idx]
+                self._process_visualization(ph, preds, b)
         self._save_results()
         print(f"✅ All predictions processed and visualized, saved to {self._output_dir}")
     
-    def _process_visualization(self, batch_idx: int, preds: dict) -> int:
+    def _process_visualization(self, ph: PairHolder, preds: dict, batch_idx: int = 0) -> int:
         """
-        Process a single batch and save results.
+        Process a single sample from a batch and save results.
         
         Args:
-            batch_idx (int): Batch index (row number in results dataframe)
-            preds (dict): Pre-computed predictions from model.inference_step()
+            ph (PairHolder): The pair holder for this sample
+            preds (dict): Pre-computed predictions from model.inference_step() for entire batch
+            batch_idx (int): Index within the batch to process
             
         Returns:
             int: Number of correspondences
         """
 
         # Use pre-computed predictions instead of running inference again
-        metadata = preds["metadata"][0]
+        metadata = preds["metadata"][batch_idx]
 
         # Filter correspondences above threshold (25% of max correlation)
-        corr_vals = preds["corr_values"][0]
+        corr_vals = preds["corr_values"][batch_idx]
         
         sorted_corr_vals = torch.sort(corr_vals,0,descending=True)
         cumulative_corr_vals = torch.cumsum(sorted_corr_vals.values,0)
@@ -467,9 +477,9 @@ class InferenceRunner:
 
         num_correspondences = int(above_threshold_indices.numel())
 
-        top_corr_values = preds["corr_values"][0][above_threshold_indices]
-        top_corr_indices = preds["corr_indices"][0][above_threshold_indices]
-        top_corr_indices_atom = preds["corr_atom_indices"][0][above_threshold_indices]
+        top_corr_values = preds["corr_values"][batch_idx][above_threshold_indices]
+        top_corr_indices = preds["corr_indices"][batch_idx][above_threshold_indices]
+        top_corr_indices_atom = preds["corr_atom_indices"][batch_idx][above_threshold_indices]
 
         # Prepare save paths and folder name
         tar = metadata["tar_protein"]
@@ -480,10 +490,10 @@ class InferenceRunner:
         src_ligand = metadata.get("src_ligand", metadata.get("ligand", "general"))
         ligand_tag = tar_ligand if tar_ligand == src_ligand else f"{tar_ligand}_{src_ligand}"
 
-        corr_rmsd = preds['loss_dict']['corr_rmsd'].item()
-        gap = preds['loss_dict']['gap'].item()
-        emb = preds['loss_dict']['embedding'].item()
-        radius = preds['loss_dict']['radius'].item()
+        corr_rmsd = preds['loss_dict']['per_sample']['corr_rmsd'][batch_idx].item()
+        gap = preds['loss_dict']['per_sample']['gap'][batch_idx].item()
+        emb = preds['loss_dict']['per_sample']['embedding'][batch_idx].item()
+        radius = preds['loss_dict']['per_sample']['radius'][batch_idx].item()
         
         # Transformation of variables for interpretability
         perplexity = int( np.exp(gap * np.log(400)) )
@@ -495,16 +505,16 @@ class InferenceRunner:
         else:
             pLRMSD = (  2 *  (1 - emb / np.log(400) ) + 2 * corr_rmsd + 1 * radius_gyration ) # A dummy formula.
             
-        # Update results dataframe directly using batch index
-        self._results_df.loc[batch_idx, 'pLRMSD'] = pLRMSD
-        self._results_df.loc[batch_idx, 'perplexity'] = perplexity
-        self._results_df.loc[batch_idx, 'attribute_similarity'] = attribute_similarity
-        self._results_df.loc[batch_idx, 'correspondence_rmsd'] = corr_rmsd
-        self._results_df.loc[batch_idx, 'radius_gyration'] = radius_gyration
-        self._results_df.loc[batch_idx, '_embedding'] = emb
-        self._results_df.loc[batch_idx, '_gap'] = gap
-        self._results_df.loc[batch_idx, '_corr_rmsd'] = corr_rmsd
-        self._results_df.loc[batch_idx, '_radius'] = radius
+        # Store metrics on the PairHolder object (explicit fields)
+        ph.pLRMSD = pLRMSD
+        ph.perplexity = perplexity
+        ph.attribute_similarity = attribute_similarity
+        ph.correspondence_rmsd = corr_rmsd
+        ph.radius_gyration = radius_gyration
+        ph._embedding = emb
+        ph._gap = gap
+        ph._corr_rmsd = corr_rmsd
+        ph._radius = radius
         
         if (self._protein_database_search is not None ) & (self._max_pLRMSD is not None): 
             if pLRMSD>= self._max_pLRMSD: # Skip building output file in this case.
@@ -516,24 +526,20 @@ class InferenceRunner:
             f"pLRMSD{pLRMSD:.2f}_perp{perplexity:03d}_attr{attribute_similarity:.2f}_corr{corr_rmsd:.2f}_rad{radius:.2f}"
         )
 
-        # save_folder = os.path.join(
-        #     self._output_dir,
-        #     f"{tar}_{src}_{ligand}_"
-        #     f"corr{corr_rmsd:.2f}_gap{gap:.2f}_emb{emb:.2f}_radius{radius:.2f}"
-        # )
+
         os.makedirs(save_folder, exist_ok=True)
 
         trans_dict = preds["transformation_dict"]
 
         # Convert to numpy arrays without saving to file
-        R_np = trans_dict['pred_R'][0].detach().cpu().numpy()
-        t_np = trans_dict['pred_t'][0].detach().cpu().numpy()
+        R_np = trans_dict['pred_R'][batch_idx].detach().cpu().numpy()
+        t_np = trans_dict['pred_t'][batch_idx].detach().cpu().numpy()
         # Save transformation (rotation and translation) for this alignment
         try:
             transform_path = os.path.join(save_folder, 'transformation.npz')
             np.savez_compressed(transform_path, R=R_np, t=t_np)
         except Exception as e:
-            print(f"Failed to save transformation for batch {batch_idx}: {e}")
+            print(f"Failed to save transformation: {e}")
         
         # Generate visualization using Chimera via process_alignment (pass arrays directly)
         try:
@@ -552,11 +558,19 @@ class InferenceRunner:
         except Exception as e:
             print(f"Unexpected error during visualization: {e}")
 
+        # Record output folder on the pair for traceability
+        ph.output_folder = save_folder
+
         return num_correspondences
     
     def _save_results(self) -> None:
-        self._results_df = self._results_df.sort_values(by='pLRMSD',ascending=True)
-        self._results_df.to_csv(os.path.join(self._output_dir,"inference_results.csv"), index=False, float_format='%.3f')
+        # Combine succeeded pairs (with metrics) and failed pairs (with NaN metrics)
+        all_pairs = getattr(self, '_all_pairs', self._pairs)
+        rows = [p.to_dict() for p in all_pairs]
+        results_df = pd.DataFrame(rows)
+        # Sort by pLRMSD, pushing NaNs (failed pairs) to the bottom
+        results_df = results_df.sort_values(by='pLRMSD', ascending=True, na_position='last')
+        results_df.to_csv(os.path.join(self._output_dir, "inference_results.csv"), index=False, float_format='%.3f')
     
     def run(self) -> None:
         """

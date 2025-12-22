@@ -167,6 +167,8 @@ class ScanNetDataset(BasePairDataset):
                     for res_id in motif_val:
                         initial_importance[residue_indices == res_id] = 1e6
                     ret[f'{key}_initial_importance'] = F.pad(initial_importance, (0, self._max_atoms - n_atoms))
+                else:
+                    ret[f'{key}_initial_importance'] = torch.zeros(self._max_atoms, dtype=torch.float32)       
         
         if self.inference:
             return ret

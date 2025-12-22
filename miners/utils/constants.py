@@ -16,6 +16,18 @@ class PairHolder:
     tar_motif: list[int] = None
     src_motif: list[int] = None
     message: str | None = None
+    failure_message: str | None = None
+    # Inference metrics (populated during inference)
+    pLRMSD: float | None = None
+    perplexity: int | None = None
+    attribute_similarity: float | None = None
+    correspondence_rmsd: float | None = None
+    radius_gyration: float | None = None
+    _embedding: float | None = None
+    _gap: float | None = None
+    _corr_rmsd: float | None = None
+    _radius: float | None = None
+    output_folder: str | None = None
 
     def __post_init__(self) -> None:
         # Default to the shared ligand if per-chain ligands are not provided
@@ -40,6 +52,19 @@ class PairHolder:
             'ligand': self.ligand,
             'tar_ligand': self.tar_ligand,
             'src_ligand': self.src_ligand,
+            'message': self.message,
+            'failure_message': self.failure_message,
+            # Metrics (may be None before inference)
+            'pLRMSD': self.pLRMSD,
+            'perplexity': self.perplexity,
+            'attribute_similarity': self.attribute_similarity,
+            'correspondence_rmsd': self.correspondence_rmsd,
+            'radius_gyration': self.radius_gyration,
+            '_embedding': self._embedding,
+            '_gap': self._gap,
+            '_corr_rmsd': self._corr_rmsd,
+            '_radius': self._radius,
+            'output_folder': self.output_folder,
         }
 
 
