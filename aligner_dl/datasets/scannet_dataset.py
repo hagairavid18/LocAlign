@@ -37,7 +37,7 @@ class ScanNetDataset(BasePairDataset):
             max_length: int = 2000, 
             seed: int| None = None, 
             inference: bool = False, 
-            ligand_column: str = 'Ligand_ID',
+            ligand_column: str = 'ligand_id',
             tar_ligand_column: str | None = None,
             src_ligand_column: str | None = None,
             esm_model: str = None,
@@ -59,7 +59,7 @@ class ScanNetDataset(BasePairDataset):
             seed (int | None, optional): _seed for random operations. Defaults to None.
             max_length (int, optional): _maximum number of atoms to consider. Defaults to 2000.
             inference (bool, optional): Whether the dataset is used for inference. Defaults to False.
-            ligand_column (str, optional): Column name for ligand IDs in the dataframe. Defaults to 'Ligand_ID'.
+            ligand_column (str, optional): Column name for ligand IDs in the dataframe. Defaults to ''.
             esm_model (str, optional): Name of the ESM model to use. Defaults to None.
             use_esm (bool, optional): Whether to use ESM embeddings. Defaults to True.
             esm_layer (int, optional): Layer of the ESM model to extract embeddings from.

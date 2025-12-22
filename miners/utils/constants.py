@@ -73,7 +73,7 @@ class PairHolder:
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_17_08_2025'
 LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_25_10_2025'
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_24_09_2025_examples'
-RESULTS_COLUMNS = ['Ligand_ID', 'tar_protein', 'src_protein', 'tar_chain', 'src_chain', 'cath_degree',
+RESULTS_COLUMNS = ['ligand_id', 'tar_protein', 'src_protein', 'tar_chain', 'src_chain', 'cath_degree',
                      'tar_ligand_n_atoms', 'src_ligand_n_atoms', "failure_message"]
 
 NOT_ENOUGH_ATOMS_MESSAGE = "One of the ligands has less than 3 atoms"
@@ -84,7 +84,7 @@ LIGAND_OVERLAP_MESSAGE = "The lignad atoms lack sufficient overlap, with less th
 
 class ResultHolder:
     def __init__(self, pair_dict: dict[str, Any], ligand: str):
-        self.Ligand_ID: str = ligand
+        self.ligand_id: str = ligand
         self.tar_protein: str = pair_dict['tar_name']
         self.src_protein: str = pair_dict['src_name']
         self.tar_chain: str = pair_dict['tar_chain']
@@ -98,7 +98,7 @@ class ResultHolder:
 
 class BaselineHolder:
     def __init__(self, pair_dict: dict[str, Any], ligand: str):
-        self.Ligand_ID: str = ligand
+        self.ligand_id: str = ligand
         self.tar_protein: str = pair_dict['tar_name']
         self.src_protein: str = pair_dict['src_name']
         self.tar_chain: str = pair_dict['tar_chain']

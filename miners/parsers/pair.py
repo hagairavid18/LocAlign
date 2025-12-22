@@ -23,7 +23,7 @@ def parse_protein_pairs(pairs_df: pd.DataFrame, prev_df: pd.DataFrame | None = N
     for _, line in prev_df.iterrows():
         prev_pairs.append(
             dict(
-                ligand_id = line['Ligand_ID'],
+                ligand_id = line['ligand_id'],
                 tar_name = line['tar_protein'],
                 tar_chain = line['tar_chain'],
                 src_name = line['src_protein'],

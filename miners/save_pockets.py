@@ -22,7 +22,7 @@ def run(pairs_df: pd.DataFrame, debug: bool = False) -> None:
     """
     logging.info("Iterating over ligands and proteins to save pockets...")
 
-    for ligand_idx, (ligand, ligand_pairs) in enumerate(pairs_df.groupby('Ligand_ID')):
+    for ligand_idx, (ligand, ligand_pairs) in enumerate(pairs_df.groupby('ligand_id')):
         logging.info(f"\nProcess ligand: {ligand}\n")
 
         for row_idx, row in ligand_pairs.iterrows():

@@ -38,7 +38,6 @@ class QualityLoss(nn.Module):
             'corr_rmsd': corr_rmsd.mean(),
             'radius': radius_term.mean(),
         })
-        print(loss_dict)
         loss_dict['per_sample'] = loss_dict_per_sample
         loss_dict['quality'] = loss
         return loss, loss_dict

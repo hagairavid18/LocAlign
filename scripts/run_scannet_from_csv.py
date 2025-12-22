@@ -30,7 +30,7 @@ class Pair:
 
 
 def read_pairs_from_csv(csv_path: str,
-                        ligand_col: str = 'Ligand_ID',
+                        ligand_col: str = 'ligand_id',
                         tar_protein_col: str = 'tar_protein',
                         tar_chain_col: str = 'tar_chain',
                         src_protein_col: str = 'src_protein',
@@ -56,7 +56,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument('--pdb-dir', required=True, help='Base directory containing per-ligand PDB files')
     parser.add_argument('--scannet-dir', required=True, help='Output directory for ScanNet .pkl files')
     parser.add_argument('--atom-types', action='store_true', help='Compute and include atom type labels in output')
-    parser.add_argument('--ligand-col', default='Ligand_ID')
+    parser.add_argument('--ligand-col', default='ligand_id')
     parser.add_argument('--tar-protein-col', default='tar_protein')
     parser.add_argument('--tar-chain-col', default='tar_chain')
     parser.add_argument('--src-protein-col', default='src_protein')

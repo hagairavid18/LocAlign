@@ -24,7 +24,7 @@ class BasePairDataset(Dataset):
             df_path: str, 
             base_data_path: str, 
             n_samples: int,
-            ligand_column: str = 'Ligand_ID', 
+            ligand_column: str = 'ligand_id', 
             min_cath: int = 0, 
             max_cath: int = 8, 
             only_one_transformation: bool = True, 
@@ -47,13 +47,13 @@ class BasePairDataset(Dataset):
         self._df: pd.DataFrame = self._read_data_path()
                 
     def _calculate_sample_weights(self, df):
-        ligand_counts = df['Ligand_ID'].value_counts()
+        ligand_counts = df['ligand_id'].value_counts()
         weights = 1 / (ligand_counts ** 0.5)
 
         weights = weights / weights.sum()
         weights = np.clip(weights, 0.1, 1)
 
-        df['sample_weight'] = df['Ligand_ID'].apply(lambda x: weights[x])
+        df['sample_weight'] = df['ligand_id'].apply(lambda x: weights[x])
         df['sample_weight'] = 1
         return df
 

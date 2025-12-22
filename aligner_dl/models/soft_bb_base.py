@@ -82,12 +82,12 @@ class SoftBBBase(L.LightningModule, ABC):
             gap_values = metrics['gap_per_degree_protein'][cath_degree]
             atom_type_values = metrics['weighted_same_type_per_degree_protein'][cath_degree]
             radius_values = metrics['radius_per_degree_protein'][cath_degree]
-            keys_to_keep = ['Ligand_ID', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree']
+            keys_to_keep = ['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree']
             for pair_info, ligand_rmsd, embedding_similarity, corr_rmsd, gap, atom_val, radius in zip(pair_infos, ligand_rmsd_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values):
                 protein_rmsd_data.append({
                     **{k: pair_info[k] for k in keys_to_keep},
-                    'src_ligand': pair_info.get('Ligand_ID', ''),
-                    'tar_ligand': pair_info.get('Ligand_ID', ''),
+                    'src_ligand': pair_info.get('ligand_id', ''),
+                    'tar_ligand': pair_info.get('ligand_id', ''),
                     'ligand_rmsd': ligand_rmsd.item(),
                     'embedding_similarity': embedding_similarity.item(),
                     'corr_rmsd': corr_rmsd.item(),

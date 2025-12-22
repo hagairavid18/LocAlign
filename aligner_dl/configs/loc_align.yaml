@@ -27,7 +27,7 @@ model:
         CDM
       args:
         n_nodes: 400
-        n_gnn_layers: 0
+        n_gnn_layers: 10
         n_rbf_functions: 32
         with_angles: true
     keypoints_selection:
@@ -72,8 +72,8 @@ model:
 
             max_lr: 0.0005
             epochs: 10
-            # steps_per_epoch: 8712 
-            steps_per_epoch: 10779 
+            steps_per_epoch: 8712 
+            # steps_per_epoch: 10779 
             # steps_per_epoch: 4356 
             div_factor: 25
             # final_div_factor: 1e4
@@ -82,8 +82,8 @@ dataset:
   train:
     name: ScanNetDataset
     args:
-      df_path: datasets/csv_files/ligand_25_10/train.csv
-      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_atom_types'
+      df_path: datasets/csv_files/homology_25_10/train.csv
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       esm_layer: 18
@@ -96,8 +96,8 @@ dataset:
   validation:
     name: ScanNetDataset
     args:
-      df_path: datasets/csv_files/ligand_25_10/val.csv
-      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_atom_types'
+      df_path: datasets/csv_files/homology_25_10/val.csv
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       # n_samples: 10

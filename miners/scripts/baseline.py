@@ -42,7 +42,7 @@ def run(pairs_df: pd.DataFrame, protein_aligner_config: dict[str, Any], save_pat
     pool.join()
     df = save_results_to_csv(result_list, start_time, "baseline_results_sw", prev_df)
     # pairs_df = pairs_df.drop(['TMAligner_protein_rmsd', 'TMAligner_rmsd', 'TMAligner_rotations', 'TMAligner_translations'], axis=1)
-    merged_df = pd.merge(pairs_df, df, on=['Ligand_ID', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree'], how='left')
+    merged_df = pd.merge(pairs_df, df, on=['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree'], how='left')
     merged_df.to_csv(save_path, index=False)
     logging.info(f"Saved results to {save_path} {len(merged_df)} rows.")
 

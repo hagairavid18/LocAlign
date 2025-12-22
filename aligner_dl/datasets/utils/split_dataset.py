@@ -102,11 +102,11 @@ def split_csv(
     df = df[df['failure_message'].isnull() | (df['failure_message'] == "")]
     print(f"Filtered out failures, {len(df)} rows remaining")
 
-     # Ensure the "Ligand_ID" column exists if group_by_ligand is True
-    if group_by_ligand and "Ligand_ID" not in df.columns:
-        raise ValueError("The CSV file must contain a 'Ligand_ID' column when group_by_ligand is enabled")
+     # Ensure the "ligand_id" column exists if group_by_ligand is True
+    if group_by_ligand and "ligand_id" not in df.columns:
+        raise ValueError("The CSV file must contain a 'ligand_id' column when group_by_ligand is enabled")
 
-    # Split based on Ligand_ID grouping if specified
+    # Split based on ligand_id grouping if specified
     # for col in  ['bbr', 'bbc']:
     #     if df[col].apply(lambda x: isinstance(x, str) and x.startswith('[') and x.endswith(']')).any():
     #         df[col] = df[col].fillna('[]')
@@ -121,12 +121,12 @@ def split_csv(
     # print(f"Filtered Best BBR and BBC, {len(df)} rows remaining")
     high_cath_degree = df[df['cath_degree'] > 3]
     print(f"Grouped by tar_protein and src_protein, {len(df)} rows remaining")
-    high_cath_degree = high_cath_degree.groupby('Ligand_ID').head(1000)
+    high_cath_degree = high_cath_degree.groupby('ligand_id').head(1000)
     df = pd.concat([df[df['cath_degree'] < 4], high_cath_degree])
-    print(f"Grouped by Ligand_ID, {len(df)} rows remaining")
+    print(f"Grouped by ligand_id, {len(df)} rows remaining")
     if group_by_ligand:
-        # Get unique Ligand_IDs and shuffle
-        ligand_ids = df['Ligand_ID'].unique()
+        # Get unique ligand_ids and shuffle
+        ligand_ids = df['ligand_id'].unique()
         random.seed(42)  # For reproducibility
         random.shuffle(ligand_ids)
 
@@ -135,16 +135,16 @@ def split_csv(
         test_len = int(total_ligands * test_size)
         val_len = int(total_ligands * val_size)
 
-        # Assign Ligand_IDs to each split
+        # Assign ligand_ids to each split
         test_ligands = ligand_ids[:test_len]
         val_ligands = ligand_ids[test_len:test_len + val_len]
         train_ligands = ligand_ids[test_len + val_len:]
 
-        # Create datasets for each split based on Ligand_ID
-        train_df = df[df['Ligand_ID'].isin(train_ligands)]
-        val_df = df[df['Ligand_ID'].isin(val_ligands)]
-        val_df = val_df.groupby('Ligand_ID').head(300)  # Ensure each ligand is present in the validation set
-        test_df = df[df['Ligand_ID'].isin(test_ligands)]
+        # Create datasets for each split based on ligand_id
+        train_df = df[df['ligand_id'].isin(train_ligands)]
+        val_df = df[df['ligand_id'].isin(val_ligands)]
+        val_df = val_df.groupby('ligand_id').head(300)  # Ensure each ligand is present in the validation set
+        test_df = df[df['ligand_id'].isin(test_ligands)]
     else:
 
     
@@ -175,7 +175,7 @@ def split_csv(
             for prot_col, chain_col in [('tar_protein', 'tar_chain'), ('src_protein', 'src_chain')]:
                 protein_id = row[prot_col]
                 chain_id = row[chain_col]
-                ligand_id = row['Ligand_ID']
+                ligand_id = row['ligand_id']
                 key = (ligand_id, protein_id, chain_id)
 
                 if key not in unique_triples:
@@ -208,7 +208,7 @@ def split_csv(
                 ('tar_cluster', 'tar_protein', 'tar_chain'),
                 ('src_cluster', 'src_protein', 'src_chain')
             ]:
-                ligand_id = row['Ligand_ID']
+                ligand_id = row['ligand_id']
                 protein_id = row[prot_col]
                 chain_id = row[chain_col]
                 key = (ligand_id, protein_id, chain_id)
@@ -281,13 +281,13 @@ def split_csv(
 
 if __name__ == "__main__":
     # Argument parsing
-    parser = argparse.ArgumentParser(description="Split CSV by Ligand_ID column or regular row-based split")
+    parser = argparse.ArgumentParser(description="Split CSV by ligand_id column or regular row-based split")
     parser.add_argument('--input_csv', type=str, required=True, help="Path to the input CSV file")
     parser.add_argument('--output_dir', type=str, required=True, help="Directory to save the output CSV files")
     parser.add_argument('--test_size', type=float, default=0.2, help="Fraction of the data to be used as the test set")
     parser.add_argument('--val_size', type=float, default=0.1, help="Fraction of the total data to be used as validation set")
     parser.add_argument('--mmseq_id_threshold', type=float, default=0.5, help="MMseqs2 sequence identity threshold for clustering")
-    parser.add_argument('--group_by_ligand', action='store_true', help="Whether to group by Ligand_ID when splitting")
+    parser.add_argument('--group_by_ligand', action='store_true', help="Whether to group by ligand_id when splitting")
 
 
     args = parser.parse_args()

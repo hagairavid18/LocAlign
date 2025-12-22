@@ -12,6 +12,62 @@ warnings.simplefilter("ignore")
 from ScanNet_mini.predict_features import predict_features
 import torch
 import gzip
+from multiprocessing import Pool, cpu_count
+from tqdm import tqdm
+
+
+def _save_scannet_features_worker(args):
+    """Worker function for multiprocessing: save a single structure's features."""
+    path, features, res_ids, output_dir, list_layers = args
+    try:
+        if features is None or res_ids is None:
+            return None, path, "features could not be generated"
+        
+        residues_to_atom_indices_idx = list_layers.index('aa_to_atom_indices')
+        residues_to_atom_indices = features[residues_to_atom_indices_idx] - features[residues_to_atom_indices_idx][0][0]
+        name = os.path.splitext(os.path.basename(path))[0]
+        
+        sequence_indices_atom = (
+            features[list_layers.index('atom_to_aa_indices')] -
+            features[list_layers.index('atom_to_aa_indices')][0]
+        )[:, 0]
+        
+        frames_atom = features[list_layers.index('frames_atom')]
+        offset = round(frames_atom[:, 0, :].mean() / 3000) * 3000
+        frames_atom[:, 0, :] -= offset
+        
+        atomic_embeddings = features[list_layers.index('SCAN_filter_activity_atom_1_normalization')]
+        residue_embeddings = features[list_layers.index('SCAN_filter_activity_aa_2_normalization')]
+        knn_atoms = (
+            features[list_layers.index('nearest_neighbor_search_atom')] - 
+            features[list_layers.index('nearest_neighbor_search_atom')].min()
+        )
+        atom_valencies = features[list_layers.index('attributes_atom')][:, 0]
+        
+        mapping_valency_to_type = np.array([-1, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 3, 3])
+        atom_types = mapping_valency_to_type[atom_valencies]
+        
+        chain_name = name.split('_')[0]
+        out_path = os.path.join(output_dir, f"{chain_name}_scannet_atoms.pkl")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        data_dict = {
+            "sequence_indices_atom": sequence_indices_atom,
+            "atomic_embeddings": atomic_embeddings,
+            "residue_embeddings": residue_embeddings,
+            "residue_ids": res_ids,
+            "atomic_frames": frames_atom,
+            "aa_to_atom_indices": residues_to_atom_indices,
+            "atom_nearest_neighbors": knn_atoms,
+            "atom_types": atom_types,
+        }
+        
+        with gzip.open(out_path, "wb") as f:
+            pickle.dump(data_dict, f)
+        
+        return out_path, path, None
+    except Exception as e:
+        return None, path, str(e)
 
 @torch.inference_mode()
 def run_scannet(
@@ -54,75 +110,24 @@ def run_scannet(
         permissive=permissive
     )
 
-    residues_to_atom_indices_idx = list_layers.index('aa_to_atom_indices')
-    
     output_paths = []
 
-    # Save each structure's features
+    # Prepare save tasks for multiprocessing
+    save_tasks = []
+    for path, features, res_ids in zip(pdb_paths, list_features, list_residue_ids):
+        save_tasks.append((path, features, res_ids, output_dir, list_layers))
     
-    for i, (path, features, res_ids) in enumerate(zip(pdb_paths, list_features, list_residue_ids)):
-        try:
-            # Skip if features failed to generate
-            if features is None or res_ids is None:
-                print(f"Skipping {path}: features could not be generated")
-                continue
-                
-            residues_to_atom_indices = features[residues_to_atom_indices_idx] - features[residues_to_atom_indices_idx][0][0]
-            name = os.path.splitext(os.path.basename(path))[0]
-            ligand_name = path.split('/')[-2]
-            
-            # Handle post-processing
-            sequence_indices_atom = (
-                features[list_layers.index('atom_to_aa_indices')] -
-                features[list_layers.index('atom_to_aa_indices')][0]
-            )[:, 0]
-            
-            frames_atom = features[list_layers.index('frames_atom')]
-            offset = round(frames_atom[:, 0, :].mean() / 3000) * 3000
-            frames_atom[:, 0, :] -= offset
-            
-            atomic_embeddings = features[list_layers.index('SCAN_filter_activity_atom_1_normalization')]
-            residue_embeddings = features[list_layers.index('SCAN_filter_activity_aa_2_normalization')]
-            knn_atoms = (
-                features[list_layers.index('nearest_neighbor_search_atom')] - 
-                features[list_layers.index('nearest_neighbor_search_atom')].min()
-            )
-            # residue_embeddings_up_pooled = residue_embeddings[sequence_indices_atom]
-            
-            # atomic_plus_residue_embedding = np.concatenate(
-            #     (atomic_embeddings, residue_embeddings_up_pooled), axis=-1
-            # )
-            atom_valencies = features[list_layers.index('attributes_atom')][:,0]
-
-            mapping_valency_to_type = np.array([-1, 0,0,0,0,0,1,1,2,2,2,3,3])
-            # 0: C, 1: O, 2:N, 3:S. -1: Masked.
-            atom_types = mapping_valency_to_type[atom_valencies]
-            
-            # Save
-            chain_name = name.split('_')[0]
-            out_path = os.path.join(output_dir, f"{chain_name}_scannet_atoms.pkl")
-            os.makedirs(output_dir, exist_ok=True)
-            
-            data_dict = {
-                "sequence_indices_atom": sequence_indices_atom,
-                "atomic_embeddings": atomic_embeddings,
-                "residue_embeddings": residue_embeddings,
-                "residue_ids": res_ids,
-                "atomic_frames": frames_atom,
-                # "atomic_plus_residue_embedding": atomic_plus_residue_embedding,
-                "aa_to_atom_indices": residues_to_atom_indices,
-                "atom_nearest_neighbors": knn_atoms,
-                "atom_types":atom_types,
-            }
-
-            with gzip.open(out_path, "wb") as f:
-                pickle.dump(data_dict, f)
-
-                print(f"Saved: {out_path}")
-                output_paths.append(out_path)
-        except Exception as e:
-            print(f"Error processing {path}: {e}")
-            continue
+    # Save with multiprocessing
+    print(f"Saving {len(save_tasks)} structures with multiprocessing...")
+    num_workers = min(len(save_tasks), max(1, cpu_count() - 1))
+    
+    if save_tasks:
+        with Pool(processes=num_workers) as pool:
+            for out_path, path, error in tqdm(pool.imap_unordered(_save_scannet_features_worker, save_tasks), total=len(save_tasks), desc="Saving features"):
+                if error is None:
+                    output_paths.append(out_path)
+                else:
+                    print(f"Error processing {path}: {error}")
     
     return output_paths
 
