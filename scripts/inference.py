@@ -80,6 +80,11 @@ class InferenceRunner:
         self._csv_path = csv_path
         self._protein_pair = protein_pair
         self._protein_database_search = protein_database_search
+        if (calibration_model_path is None):
+            default_path = os.path.join(os.path.dirname(checkpoint_path), 'calibration_model.pkl' )
+            if os.path.exists(default_path):
+                calibration_model_path = default_path
+                            
         self._calibration_model_path = calibration_model_path
         self._src_motif = src_motif
         self._tar_motif = tar_motif
@@ -386,7 +391,7 @@ class InferenceRunner:
         self._dataloader = DataLoader(
             dataset,
             batch_size=8,
-            num_workers=16,
+            num_workers=0,
             collate_fn=custom_collate_fn,
             pin_memory=True,
             shuffle=False
