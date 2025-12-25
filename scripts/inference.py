@@ -157,6 +157,12 @@ class InferenceRunner:
             if 'tar_motif' in df.columns:
                 df['tar_motif'] = df['tar_motif'].apply(self._parse_motif)
             
+            
+            if 'ligand' in df.columns:
+                df['src_ligand'] = df['ligand']
+                df['tar_ligand'] = df['ligand']
+
+                # df = df.rename(columns={'ligand':'tar_ligand'})
             # Validate required columns
             required = ['tar_protein', 'tar_chain', 'src_protein', 'src_chain']
             missing = [col for col in required if col not in df.columns]
@@ -181,6 +187,10 @@ class InferenceRunner:
             # Mode 3: Database search mode - src from CLI, tar from database CSV
             src, src_chain, database_path = self._protein_database_search
             df = pd.read_csv(database_path, dtype=str)
+
+            if 'ligand' in df.columns:
+                df['tar_ligand'] = df['ligand']
+                df['src_ligand'] = df['ligand']
 
             if 'tar_motif' in df.columns:
                 df['tar_motif'] = df['tar_motif'].apply(self._parse_motif)
