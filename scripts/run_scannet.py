@@ -2,7 +2,6 @@ import os
 import argparse
 import pickle
 import numpy as np
-import pandas as pd
 import sys
 sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
@@ -167,7 +166,10 @@ def extract_scannet(pairs, pdb_dir: str, scannet_dir: str) -> None:
                 tar_ligand,
                 f"{tar_protein}{tar_chain}_non_ligand_.ent"
             )
-            all_paths.append(tar_pdb_path)
+            if os.path.exists(tar_pdb_path):
+                all_paths.append(tar_pdb_path)
+            else:
+                print(f"❗ Warning: Target PDB path does not exist: {tar_pdb_path}")
 
         src_feature_path = os.path.join(
             scannet_dir,
@@ -179,7 +181,10 @@ def extract_scannet(pairs, pdb_dir: str, scannet_dir: str) -> None:
                 src_ligand,
                 f"{src_protein}{src_chain}_non_ligand_.ent"
             )
-            all_paths.append(src_pdb_path)
+            if os.path.exists(src_pdb_path):
+                all_paths.append(src_pdb_path)
+            else:
+                print(f"❗ Warning: Source PDB path does not exist: {src_pdb_path}")
 
     # Resrce duplicates
     print(f"❗ Structures to process with ScanNet: {len(all_paths)}")

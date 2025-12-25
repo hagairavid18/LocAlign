@@ -26,51 +26,71 @@ class AtomTypeCorrespondence(Module):
     def reset(self):
         self.weighted_same_per_degree = {deg: 0.0 for deg in range(0, 9)}
         self.weighted_same_per_degree_protein = {deg: [] for deg in range(0, 9)}
-        self.sample_metrics = {'weighted_same_type_per_sample': [], 'cath_degree_per_sample': [], 'pair_infos': []}
+        self.random_baseline_per_degree = {deg: 0.0 for deg in range(0, 9)}
+        self.sample_metrics = {'weighted_same_type_per_sample': [], 'cath_degree_per_sample': [], 'pair_infos': [], 'random_baseline_per_sample': []}
         self.count_per_degree = {deg: 0 for deg in range(0, 9)}
         self.total_count = 0
 
     def update(self, batch, outputs):
-        # No defensive guards: assume keys present
         batch_size = len(batch['metadata'])
         corr_values = outputs['corr_values']
         corr_atom_types = outputs['corr_atom_types']
+        
+        # We also need the raw atom types of the source and target to calculate 
+        # the true random expectation (not just the types in the correspondences)
+        src_atom_types_all = batch['src_atom_types'] # Shape: [B, N]
+        tar_atom_types_all = batch['tar_atom_types'] # Shape: [B, M]
+        tw = ATOM_TYPE_WEIGHTS.to(corr_atom_types.device)
 
-        # compute the weighted mean of coroepsondnces with the same atom type. taking in account the masks
         for batch_id in range(batch_size):
             metadata = batch['metadata'][batch_id]
             cath_degree = metadata['cath_degree']
-            pair_info = metadata.copy()
-            for k in ['rotations', 'translations', 'rmse', 'coverage']:
-                pair_info.pop(k, None)
-
-            corr_vals_b = corr_values[batch_id]
+            
+            # --- 1. Compute Actual Weighted Score (Your existing logic) ---
+            corr_vals_b = corr_values[batch_id].float()
             corr_types_b = corr_atom_types[batch_id]
-
-            # same-type mask
+            
             same_type = (corr_types_b[:, 0] == corr_types_b[:, 1]).float()
-
-            # per-pair importance weight: average of src/tar atom-type weights
-            src_types = corr_types_b[:, 0].long()
-            tar_types = corr_types_b[:, 1].long()
-            tw = ATOM_TYPE_WEIGHTS.to(src_types.device)
-            wt_src = tw[src_types.clamp(min=0, max=len(tw)-1)]
-            wt_tar = tw[tar_types.clamp(min=0, max=len(tw)-1)]
+            src_types_corr = corr_types_b[:, 0].long()
+            tar_types_corr = corr_types_b[:, 1].long()
+            
+            wt_src = tw[src_types_corr.clamp(max=len(tw)-1)]
+            wt_tar = tw[tar_types_corr.clamp(max=len(tw)-1)]
             pair_weight = (wt_src + wt_tar) * 0.5
+            
+            weights_eff = corr_vals_b * pair_weight
+            actual_weighted_val = (weights_eff * same_type).sum() / weights_eff.sum()
 
-            # multiply correspondence scores by per-pair importance and compute weighted sum (no normalization)
-            weights = corr_vals_b.float()
-            weights_eff = weights * pair_weight
-            weighted_sum = (weights_eff * same_type).sum()
-            # store as python float for accumulators
-            weighted_same_val = weighted_sum / weights_eff.sum()
-            # record metrics
+            # --- 2. Compute Random Expectation Baseline ---
+            # Get distribution of types in the full protein structures
+            s_types = src_atom_types_all[batch_id]
+            t_types = tar_atom_types_all[batch_id]
+            
+            # Calculate P(type) for src and tar
+            num_types = len(tw)
+            p_s = torch.bincount(s_types, minlength=num_types).float() / len(s_types)
+            p_t = torch.bincount(t_types, minlength=num_types).float() / len(t_types)
+            
+            # Expected numerator: Sum over i [ P_s(i) * P_t(i) * Weight(i) ]
+            expected_num = torch.sum(p_s * p_t * tw)
+            
+            # Expected denominator: Average of the mean weights
+            mean_wt_s = torch.sum(p_s * tw)
+            mean_wt_t = torch.sum(p_t * tw)
+            expected_den = 0.5 * (mean_wt_s + mean_wt_t)
+            
+            random_expected_val = (expected_num / expected_den).item()
+
+            # --- 3. Store Metrics ---
+            self.weighted_same_per_degree[cath_degree] += actual_weighted_val.item()
+            self.random_baseline_per_degree[cath_degree] += random_expected_val
             self.count_per_degree[cath_degree] += 1
-            self.sample_metrics['weighted_same_type_per_sample'].append(weighted_same_val)
-            self.sample_metrics['cath_degree_per_sample'].append(cath_degree)
-            self.sample_metrics['pair_infos'].append(pair_info)
-            self.weighted_same_per_degree[cath_degree] += weighted_same_val
-            self.weighted_same_per_degree_protein[cath_degree].append(weighted_same_val)
+            # You can now track the gap: (Actual - Random)
+            self.sample_metrics['weighted_same_type_per_sample'].append(actual_weighted_val.item())
+            self.sample_metrics['random_baseline_per_sample'].append(random_expected_val)
+            # Track per-protein/per-degree values for downstream analysis
+            self.weighted_same_per_degree_protein[cath_degree].append(actual_weighted_val.item())
+            
             self.total_count += 1
 
     def compute(self):
@@ -78,14 +98,22 @@ class AtomTypeCorrespondence(Module):
             deg: (self.weighted_same_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0.0
             for deg in range(0, 9)
         }
+        random_baseline_per_degree_avg = {
+            deg: (self.random_baseline_per_degree[deg] / self.count_per_degree[deg]) if self.count_per_degree[deg] > 0 else 0.0
+            for deg in range(0, 9)
+        }
 
         overall = 0.0
+        random_baseline_overall = 0.0
         if self.total_count > 0:
             overall = sum(self.sample_metrics['weighted_same_type_per_sample']) / self.total_count
+            random_baseline_overall = sum(self.sample_metrics['random_baseline_per_sample']) / self.total_count
 
         return {
             'weighted_same_type_per_degree': weighted_same_per_degree_avg,
+            'random_baseline_per_degree': random_baseline_per_degree_avg,
             'weighted_same_type_overall': overall,
+            'random_baseline_overall': random_baseline_overall,
             'weighted_same_type_per_degree_protein': self.weighted_same_per_degree_protein,
             **self.sample_metrics,
             'counts_per_degree': self.count_per_degree,

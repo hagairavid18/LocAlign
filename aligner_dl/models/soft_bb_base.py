@@ -54,6 +54,7 @@ class SoftBBBase(L.LightningModule, ABC):
             'ligand_rmsd': 'valid_ligand_rmsd',
             'ligand_rmsd_below_4_proportion_per_degree': 'ligand_rmsd_below_4',
             'weighted_same_type_per_degree': 'atom_type_same_fraction',
+            'random_baseline_per_degree': 'random_baseline_per_degree',
         }
         
         # Log total metrics
@@ -82,7 +83,7 @@ class SoftBBBase(L.LightningModule, ABC):
             gap_values = metrics['gap_per_degree_protein'][cath_degree]
             atom_type_values = metrics['weighted_same_type_per_degree_protein'][cath_degree]
             radius_values = metrics['radius_per_degree_protein'][cath_degree]
-            keys_to_keep = ['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree']
+            keys_to_keep = ['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree', 'src_ligand_n_atoms', 'tar_ligand_n_atoms']
             for pair_info, ligand_rmsd, embedding_similarity, corr_rmsd, gap, atom_val, radius in zip(pair_infos, ligand_rmsd_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values):
                 protein_rmsd_data.append({
                     **{k: pair_info[k] for k in keys_to_keep},
@@ -92,7 +93,7 @@ class SoftBBBase(L.LightningModule, ABC):
                     'embedding_similarity': embedding_similarity.item(),
                     'corr_rmsd': corr_rmsd.item(),
                     'entropy': gap.item(),
-                    'atom_type_fraction': atom_val.item(),
+                    'atom_type_fraction': atom_val,
                     'radius_of_gyration': radius.item(),
                 })
         

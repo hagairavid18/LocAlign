@@ -70,8 +70,6 @@ class BasePairDataset(Dataset):
 
             if self._n_samples:
                 pairs = pairs.sample(n=self._n_samples, random_state=42, replace=True)
-            # pairs = pairs[(pairs['cath_degree'] >= 4) | ((pairs['cath_degree'] < 4) & (pairs['bbc'] > self._bbc_filter_ratio))]
-            # pairs = pairs[(pairs['cath_degree'] >= 4) | ((pairs['cath_degree'] < 4)]
             print(f"Read df with {len(pairs)} pairs")
         
         for col in pairs.columns:
@@ -82,8 +80,6 @@ class BasePairDataset(Dataset):
                 pairs[col] = pairs[col].apply(lambda x: deserialize_nested_lists(x, col))
              
 
-        # pairs = self._calculate_sample_weights(pairs)
-        # test whether some ligands are invalid
         invalid_ligands = set(pairs[self._ligand_column].unique()).intersection(ALL_INVALID_LIGANDS)
         if invalid_ligands:
             print(f"Warning: Found invalid ligands in the dataset: {invalid_ligands}")
