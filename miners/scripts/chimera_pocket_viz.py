@@ -326,7 +326,7 @@ def make_chimera_script(
                         ):
     
         
-    assert version in ['pocket','motif']
+    assert version in ['pocket','motif','global']
     # Version pocket: Highlights the ligand and the pocket.
     # Version motif: Highlights the ligand, if present, and the learned alignment.
     
@@ -368,6 +368,20 @@ def make_chimera_script(
                 'keypoints': ('orange',0)
             }
         }    
+    elif version == 'global':
+        colors_and_transparency = {
+            'template': {            
+                'receptor': ('cornflower blue', 30),
+                'ligand': ('green',0),
+                'keypoints': ('blue',0)
+            },
+            
+            'query': {            
+                'receptor': ('salmon', 30),
+                'ligand': ('green',0),
+                'keypoints': ('red',0)
+            }
+        }            
 
             
     show_template_pocket =  (template_pocket_residues is not None) & (version == 'pocket')
@@ -436,37 +450,41 @@ def make_chimera_script(
         list_commands.append(f'show sel atoms')
         list_commands.append(f'style sel stick')
         list_commands.append(f"color sel {colors_and_transparency['template']['ligand'][0]} transparency {colors_and_transparency['template']['ligand'][1]}")        
-        list_commands.append(f'color sel byhetero')
+        if not version == 'global':
+            list_commands.append(f'color sel byhetero')
         
     if show_query_ligand:
         list_commands.append(f"sel #{model_ranks['query_ligand']}")
         list_commands.append(f'show sel atoms')
         list_commands.append(f'style sel stick')
         list_commands.append(f"color sel {colors_and_transparency['query']['ligand'][0]} transparency {colors_and_transparency['query']['ligand'][1]}")        
-        list_commands.append(f'color sel byhetero')
+        if not version == 'global':        
+            list_commands.append(f'color sel byhetero')
         
     
     if show_template_keypoints:            
         template_corr_residues = ' '.join( x.split('@')[0] for x in template_corr_atoms.split(' ') )
         list_commands.append(f"sel {template_corr_residues}")
         list_commands.append(f"color sel {colors_and_transparency['template']['keypoints'][0]} transparency {colors_and_transparency['template']['keypoints'][1]}")        
-        list_commands.append('show sel atoms')
-        list_commands.append('hide sel cartoon')
-        list_commands.append('style sel stick')
-        list_commands.append(f'color sel byhetero')        
-        list_commands.append(f"sel {template_corr_atoms}")
-        list_commands.append('style sel ball')
+        if not version == 'global':        
+            list_commands.append('show sel atoms')
+            list_commands.append('hide sel cartoon')
+            list_commands.append('style sel stick')
+            list_commands.append(f'color sel byhetero')        
+            list_commands.append(f"sel {template_corr_atoms}")
+            list_commands.append('style sel ball')
         
     if show_query_keypoints:                
         query_corr_residues = ' '.join( x.split('@')[0] for x in query_corr_atoms.split(' ') )    
         list_commands.append(f'sel {query_corr_residues}')
         list_commands.append(f"color sel {colors_and_transparency['query']['keypoints'][0]} transparency {colors_and_transparency['query']['keypoints'][1]}")        
-        list_commands.append('show sel atoms')
-        list_commands.append('hide sel cartoon')
-        list_commands.append('style sel stick')  
-        list_commands.append(f'color sel byhetero')        
-        list_commands.append(f"sel {query_corr_atoms}")
-        list_commands.append('style sel ball')
+        if not version == 'global':
+            list_commands.append('show sel atoms')
+            list_commands.append('hide sel cartoon')
+            list_commands.append('style sel stick')  
+            list_commands.append(f'color sel byhetero')        
+            list_commands.append(f"sel {query_corr_atoms}")
+            list_commands.append('style sel ball')
 
     if (version == 'motif') & show_query_keypoints & show_template_keypoints:
         list_commands.append(f'sel {query_corr_atoms} {template_corr_atoms}')
@@ -614,25 +632,17 @@ def process_alignment(
             os.path.join(output_folder, 'transformed_query_ligand.pdb'),                         
         )
 
-    make_chimera_script(
-                        output_folder,
-                        ligand=ligand_tag,
-                        template_pocket_residues=template_pocket_residues,
-                        query_pocket_residues=query_pocket_residues,
-                        template_corr_atoms = template_corr_atoms,
-                        query_corr_atoms = query_corr_atoms,
-                        version = 'pocket',
-                        ) 
-    
-    make_chimera_script(
-                        output_folder,
-                        ligand=ligand_tag,
-                        template_pocket_residues=template_pocket_residues,
-                        query_pocket_residues=query_pocket_residues,
-                        template_corr_atoms = template_corr_atoms,
-                        query_corr_atoms = query_corr_atoms,
-                        version = 'motif',
-                        )
+    for version in ['pocket','motif','global']:
+        make_chimera_script(
+                            output_folder,
+                            ligand=ligand_tag,
+                            template_pocket_residues=template_pocket_residues,
+                            query_pocket_residues=query_pocket_residues,
+                            template_corr_atoms = template_corr_atoms,
+                            query_corr_atoms = query_corr_atoms,
+                            version = version,
+                            ) 
+
     return    
 
             

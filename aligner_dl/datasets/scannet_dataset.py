@@ -204,13 +204,13 @@ class ScanNetDataset(BasePairDataset):
         
         residue_embeddings = data["residue_embeddings"]
         residue_ids = data["residue_ids"]
+        atom_residue_index = np.clip(data["sequence_indices_atom"], 0, len(residue_ids)-1)  # Residue index for each atom. Clip to guarantee out of index.
         if "atomic_plus_residue_embedding" in data.keys():
             atom_embeddings = data["atomic_plus_residue_embedding"]
         else:
             atom_embeddings = np.concatenate(
-                (data["atomic_embeddings"], data["residue_embeddings"][data["sequence_indices_atom"]])
-                ,axis=-1 )            
-        atom_residue_index = data["sequence_indices_atom"]  # Residue index for each atom
+                (data["atomic_embeddings"], data["residue_embeddings"][atom_residue_index]) ,axis=-1 )
+
         atom_frames = data["atomic_frames"]
         atom_neighbors = data["atom_nearest_neighbors"]
         atom_types = data["atom_types"]
