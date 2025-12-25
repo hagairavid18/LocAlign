@@ -493,7 +493,25 @@ def make_chimera_script(
         
     list_commands.append('sel clear')
     list_commands.append('open correspondences.pb')
-    list_commands.append('hide solvent')
+
+    # Common ions that might be ligands
+    common_ions = ['ZN', 'MG', 'CA', 'FE', 'MN', 'CU', 'CO', 'NI', 'K', 'NA', 'CL', 'BR', 'I', 'F']
+    
+    # Don't hide solvent if ligand is a solvent molecule or an ion
+    if ligand not in common_ions:
+        list_commands.append('hide solvent')
+    
+    # Apply spherical view if ligand is an ion
+    if show_ligand and ligand in common_ions:
+        ligand_models = []
+        if show_template_ligand:
+            ligand_models.append(f"#{model_ranks['template_ligand']}")
+        if show_query_ligand:
+            ligand_models.append(f"#{model_ranks['query_ligand']}")
+        if ligand_models:
+            list_commands.append(f"sel {' | '.join(ligand_models)}")
+            list_commands.append('style sel sphere')
+    
     list_commands.append('lighting soft')
     list_commands.append('set bgColor white')
     
