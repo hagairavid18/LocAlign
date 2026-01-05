@@ -11,14 +11,17 @@ class PairHolder:
     ligand: str | None = None
     tar_ligand: str | None = None
     src_ligand: str | None = None
-    cath_degree: int = -1
-    ligand_rmsd: float = 0.0
+    cath_degree: int | None = None
+    ligand_rmsd: float | None = None
     tar_motif: list[int] = None
     src_motif: list[int] = None
+    tar_ligand_n_atoms: list[int] | int | None = None
+    src_ligand_n_atoms: list[int] | int | None = None
     message: str | None = None
     failure_message: str | None = None
     # Inference metrics (populated during inference)
     pLRMSD: float | None = None
+    eLRMSD: float | None = None
     perplexity: int | None = None
     attribute_similarity: float | None = None
     correspondence_rmsd: float | None = None
@@ -52,10 +55,13 @@ class PairHolder:
             'ligand': self.ligand,
             'tar_ligand': self.tar_ligand,
             'src_ligand': self.src_ligand,
+            'tar_ligand_n_atoms': self.tar_ligand_n_atoms,
+            'src_ligand_n_atoms': self.src_ligand_n_atoms,
             'message': self.message,
             'failure_message': self.failure_message,
             # Metrics (may be None before inference)
             'pLRMSD': self.pLRMSD,
+            'eLRMSD': self.eLRMSD,
             'perplexity': self.perplexity,
             'attribute_similarity': self.attribute_similarity,
             'correspondence_rmsd': self.correspondence_rmsd,

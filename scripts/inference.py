@@ -55,6 +55,7 @@ class InferenceRunner:
         src_motif: str | None = None,
         tar_motif: str | None = None,
         calibration_model_path: str | None = None,
+        ligand_calibration_model_path: str | None = None,
         max_pLRMSD: float | None = None,
         tar_ligand_id: str | None = None,
         src_ligand_id: str | None = None,
@@ -84,8 +85,13 @@ class InferenceRunner:
             default_path = os.path.join(os.path.dirname(checkpoint_path), 'calibration_model.pkl' )
             if os.path.exists(default_path):
                 calibration_model_path = default_path
-                            
-        self._calibration_model_path = calibration_model_path
+        self._calibration_model_path = calibration_model_path                
+        if (ligand_calibration_model_path is None):
+            default_path = os.path.join(os.path.dirname(checkpoint_path), 'ligand_calibration_model.pkl' )
+            if os.path.exists(default_path):
+                ligand_calibration_model_path = default_path                
+        self._ligand_calibration_model_path = ligand_calibration_model_path
+
         self._src_motif = src_motif
         self._tar_motif = tar_motif
         self._max_pLRMSD = max_pLRMSD
@@ -96,14 +102,9 @@ class InferenceRunner:
         self._output_dir = None
         self._model = None
         self._calibration_model = None        
+        self._ligand_calibration_model = None        
         self._dataloader = None
         
-        if self._calibration_model_path is not None:
-            try:             
-                self._calibration_model = pickle.load( open(self._calibration_model_path,'rb') )
-                print('Successfully loaded calibration model')
-            except Exception as e:
-                print(f'Could not load calibration model, {e}')
 
     @staticmethod
     def _parse_motif(val):
@@ -119,6 +120,10 @@ class InferenceRunner:
         s = str(val).strip()
         if s == "":
             return None
+        try:
+            parsed = [int(x) for x in val.split(',')]
+        except Exception:
+            pass
         try:
             parsed = ast.literal_eval(s)
             if isinstance(parsed, list):
@@ -154,9 +159,9 @@ class InferenceRunner:
         
         elif self._csv_path is not None:
             df = pd.read_csv(self._csv_path, dtype=str)
-            if 'tar_motif' in df.columns:
-                df['tar_motif'] = df['tar_motif'].apply(self._parse_motif)
-            
+            for column in ['tar_motif','src_motif','tar_ligands_n_atoms','src_ligands_n_atoms']:
+                if column in df.columns:
+                    df[column] = df[column].apply(self._parse_motif)
             
             if 'ligand' in df.columns:
                 df['src_ligand'] = df['ligand']
@@ -179,6 +184,8 @@ class InferenceRunner:
                     src_motif=row.get('src_motif', None),
                     tar_ligand=row.get('tar_ligand', self.DEFAULT_LIGAND),
                     src_ligand=row.get('src_ligand', self.DEFAULT_LIGAND),
+                    tar_ligand_n_atoms = row.get('tar_ligand_n_atoms', None),
+                    src_ligand_n_atoms = row.get('src_ligand_n_atoms', None),
                 )
                 self._pairs.append(ph)
             self._df = df
@@ -192,8 +199,9 @@ class InferenceRunner:
                 df['tar_ligand'] = df['ligand']
                 df['src_ligand'] = df['ligand']
 
-            if 'tar_motif' in df.columns:
-                df['tar_motif'] = df['tar_motif'].apply(self._parse_motif)
+            for column in ['tar_motif','src_motif','tar_ligand_n_atoms','src_ligand_n_atoms']:
+                if column in df.columns:
+                    df[column] = df[column].apply(self._parse_motif)
             
             # Validate database has required columns
             required = ['tar_protein', 'tar_chain']
@@ -217,6 +225,8 @@ class InferenceRunner:
                     src_motif=row.get('src_motif', None),
                     tar_ligand=row.get('tar_ligand', self.DEFAULT_LIGAND),
                     src_ligand=row['src_ligand'],
+                    tar_ligand_n_atoms = row.get('tar_ligand_n_atoms', None),
+                    src_ligand_n_atoms = row.get('src_ligand_n_atoms', None),                    
                 )
                 self._pairs.append(ph)
             self._df = df
@@ -398,10 +408,11 @@ class InferenceRunner:
         dataset_config['args']['src_ligand_column'] = 'src_ligand'
         
         dataset = ScanNetDataset(**dataset_config['args'])
+        num_workers = min(16, cpu_count//2) if ( (cpu_count() > 8) & (len(self._df)>=10) ) else 0 # Use workers if many examples and machine with many cpus, else do not.
         self._dataloader = DataLoader(
             dataset,
             batch_size=8,
-            num_workers=0,
+            num_workers=  num_workers,
             collate_fn=custom_collate_fn,
             pin_memory=True,
             shuffle=False
@@ -434,6 +445,19 @@ class InferenceRunner:
 
         self._model.to(self._device)
         self._model.eval()
+                        
+        if self._calibration_model_path is not None:
+            try:             
+                self._calibration_model = pickle.load( open(self._calibration_model_path,'rb') )
+                print('Successfully loaded calibration model')
+            except Exception as e:
+                print(f'Could not load calibration model, {e}')
+        if self._ligand_calibration_model_path is not None:
+            try:             
+                self._ligand_calibration_model = pickle.load( open(self._ligand_calibration_model_path,'rb') )
+                print('Successfully loaded ligand calibration model')
+            except Exception as e:
+                print(f'Could not load ligand calibration model, {e}')
     
     def _run_inference(self) -> None:
         """
@@ -519,9 +543,16 @@ class InferenceRunner:
             pLRMSD = self._calibration_model.predict(features)[0]
         else:
             pLRMSD = (  2 *  (1 - emb / np.log(400) ) + 2 * corr_rmsd + 1 * radius_gyration ) # A dummy formula.
+
+        if (self._ligand_calibration_model is not None) & (ph.tar_ligand_n_atoms is not None):
+            features = np.array(ph.tar_ligand_n_atoms)[:,None] if len(ph.tar_ligand_n_atoms)>0 else np.array([[-1]])
+            eLRMSD = self._ligand_calibration_model.predict( features )[0]
+        else:
+            eLRMSD = None
             
         # Store metrics on the PairHolder object (explicit fields)
         ph.pLRMSD = pLRMSD
+        ph.eLRMSD = eLRMSD
         ph.perplexity = perplexity
         ph.attribute_similarity = attribute_similarity
         ph.correspondence_rmsd = corr_rmsd
@@ -583,8 +614,18 @@ class InferenceRunner:
         all_pairs = getattr(self, '_all_pairs', self._pairs)
         rows = [p.to_dict() for p in all_pairs]
         results_df = pd.DataFrame(rows)
-        # Sort by pLRMSD, pushing NaNs (failed pairs) to the bottom
-        results_df = results_df.sort_values(by='pLRMSD', ascending=True, na_position='last')
+                
+        if (self._protein_database_search is not None ) & (results_df['tar_motif'].notnull().any()):
+            results_df['pLRMSD_normalized'] = results_df['pLRMSD'] / results_df['eLRMSD']
+            sort_by = 'pLRMSD_normalized'
+        else:
+            del results_df['eLRMSD'] # Relevant only for motif database search.
+            sort_by = 'pLRMSD'
+        # Sort by pLRMSD (normalized or not), pushing NaNs (failed pairs) to the bottom     
+        for column in ['cath_degree','Ligand RMSD','tar_ligand_n_atoms','src_ligand_n_atoms','message','failure_message']:
+            if not results_df[column].notnull().any():
+                del results_df[column]
+        results_df = results_df.sort_values(by=sort_by, ascending=True, na_position='last')
         results_df.to_csv(os.path.join(self._output_dir, "inference_results.csv"), index=False, float_format='%.3f')
     
     def run(self) -> None:
@@ -682,6 +723,12 @@ def parse_args():
         default=None,
         help="Path to calibration model (pickle file) for pLRMSD prediction."
     )
+    parser.add_argument(
+        "--ligand_calibration_model_path",
+        type=str,
+        default=None,
+        help="Path to ligand calibration model (pickle file) for eLRMSD prediction."
+    )
     return parser.parse_args()
 
 @torch.inference_mode()
@@ -693,6 +740,7 @@ def main():
     runner = InferenceRunner(
         checkpoint_path=args.checkpoint,
         calibration_model_path=args.calibration_model_path,
+        ligand_calibration_model_path=args.ligand_calibration_model_path,
         tar_ligand_id=args.tar_ligand_id,
         src_ligand_id=args.src_ligand_id,
         base_save_dir=args.base_save_dir,
