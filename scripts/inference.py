@@ -3,7 +3,7 @@ import sys
 import argparse
 import ast
 from datetime import datetime
-
+import time
 import pandas as pd
 import torch
 import yaml
@@ -635,19 +635,23 @@ class InferenceRunner:
         Returns:
             None: Runs full pipeline and saves all results
         """
+        t_start_preprocessing = time.time()
         self._prepare_dataframe()
         self._setup_directories()
         
         # Always download PDB models (we have per-chain ligands now)
         self._save_non_ligand_models()
-
         self._extract_features()
+        t_end_preprocessing = time.time()
         # persist resrced pairs (with messages) now, before creating the dataloader/model
         self._write_resrced_pairs()
         self._prepare_dataloader()
         self._load_model()
+        t_start_inference = time.time()
         self._run_inference()
+        t_end_inference = time.time()
         self._save_results()
+        print(f'Inference completed! Preprocessing time: {t_end_preprocessing-t_start_preprocessing:.0f}s. Inference time: {t_end_inference-t_start_inference:.0f}s.')
 
 
 def parse_args():
