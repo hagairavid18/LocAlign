@@ -1,4 +1,4 @@
-import pickle,gzip
+import pickle, gzip
 import os
 import warnings
 import numpy as np

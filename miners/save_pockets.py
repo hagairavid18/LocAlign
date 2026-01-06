@@ -6,7 +6,7 @@ import os
 import pandas as pd
 
 from miners.utils.loading import deserialize_nested_lists
-from miners.utils.process_pair import save_pockets, save_pockets_pdb
+from miners.utils.process_pair import save_pockets
 
 # Setup logging
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

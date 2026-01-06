@@ -22,9 +22,6 @@ warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 from scipy.spatial import distance_matrix
 import numpy as np
 
-from scipy.spatial.transform import Rotation
-import numpy as np
-
 
 def best_buddy_count(P, Q, dist_thresh=None):
     """
@@ -64,10 +61,6 @@ class ProteinPair:
         self._tar_model_idx = tar_model_idx
         self._src_model_idx = src_model_idx
         self._save_transformed_models = save_transformed_models
-        
-        # self._base_dir = f'{ligand_dir}/{ligand_name}/{self._src_protein._pdb_name}{self._src_protein._chain_id}_to_{self._tar_protein._pdb_name}{self._tar_protein._chain_id}'
-        # os.makedirs(self._base_dir, exist_ok=True)
-        
         self._tar_model, self._src_model = self._init_models()
         
     def _init_models(self, tar_model_idx: int = 0, src_model_idx: int = 0) -> tuple[Model, Model]:
@@ -110,25 +103,6 @@ class ProteinPair:
         logging.info(f"4 ang n bb: {bbc} bbc ratio {bb_ratio}")
         return bb_ratio, bbc
     
-    def _get_best_buddy_around_tar_center(self, R, t, bb_thresh: None | float = None, distance_thresh: float = 4.0) -> float:
-        
-        all_atoms_tar = np.array([atom.coord for atom in self._tar_protein._get_atoms(all_atoms=True) if atom.element != "H"])
-        tar_close_atoms = Protein.get_atoms_within_distance(all_atoms_tar ,center=all_atoms_tar.mean(0), distance_thresh=distance_thresh)
-        
-        copy_model = self._src_protein.get_model(self._src_model_idx).copy()
-        for atom in copy_model.get_atoms():
-            atom.transform(R[:3, :3], t[:3])
-        transformed_src_coord = [atom.coord for atom in copy_model.get_atoms() if atom.element != "H"]
-        
-        src_close_atoms = Protein.get_atoms_within_distance(transformed_src_coord, center=all_atoms_tar.mean(0), distance_thresh=distance_thresh)
-        
-        # Compute best buddy count and ratio
-        bbc = best_buddy_count(src_close_atoms, tar_close_atoms, bb_thresh)
-        bbr = bbc / min(src_close_atoms.shape[0], tar_close_atoms.shape[0])
-        logging.info(f"{distance_thresh}A n bb: {bbc} bb ratio {bbr}")
-        
-        return bbr, bbc
-    
     def find_ligand_transformations(self, holder: ResultHolder, aligner, min_ligand_atoms: int = 10) -> None:
         tar_ligand: list[list[Atom]] = self._tar_protein.get_ligand_residues()
         src_ligand: list[list[Atom]] = self._src_protein.get_ligand_residues()
@@ -146,35 +120,12 @@ class ProteinPair:
         curr_pair_idx = 0
         for i, tar_residue in enumerate(tar_ligand):
             for j, src_residue in enumerate(src_ligand):
-                # if len(tar_residue) < min_ligand_atoms or len(src_residue) < min_ligand_atoms:
-                #     holder.failure_message = NOT_ENOUGH_ATOMS_MESSAGE
-                #     continue
+
 
                 error_message: str = ProteinPair.validate_ligand_pair(tar_residue, src_residue)
                 if len(error_message) > 1:
                     continue
             
-                # R, t, rmse, coverage = aligner.impose_structure(tar_residue, src_residue, self._base_dir)
-                # if len(R) < 1:
-                #     continue
-                
-                # all_R[curr_pair_idx] = [r.tolist() for r in R]
-                # all_t[curr_pair_idx] = [tr.tolist() for tr in t]
-                # all_rmse[curr_pair_idx] = rmse
-                # all_coverage[curr_pair_idx] = coverage
-                # try:
-                #     for k in range(len(R)):
-                #         bbr, bbc = self._get_best_buddy_ratio(R[k], t[k], j , i, bb_thresh=2.0)
-                #         all_bbr[curr_pair_idx].append(bbr)
-                #         all_bbc[curr_pair_idx].append(bbc)
-                # except Exception as e:
-                #     logging.info(e)
-                #     holder.failure_message = "Failed to compute in bbr"
-
-                # if self._save_transformed_models:
-                #     if len(R) > 1:
-                #         print(f"saving {len(R)} models for ligand {self._ligand_name} for pair {self._tar_protein._pdb_name}{self._tar_protein._chain_id} to {self._src_protein._pdb_name}{self._src_protein._chain_id}")
-                #     self._apply_transformations_and_save_transformed_models(R, t, aligner, i, j)
                 curr_pair_idx +=1
         
         holder.rotations = all_R

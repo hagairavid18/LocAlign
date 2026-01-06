@@ -1,5 +1,4 @@
 import os
-import numpy as np
 import logging
 import pickle
 
@@ -8,6 +7,7 @@ from objects import ProteinPair, Protein
 from miners.utils.constants import BaselineHolder, ResultHolder, LIGAND_DIR
 
 logger = logging.getLogger(__name__)
+
 
 def align_pair(pair_dict: dict, ligand_aligner: BaseStructureAligner,
              save_transformed_models: bool = False, min_ligand_atoms: int = 3) -> None:
@@ -58,27 +58,7 @@ def baseline_pair(pair_dict: dict, protein_aligners: list[BaseStructureAligner])
     return holder
 
 
-def transformations_rmsd(src_name: str, src_chain: str, gt_trans: np.ndarray, aligner_trans: np.ndarray, ligand: str, ligand_res_idx: int, save_pocket: bool = True) -> None:
-    src_protein = Protein(src_name, src_chain, ligand, save_models=False)
-    try:
-        pocket_atoms, _ = src_protein.get_pocket_atoms(ligand_res_idx = ligand_res_idx)
-        if save_pocket:
-            path = f'{LIGAND_DIR}/{ligand}/{src_name}_pocket.pdb'
-            # if not os.path.exists(path):
-            Protein.save_coordinates_to_pdb(pocket_atoms, path)
-            logging.info('saved pocket model')
-            return None, None
-        pocket_rmsd = ProteinPair.compute_rmsd(pocket_atoms, gt_trans, aligner_trans)
-
-        ligand_residue = src_protein.get_ligand_residues()[ligand_res_idx] # TODO: handle ligand with more residues
-        ligand_atoms_coors = [atom.coord for atom in ligand_residue.get_atoms() if atom.element != "H"]
-        ligand_rmsd = ProteinPair.compute_rmsd(np.vstack(ligand_atoms_coors), gt_trans, aligner_trans)
-    except Exception as e:
-        logging.info(e)
-        return None, None
-    return pocket_rmsd, ligand_rmsd
-
-def save_pockets(src_name: str, src_chain: str, ligand: str, ligand_res_idx: int, save_to_pdb=False) -> None:
+def save_pockets(src_name: str, src_chain: str, ligand: str, ligand_res_idx: int) -> None:
     """
     Saves pocket data (coordinates and residue indices) for a given ligand-protein pair into a single file.
 
@@ -114,25 +94,3 @@ def save_pockets(src_name: str, src_chain: str, ligand: str, ligand_res_idx: int
 
         except Exception as e:
             logging.error(f"Error saving pocket data: {e}")
-
-
-def save_pockets_pdb(src_name: str, src_chain: str, ligand: str, ligand_res_idx: int) -> None:
-    """
-    Saves pocket data (coordinates and residue indices) for a given ligand-protein pair into a single file.
-
-    Args:
-        src_name (str): Name of the protein.
-        src_chain (str): Chain identifier of the protein.
-        ligand (str): Ligand identifier.
-        ligand_res_idx (int): Ligand residue index.
-    """
-    # Define path for saving the combined data
-    try:
-        path = f'{LIGAND_DIR}/{ligand}/{src_name}_pocket.pdb'
-        if not os.path.exists(path):
-            src_protein = Protein(src_name, src_chain, ligand, save_models=False)
-            pocket_atoms, _ = src_protein.get_pocket_atoms(ligand_res_idx = ligand_res_idx)
-            Protein.save_coordinates_to_pdb(pocket_atoms, path)
-            logging.info('saved pdb pocket model')
-    except:
-        logging.error(f"Error saving pocket data")

@@ -258,12 +258,7 @@ class LocAlign(SoftBBBase):
             # Select keypoints
             # Use initial importance from batch on first iteration if available, otherwise use recycling state
             src_importance = batch.get('src_initial_importance') if is_first_iteration else recycling_state['src_importance']
-        
             tar_importance =batch.get('tar_initial_importance') if is_first_iteration else recycling_state['tar_importance']
-            # if batch.get('src_initial_importance') is not None:
-            #     batch['src_mask'] *= (batch.get('src_initial_importance')>0)
-            # if batch.get('tar_initial_importance') is not None:
-            #     batch['tar_mask'] *= (batch.get('tar_initial_importance')>0)
                             
             topk_src_indices, topk_src_values, cache['src_value_key_query'], cache['src_local_scalar_edges'] = (
                 self._keypoints_selection(
@@ -292,8 +287,6 @@ class LocAlign(SoftBBBase):
             # Gather keypoint data
             kp_src_emb, kp_src_frames, kp_src_mask = self._gather_keypoint_data(src_embedding, batch['src_frames'], batch['src_mask'], topk_src_indices)
             kp_tar_emb, kp_tar_frames, kp_tar_mask = self._gather_keypoint_data(tar_embedding, batch['tar_frames'], batch['tar_mask'], topk_tar_indices)
-            
-                        
 
             # Prepare embeddings (concatenate with recycled if not first iteration)
             kp_src_emb_concated = self._prepare_embeddings_for_iteration(kp_src_emb, recycling_state['src_embedding'], topk_src_indices, is_first_iteration)

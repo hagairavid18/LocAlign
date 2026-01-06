@@ -21,7 +21,7 @@ from aligner_dl.models.utils.collate import custom_collate_fn
 from aligner_dl.models.utils.misc import build_object
 from miners.utils.constants import PairHolder
 from miners.objects import Protein
-from miners.scripts.chimera_pocket_viz import process_alignment
+from scripts.chimera_pocket_viz import process_alignment
 from scripts.run_scannet import extract_scannet
 
 
