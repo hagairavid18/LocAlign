@@ -408,7 +408,7 @@ class InferenceRunner:
         dataset_config['args']['src_ligand_column'] = 'src_ligand'
         
         dataset = ScanNetDataset(**dataset_config['args'])
-        num_workers = min(16, cpu_count//2) if ( (cpu_count() > 8) & (len(self._df)>=10) ) else 0 # Use workers if many examples and machine with many cpus, else do not.
+        num_workers = min(16, cpu_count()//2) if ( (cpu_count() > 8) & (len(self._df)>=10) ) else 0 # Use workers if many examples and machine with many cpus, else do not.
         self._dataloader = DataLoader(
             dataset,
             batch_size=8,
