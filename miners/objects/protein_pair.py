@@ -103,7 +103,7 @@ class ProteinPair:
         logging.info(f"4 ang n bb: {bbc} bbc ratio {bb_ratio}")
         return bb_ratio, bbc
     
-    def find_ligand_transformations(self, holder: ResultHolder, aligner, min_ligand_atoms: int = 10) -> None:
+    def find_ligand_transformations(self, holder: ResultHolder) -> None:
         tar_ligand: list[list[Atom]] = self._tar_protein.get_ligand_residues()
         src_ligand: list[list[Atom]] = self._src_protein.get_ligand_residues()
         holder.n_residues_tar_ligand = len(tar_ligand)
@@ -116,27 +116,16 @@ class ProteinPair:
             holder.failure_message = TOO_MUCH_RESIDUES_MESSAGE
             return
         error_message = ""
-        all_R, all_t, all_rmse, all_coverage, all_bbr, all_bbc = ([[] for _ in range(n_ligand_pairs)] for _ in range(6))
-        curr_pair_idx = 0
         for i, tar_residue in enumerate(tar_ligand):
             for j, src_residue in enumerate(src_ligand):
 
 
                 error_message: str = ProteinPair.validate_ligand_pair(tar_residue, src_residue)
+                holder.failure_message  = error_message
                 if len(error_message) > 1:
                     continue
             
-                curr_pair_idx +=1
         
-        holder.rotations = all_R
-        holder.translations = all_t
-        holder.rmse = all_rmse
-        holder.coverage = all_coverage
-        holder.bbr = all_bbr
-        holder.bbc = all_bbc
-        holder.n_transformations = sum([len(rot) for rot in all_R])
-        if len(all_R) == 0:
-            holder.failure_message = error_message
     
     def find_protein_transformations(self, holder: BaselineHolder, aligner) -> None:
         

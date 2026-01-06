@@ -9,7 +9,7 @@ from miners.utils.constants import BaselineHolder, ResultHolder, LIGAND_DIR
 logger = logging.getLogger(__name__)
 
 
-def align_pair(pair_dict: dict, ligand_aligner: BaseStructureAligner,
+def align_pair(pair_dict: dict,
              save_transformed_models: bool = False, min_ligand_atoms: int = 3) -> None:
     ligand = pair_dict['ligand_id']
     holder = ResultHolder(pair_dict, ligand)
@@ -30,7 +30,7 @@ def align_pair(pair_dict: dict, ligand_aligner: BaseStructureAligner,
     holder.tar_ligand_n_atoms = tar_ligand_n_atoms
     holder.src_ligand_n_atoms = src_ligand_n_atoms
                 
-    pair.find_ligand_transformations(holder, ligand_aligner, min_ligand_atoms=min_ligand_atoms)
+    pair.find_ligand_transformations(holder)
     print(f"finished aligning {pair_dict['tar_name']} to {pair_dict['src_name']} for ligand {ligand}")
 
     return holder

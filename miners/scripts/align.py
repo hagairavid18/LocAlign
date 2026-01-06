@@ -31,10 +31,9 @@ logging.basicConfig(filename=os.path.join("miners", "logs", 'align', start_time 
 logger = logging.getLogger(__name__)
 
 
-def run(pairs_df: pd.DataFrame, ligand_aligner_config: dict[str, Any],
+def run(pairs_df: pd.DataFrame,
          debug: bool = False, save_transformed_models: bool = False, prev_df: pd.DataFrame | None = None) -> None:
      
-    ligand_aligner = build_object(ligand_aligner_config, "aligners")
     result_list = []
     pool = mp.Pool(mp.cpu_count())
     
@@ -43,10 +42,10 @@ def run(pairs_df: pd.DataFrame, ligand_aligner_config: dict[str, Any],
     for i in range(0, len(ligand_pairs), CHUNK_SIZE):
         chunk = ligand_pairs[i:i + CHUNK_SIZE]
         if not debug:
-            results_async = [pool.apply_async(align_pair, (pair_dict, ligand_aligner, save_transformed_models)) for pair_dict in chunk]
+            results_async = [pool.apply_async(align_pair, (pair_dict, save_transformed_models)) for pair_dict in chunk]
             result_list += [result.get() for result in results_async]
         else:
-            result_list += [align_pair(pair_dict, ligand_aligner, save_transformed_models) for pair_dict in chunk]
+            result_list += [align_pair(pair_dict, save_transformed_models) for pair_dict in chunk]
         save_results_to_csv(result_list, start_time, "alignment_temp_results", prev_df)
     
     pool.close()
@@ -77,4 +76,4 @@ if __name__ == "__main__":
     else:
         prev_df = None
 
-    run(pairs_df, config['ligand_aligner'], args.debug, config['save_transformed_models'], prev_df)
+    run(pairs_df, args.debug, config['save_transformed_models'], prev_df)
