@@ -38,29 +38,35 @@ class PocketRMSD(Module):
             cath_degree = metadata['cath_degree']
             pair_info = batch['metadata'][batch_id].copy()  # Make a copy to avoid modifying the original
             for key in ['rotations', 'translations', 'rmse', 'coverage']:
-                pair_info.pop(key)
+                pair_info.pop(key, None)  # Use pop with default to avoid KeyError
 
-            # Compute RMSDs
-            ligand_rmsd = self._ligand_rmsd_metric(batch, outputs['transformation_dict']['pred_R'], outputs['transformation_dict']['pred_t'], reduce=False)[batch_id]
+            # Try to pull precomputed metrics from loss_dict; if missing, leave as None
+            per_sample = outputs.get('loss_dict', {}).get('per_sample', {}) if isinstance(outputs, dict) else {}
 
-            # Update metrics
-            self.ligand_rmsd_per_degree[cath_degree] += ligand_rmsd
-            self.count_per_degree[cath_degree] += 1
+            ligand_rmsd = per_sample.get('ligand_rmsd', None)
+            embedding_val = per_sample.get('embedding', None)
+            corr_rmsd = per_sample.get('corr_rmsd', None)
+            gap_val = per_sample.get('gap', None)
+            radius_val = per_sample.get('radius', None)
 
+            # Append per-sample metrics (use None when invalid)
             self.sample_metrics['cath_degree_per_sample'].append(cath_degree)
-            self.sample_metrics['ligand_rmsd_per_sample'].append(ligand_rmsd.cpu())
-            
-            self.sample_metrics['pair_infos'].append(pair_info)  # Store the protein name
+            self.sample_metrics['ligand_rmsd_per_sample'].append(ligand_rmsd.cpu() if hasattr(ligand_rmsd, 'cpu') else ligand_rmsd)
+            self.sample_metrics['pair_infos'].append(pair_info)
 
-            # Update the dictionary with protein names and pocket_rmsd per degree
+            # Only aggregate per-degree metrics when ligand_rmsd is valid
+            if ligand_rmsd is not None:
+                self.ligand_rmsd_per_degree[cath_degree] += ligand_rmsd[batch_id].item()
+                self.count_per_degree[cath_degree] += 1
             self.pair_infos_per_degree[cath_degree].append(pair_info)
-            self.ligand_rmsd_per_degree_protein[cath_degree].append(ligand_rmsd.cpu())
-            self.embedding_similarity_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['embedding'][batch_id].cpu())
-            self.corr_rmsd_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['corr_rmsd'][batch_id].cpu())
-            self.gap_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['gap'][batch_id].cpu())
-            self.radius_of_gyration_per_degree_protein[cath_degree].append(outputs['loss_dict']['per_sample']['radius'][batch_id].cpu())
+            self.ligand_rmsd_per_degree_protein[cath_degree].append(ligand_rmsd[batch_id].item() if ligand_rmsd is not None else None)
+            self.embedding_similarity_per_degree_protein[cath_degree].append(embedding_val[batch_id].item() if embedding_val is not None else None)
+            self.corr_rmsd_per_degree_protein[cath_degree].append(corr_rmsd[batch_id].item() if corr_rmsd is not None else None)
+            self.gap_per_degree_protein[cath_degree].append(gap_val[batch_id].item() if gap_val is not None else None)
+            self.radius_of_gyration_per_degree_protein[cath_degree].append(radius_val[batch_id].item() if radius_val is not None else None)
 
-        self.total_count += batch_size
+        # total_count counts only valid entries (sum of count_per_degree)
+        self.total_count = sum(self.count_per_degree.values())
 
     def compute(self):
         # Calculate overall averages by summing all per-degree values and dividing by total count
@@ -83,7 +89,15 @@ class PocketRMSD(Module):
         ligand_rmsd_below_4_per_degree = {deg: 0 for deg in range(0, 9)}
         total_ligand_rmsd_below_4 = 0
         for rmsd, degree in zip(self.sample_metrics['ligand_rmsd_per_sample'], self.sample_metrics['cath_degree_per_sample']):
-            if rmsd < 4:
+            if rmsd is None:
+                continue
+            try:
+                rmsd_value = rmsd.item() if hasattr(rmsd, 'item') else rmsd
+            except Exception:
+                continue
+            if rmsd_value is None:
+                continue
+            if rmsd_value < 4:
                 ligand_rmsd_below_4_per_degree[degree] += 1
                 total_ligand_rmsd_below_4 += 1
 

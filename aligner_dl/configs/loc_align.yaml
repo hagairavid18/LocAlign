@@ -1,6 +1,6 @@
 trainer:
-  exp_name: baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr-0gnn-ligand-split
-  tags: ["baseline", "ligand_split", "small_ligands"]
+  exp_name: baseline-homology
+  tags: ["baseline", "homology_split", "small_ligands"]
   max_epochs: 10
   validate_only: false
   check_val_every_n_epoch: 1

@@ -55,7 +55,7 @@ class DaliAligner():
         src_path = os.path.join('..', src_name + src_chain + '_non_ligand_.ent')
         tar_path = os.path.join('..', tar_name + tar_chain + '_non_ligand_.ent')
         try:
-            temp_dir = tempfile.mkdtemp(ptarix=os.path.join(self.HOME_PATH, "ligand_aligner", ligand_dir + '/'))
+            temp_dir = tempfile.mkdtemp(prefix=os.path.join(self.HOME_PATH, "LocAlign", ligand_dir + '/'))
             os.makedirs(temp_dir, exist_ok=True)
             os.chdir(temp_dir)
             import_1 = subprocess.run([self.IMPORT_PATH, '--pdbfile', src_path, '--pdbid', src_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
@@ -81,7 +81,7 @@ class DaliAligner():
                 return [], [], [], []
             
         except Exception as e:
-            os.chdir('/home/iscb/wolfson/hagairavid/ligand_aligner')
+            os.chdir('/home/iscb/wolfson/hagairavid/LocAlign')
             logging.info(e)
             try:
                 shutil.rmtree(temp_dir)

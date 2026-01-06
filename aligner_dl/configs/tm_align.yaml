@@ -1,5 +1,5 @@
 trainer:
-  exp_name: "baseline-2409-TMalign-ligand_split"
+  exp_name: "baseline-2812-tmalign-homology_split"
   tags: ["baseline", "ligand_split"]
   max_epochs: 30
   validate_only: true
@@ -13,11 +13,10 @@ dataset:
   validation:
     name: ScanNetDataset
     args:
-      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_outputs_1709'
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
       esm_model: "esm2_t30_150M_UR50D"
-      df_path: datasets/csv_files/ligand_1708/val_baseline.csv
+      df_path: datasets/csv_files/homology_25_10/val_baseline.csv
       seed: 81
-      level: "atom"
       # n_samples: 100
       min_cath: 0
       max_cath: 4

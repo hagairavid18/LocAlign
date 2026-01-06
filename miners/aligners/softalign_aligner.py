@@ -32,14 +32,14 @@ class SoftAlignAligner():
                 matrices = np.load(f, allow_pickle=True)
                 R = matrices["R"]
                 t = matrices["t"]
-                rmsd = matrices["rmsd"]
+                corr_rmsd = matrices["rmsd"]
             # R, t, rmsd = kabsch_from_correspondence_matrix_numpy(src_coord, tar_coord, matrices.T)    # transpose!
             if align_log.returncode != 0:
                 logger.log(f"Error in SoftAlign alignment: {align_log.stderr}")
                 return [], [], [], []
   
        
-            return [np.array(R)], [np.array(t)], float(rmsd), []
+            return [np.array(R)], [np.array(t)], float(corr_rmsd), []
 
         except Exception as e:
             logger.error(f"Error during SoftAlign alignment: {e}")

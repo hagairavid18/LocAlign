@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 import pickle
 import numpy as np
-import pandas as pd
 from Bio.PDB.Atom import PDBConstructionWarning
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Structure import Structure

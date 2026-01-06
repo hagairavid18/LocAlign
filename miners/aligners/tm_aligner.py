@@ -20,4 +20,4 @@ class TMAligner(BaseStructureAligner):
 
     def impose_structure(self, fix_points: list[Atom], src_points: list[Atom], seq1: str, seq2: str) -> tuple[list[np.ndarray], list[np.ndarray]]:
         res = tm_align(src_points, fix_points, seq2, seq1)
-        return [np.linalg.inv(res.u)], [res.t], res.tm_norm_chain2, None
+        return [np.linalg.inv(res.u)], [res.t], res.rmsd, None

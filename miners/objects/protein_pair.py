@@ -194,41 +194,23 @@ class ProteinPair:
         tar_coord, seq1, _ = Protein.get_residue_data(tar_chain)
         src_coord, seq2, _ = Protein.get_residue_data(src_chain)
         if aligner.name in  ["DaliAligner", "SoftAlignAligner"]:
-            R, t, rmsd, _ = aligner.impose_structure(self._tar_protein, self._src_protein, f'{self._ligand_dir}/{self._ligand_name}')
+            R, t, corr_rmsd, _ = aligner.impose_structure(self._tar_protein, self._src_protein, f'{self._ligand_dir}/{self._ligand_name}')
         else:
-            R, t, rmsd, _ = aligner.impose_structure(tar_coord, src_coord, seq1, seq2)
+            R, t, corr_rmsd, _ = aligner.impose_structure(tar_coord, src_coord, seq1, seq2)
 
         if self._save_transformed_models:
             self._apply_transformations_and_save_transformed_models(R, t, aligner)
         
         if len(R) > 0:
             ligand_rmsd =  self._compute_ligand_rmsd(R[0], t[0])
-        #     try:
-
-        #         tar_ligand: list[list[Atom]] = self._tar_protein.get_ligand_residues()
-        #         src_ligand: list[list[Atom]] = self._src_protein.get_ligand_residues()
-        #         n_ligand_pairs = len(tar_ligand) * len(src_ligand)
-        #         all_bbr, all_bbc = ([[] for _ in range(n_ligand_pairs)] for _ in range(2))
-        #         curr_pair_idx = 0
-        #         for i, tar_residue in enumerate(tar_ligand):
-        #             for j, src_residue in enumerate(src_ligand):
-        #                     error_message: str = ProteinPair.validate_ligand_pair(tar_residue, src_residue)
-        #                     if len(error_message) > 1:
-        #                         continue
-        #                     for k in range(len(R)):
-        #                         bbr, bbc = self._get_best_buddy_ratio(R[k], t[k],j, i, bb_thresh=2.0)
-        #                         all_bbr[curr_pair_idx].append(bbr)
-        #                         all_bbc[curr_pair_idx].append(bbc)
-        #                     curr_pair_idx +=1
-        #     except Exception as e:
-        #         logging.info(e)
-        #         holder.failure_message = "Failed to compute in bbr"
+        
         else:
             ligand_rmsd = None
         
         holder.__setattr__(f"{aligner.name}_rotations", R)
         holder.__setattr__(f"{aligner.name}_translations", t)
         holder.__setattr__(f"{aligner.name}_ligand_rmsd", ligand_rmsd)
+        holder.__setattr__(f"{aligner.name}_corr_rmsd", corr_rmsd)
         # holder.__setattr__(f"{aligner.name}_bbr", all_bbr)
         # holder.__setattr__(f"{aligner.name}_bbc", all_bbc)
 
