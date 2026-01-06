@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import ast
+import hashlib
 from datetime import datetime
 import time
 import pandas as pd
@@ -26,18 +27,20 @@ from scripts.run_scannet import extract_scannet
 
 def _download_non_ligand_worker(args):
     """Top-level worker for multiprocessing (must be picklable)."""
-    pdb_name, chain_id, ligand_name, base_save_dir = args
+    raw_name, norm_name, chain_id, ligand_name, base_save_dir = args
+    pdb_for_load = raw_name or norm_name
     try:
         Protein(
-            pdb_name=pdb_name,
+            pdb_name=pdb_for_load,
             chain_id=chain_id,
             ligand_name=ligand_name,
             save_models=True,
             ligand_dir=base_save_dir,
+            pdb_id=norm_name,
         )
-        return True, pdb_name, chain_id, ligand_name, None
+        return True, norm_name, chain_id, ligand_name, None
     except Exception as e:
-        return False, pdb_name, chain_id, ligand_name, str(e)
+        return False, norm_name, chain_id, ligand_name, str(e)
 
 
 class InferenceRunner:
@@ -131,6 +134,18 @@ class InferenceRunner:
         except Exception:
             return None
         return None
+
+    @staticmethod
+    def _hash_path(val: str) -> str:
+        """Stable short hash for path-based protein identifiers."""
+        return hashlib.sha1(val.encode('utf-8')).hexdigest()[:10]
+
+    @classmethod
+    def _normalize_protein(cls, name: str) -> tuple[str, str | None]:
+        """Return (normalized_id, raw_path_if_any)."""
+        if name and os.path.sep in name:
+            return cls._hash_path(name), name
+        return name, None
     
     def _prepare_dataframe(self) -> None:
         """
@@ -148,9 +163,11 @@ class InferenceRunner:
         if self._protein_pair is not None:
             # Mode 1: Pair mode - use CLI-provided ligands or defaults
             tar, tar_chain, src, src_chain = self._protein_pair
+            tar_norm, tar_path = self._normalize_protein(tar)
+            src_norm, src_path = self._normalize_protein(src)
             ph = PairHolder(
-                tar_protein=tar, tar_chain=tar_chain, tar_motif=self._tar_motif,
-                src_protein=src, src_chain=src_chain, src_motif=self._src_motif,
+                tar_protein=tar_norm, tar_protein_path=tar_path, tar_chain=tar_chain, tar_motif=self._tar_motif,
+                src_protein=src_norm, src_protein_path=src_path, src_chain=src_chain, src_motif=self._src_motif,
                 tar_ligand=self._tar_ligand_id,
                 src_ligand=self._src_ligand_id
             )
@@ -175,11 +192,15 @@ class InferenceRunner:
                 raise ValueError(f"CSV mode requires columns: {missing}. Please add them to your CSV.")
             
             for _, row in df.iterrows():
+                tar_norm, tar_path = self._normalize_protein(row['tar_protein'])
+                src_norm, src_path = self._normalize_protein(row['src_protein'])
                 ph = PairHolder(
-                    tar_protein=row['tar_protein'],
+                    tar_protein=tar_norm,
+                    tar_protein_path=tar_path,
                     tar_chain=row['tar_chain'],
                     tar_motif=row.get('tar_motif', None),
-                    src_protein=row['src_protein'],
+                    src_protein=src_norm,
+                    src_protein_path=src_path,
                     src_chain=row['src_chain'],
                     src_motif=row.get('src_motif', None),
                     tar_ligand=row.get('tar_ligand', self.DEFAULT_LIGAND),
@@ -193,6 +214,7 @@ class InferenceRunner:
         elif self._protein_database_search is not None:
             # Mode 3: Database search mode - src from CLI, tar from database CSV
             src, src_chain, database_path = self._protein_database_search
+            src_norm, src_path = self._normalize_protein(src)
             df = pd.read_csv(database_path, dtype=str)
 
             if 'ligand' in df.columns:
@@ -210,17 +232,20 @@ class InferenceRunner:
                 raise ValueError(f"Database search mode requires CSV columns: {missing}")
             
             # Add source protein info to all rows
-            df['src_protein'] = src
+            df['src_protein'] = src_norm
             df['src_chain'] = src_chain
             df['src_motif'] = self._src_motif
             df['src_ligand'] = self._src_ligand_id
         
             for _, row in df.iterrows():
+                tar_norm, tar_path = self._normalize_protein(row['tar_protein'])
                 ph = PairHolder(
-                    tar_protein=row['tar_protein'],
+                    tar_protein=tar_norm,
+                    tar_protein_path=tar_path,
                     tar_chain=row['tar_chain'],
                     tar_motif=row.get('tar_motif', None),
                     src_protein=row['src_protein'],
+                    src_protein_path=src_path,
                     src_chain=row['src_chain'],
                     src_motif=row.get('src_motif', None),
                     tar_ligand=row.get('tar_ligand', self.DEFAULT_LIGAND),
@@ -282,11 +307,16 @@ class InferenceRunner:
         # Collect unique protein-chain-ligand combinations from PairHolder list
         unique_combinations = set()
         for ph in self._pairs:
-            unique_combinations.add((ph.tar_protein, ph.tar_chain, ph.tar_ligand))
-            unique_combinations.add((ph.src_protein, ph.src_chain, ph.src_ligand))
+            unique_combinations.add((ph.tar_protein_path or ph.tar_protein, ph.tar_protein, ph.tar_chain, ph.tar_ligand))
+            unique_combinations.add((ph.src_protein_path or ph.src_protein, ph.src_protein, ph.src_chain, ph.src_ligand))
 
-        # avoid redownloading cached structures
-        unique_combinations = {combo for combo in unique_combinations if not os.path.exists(os.path.join(self._cache_paths['pdb_files'], combo[2], f"{combo[0]}{combo[1]}_non_ligand_.ent"))}
+        # avoid redownloading cached structures (use normalized id for filenames)
+        unique_combinations = {
+            combo for combo in unique_combinations
+            if not os.path.exists(
+                os.path.join(self._cache_paths['pdb_files'], combo[3], f"{combo[1]}{combo[2]}_non_ligand_.ent")
+            )
+        }
 
         # Save models with multiprocessing and progress bar
         combos = list(unique_combinations)
@@ -294,7 +324,7 @@ class InferenceRunner:
         print(f"Saving {total} unique non-ligand models (parallel)...")
 
         # Save PDBs into the local cache pdb_files folder to avoid polluting output dir
-        args_list = [(p, c, l, self._cache_paths['pdb_files']) for (p, c, l) in combos]
+        args_list = [(raw, norm, chain, ligand, self._cache_paths['pdb_files']) for (raw, norm, chain, ligand) in combos]
         processes = min(total, max(1, cpu_count() - 1))
         # collect failed combos with error messages
         failed_combos: list[tuple[str, str, str, str]] = []

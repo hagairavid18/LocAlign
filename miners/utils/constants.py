@@ -8,6 +8,8 @@ class PairHolder:
     tar_chain: str
     src_protein: str
     src_chain: str
+    tar_protein_path: str | None = None
+    src_protein_path: str | None = None
     ligand: str | None = None
     tar_ligand: str | None = None
     src_ligand: str | None = None
@@ -45,9 +47,11 @@ class PairHolder:
     def to_dict(self) -> dict:
         return {
             'tar_protein': self.tar_protein,
+            'tar_protein_path': self.tar_protein_path,
             'tar_chain': self.tar_chain,
             'tar_motif': self.tar_motif,
             'src_protein': self.src_protein,
+            'src_protein_path': self.src_protein_path,
             'src_chain': self.src_chain,
             'src_motif': self.src_motif,
             'cath_degree': self.cath_degree,

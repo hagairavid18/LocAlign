@@ -7,7 +7,7 @@ import subprocess
 
 
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
-from Bio.PDB import MMCIFParser
+from Bio.PDB import MMCIFParser, PDBParser
 from Bio.PDB.Model import Model
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Residue import Residue
@@ -33,10 +33,38 @@ protein_letters_3to1 = {'ALA':'A','ARG':'R','ASN':'N','ASP':'D','CYS':'C','GLN':
 warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 
+def is_PDB_identifier(identifier: str) -> bool:
+    """Check if identifier is a valid PDB ID (4 alphanumeric characters)."""
+    return (len(identifier) == 4) and identifier.isalnum()
+
+
+def is_UniProt_identifier(identifier: str) -> bool:
+    """Check if identifier is a valid UniProt ID (6 or 10 characters with specific pattern)."""
+    L = len(identifier)
+    correct_length = L in [6, 10]
+    if not correct_length:
+        return False
+    
+    only_alnum = identifier.isalnum()
+    only_upper = (identifier.upper() == identifier)
+    first_is_letter = identifier[0].isalpha()
+    six_is_digit = identifier[5].isnumeric()
+    
+    valid_uniprot_id = correct_length and only_alnum and only_upper and first_is_letter and six_is_digit
+    
+    if L == 10:
+        seven_is_letter = identifier[6].isalpha()
+        last_is_digit = identifier[1].isnumeric()
+        valid_uniprot_id = valid_uniprot_id and seven_is_letter and last_is_digit
+    
+    return valid_uniprot_id
+
+
 class Protein:
-    def __init__(self, pdb_name: str, chain_id: str, ligand_name: str, model_idx: int = 0, save_models: bool = True, ligand_dir: str = LIGAND_DIR) -> None:
+    def __init__(self, pdb_name: str, chain_id: str, ligand_name: str, model_idx: int = 0, save_models: bool = True, ligand_dir: str = LIGAND_DIR, pdb_id: str | None = None) -> None:
   
-        self._pdb_name = pdb_name
+        self._pdb_name = pdb_name  # keep original (path or ID) for local loading
+        self._pdb_id = pdb_id or pdb_name  # use provided ID (pre-hashed if path) or fall back to name
         self._chain_id = chain_id
         self._model_idx = model_idx
         self._ligand_name = ligand_name
@@ -44,55 +72,104 @@ class Protein:
         self._structure: Structure = self._init_structure()
         self._ligand_model, self._num_of_ligand_atoms = self._get_ligand_model(save_models)
         self.__non_ligand_model, self._num_of_non_ligand_atoms = self._get_non_ligand_model(save_models)
+
+    @staticmethod
+    def _make_file_key(pdb_id: str) -> str:
+        """Filesystem-friendly name from the ID (which may be hashed already)."""
+        return os.path.basename(pdb_id)
     
     def _init_structure(self) -> Structure:
         cache_dir = f"{self._ligand_dir}/{self._ligand_name}/cache"
         os.makedirs(cache_dir, exist_ok=True)
-        cache_file = os.path.join(cache_dir, f"{self._pdb_name}.pkl.gz")
+        cache_file = os.path.join(cache_dir, f"{self._pdb_id}.pkl.gz")
 
         # Check if cached structure exists
         if os.path.exists(cache_file):
             try:
                 with gzip.open(cache_file, 'rb') as f:
-                    logger.info(f"Loading structure {self._pdb_name} from cache.")
+                    logger.info(f"Loading structure {self._pdb_id} from cache.")
                     return pickle.load(f)
             except Exception as e:
-                logger.warning(f"Failed to load cached structure for {self._pdb_name}: {e}")
+                logger.warning(f"Failed to load cached structure for {self._pdb_id}: {e}")
+        
+        # First, allow direct local file paths (pdb or cif)
+        if os.path.isfile(self._pdb_name):
+            local_path = self._pdb_name
+            try:
+                if local_path.lower().endswith('.cif'):
+                    parser = MMCIFParser()
+                else:
+                    parser = PDBParser(QUIET=True)
+                structure = parser.get_structure(self._pdb_id, local_path)
+                logger.info(f"Loaded local structure from {local_path}")
+            except Exception as e:
+                logger.error(f"Failed to parse local structure {local_path}: {e}")
+                structure = Structure(self._pdb_id)
+            # Cache the loaded structure
+            try:
+                with gzip.open(cache_file, 'wb') as f:
+                    pickle.dump(structure, f)
+            except Exception as e:
+                logger.warning(f"Failed to cache local structure {self._pdb_id}: {e}")
+            return structure
+
+        # Determine if it's a PDB ID or UniProt ID
+        is_pdb = is_PDB_identifier(self._pdb_id)
+        is_uniprot = is_UniProt_identifier(self._pdb_id)
+        
+        if not (is_pdb or is_uniprot):
+            logger.error(f"Identifier {self._pdb_id} is neither a valid PDB nor UniProt ID")
+            return Structure(self._pdb_id)
         
         # Parse the structure if not cached
-        mmcif_file_path = f"{self._ligand_dir}/{self._ligand_name}/{self._pdb_name}.cif"
-        url = f"https://files.rcsb.org/download/{self._pdb_name}.cif"
+        mmcif_file_path = f"{self._ligand_dir}/{self._ligand_name}/{self._pdb_id}.cif"
+        
+        if is_pdb:
+            url = f"https://files.rcsb.org/download/{self._pdb_id}.cif"
+        else:  # is_uniprot
+            alphafold_server = 'https://alphafold.ebi.ac.uk/files'
+            url = f"{alphafold_server}/AF-{self._pdb_id}-F1-model_v6.cif"
 
         # Run wget command to download the file
         try:
-            subprocess.run(["wget", url, "-O", mmcif_file_path, "--quiet"], check=True)
-            logger.info(f"Successfully downloaded {self._pdb_name}.cif")
+            subprocess.run(["wget", url, "-O", mmcif_file_path, "--quiet"], check=True, timeout=60)
+            if is_pdb:
+                logger.info(f"Successfully downloaded PDB structure {self._pdb_id}.cif from RCSB")
+            else:
+                logger.info(f"Successfully downloaded AlphaFold structure for UniProt {self._pdb_id}.cif from AFDB")
         except subprocess.CalledProcessError:
-            logger.error(f"Failed to download {self._pdb_name}.cif from {url}")
-            structure = Structure(self._pdb_name)  # Return empty structure if download fails
+            if is_pdb:
+                logger.error(f"Failed to download {self._pdb_id}.cif from {url}")
+            else:
+                logger.error(f"Failed to download AlphaFold structure for {self._pdb_id} from {url}")
+            structure = Structure(self._pdb_id)  # Return empty structure if download fails
+            return structure
+        except subprocess.TimeoutExpired:
+            logger.error(f"Download timeout for {self._pdb_id} from {url}")
+            structure = Structure(self._pdb_id)
             return structure
 
         # Parse the downloaded mmCIF file
         try:
             mmcif_parser = MMCIFParser()
-            structure = mmcif_parser.get_structure(self._pdb_name, mmcif_file_path)
+            structure = mmcif_parser.get_structure(self._pdb_id, mmcif_file_path)
         except Exception as e:
-            logger.error(f"Failed to parse the downloaded structure {self._pdb_name}: {e}")
-            structure = Structure(self._pdb_name)  # Return empty structure on parse failure
+            logger.error(f"Failed to parse the downloaded structure {self._pdb_id}: {e}")
+            structure = Structure(self._pdb_id)  # Return empty structure on parse failure
         
         # Save the parsed structure to the cache
         try:
             with gzip.open(cache_file, 'wb') as f:
                 pickle.dump(structure, f)
-                logger.info(f"Cached structure {self._pdb_name} to {cache_file}.")
+                logger.info(f"Cached structure {self._pdb_id} to {cache_file}.")
         except Exception as e:
-            logger.warning(f"Failed to cache structure {self._pdb_name}: {e}")
+            logger.warning(f"Failed to cache structure {self._pdb_id}: {e}")
         
         return structure
 
     def _get_ligand_model(self, save: bool = True) -> int:
         save_dir = f'{self._ligand_dir}/{self._ligand_name}'
-        save_path = os.path.join(save_dir, f"{self._pdb_name}{self._chain_id}_ligand.pdb")
+        save_path = os.path.join(save_dir, f"{self._pdb_id}{self._chain_id}_ligand.pdb")
         peptide_model = self.get_model(self._model_idx)
         ligand_model, num_of_ligand_atoms = Protein.create_ligand_model(peptide_model, self._ligand_name, self._chain_id)
         if save and not os.path.exists(save_path):
@@ -104,7 +181,7 @@ class Protein:
     def _get_non_ligand_model(self, save: bool = True) -> tuple[Model, int]:
         # Define cache directory and file
         save_dir = f"{self._ligand_dir}/{self._ligand_name}"
-        save_path = os.path.join(save_dir, f"{self._pdb_name}{self._chain_id}_non_ligand_.ent")
+        save_path = os.path.join(save_dir, f"{self._pdb_id}{self._chain_id}_non_ligand_.ent")
 
         peptide_model = self.get_model(self._model_idx)
         non_ligand_model, num_of_ligand_atoms = Protein.create_non_ligand_model(peptide_model, self._chain_id)
