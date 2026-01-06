@@ -29,8 +29,8 @@ class SoftBBBase(L.LightningModule, ABC):
             optimizer (dict[str, Any]): optimizer configuration.
         """        
         super().__init__()
-        self._loss =  build_object(loss, 'losses')
-        self._metrics = build_object(metric, 'metrics')
+        self._loss = build_object(loss, 'losses') if loss is not None else None
+        self._metrics = build_object(metric, 'metrics') if metric is not None else None
         self._lr = optimizer['args']['learning_rate'] if optimizer is not None else 0.001
         self._scheduler_config = optimizer['args'].pop('scheduler', None) if optimizer is not None else None
     
@@ -59,11 +59,15 @@ class SoftBBBase(L.LightningModule, ABC):
         
         # Log total metrics
         for metric_key, log_name in metric_types.items():
+            if metric_key not in metrics:
+                continue
             total_value = sum(torch.tensor(list(metrics[metric_key].values())) * torch.tensor(list(metrics['counts_per_degree'].values()))) / metrics['total_count']
             self.log(log_name, total_value, on_epoch=True)
         
         # Log each metric type per `cath_degree`
         for metric_key, log_name in metric_types.items():
+            if metric_key not in metrics:
+                continue
             for cath_degree, value in metrics[metric_key].items():
                 self.log(f'{log_name}_degree_{cath_degree}', value, on_epoch=True)
         
@@ -81,7 +85,7 @@ class SoftBBBase(L.LightningModule, ABC):
             embedding_similarity_values = metrics['embedding_similarity_per_degree_protein'][cath_degree]
             corr_rmsd_values = metrics['corr_rmsd_per_degree_protein'][cath_degree]
             gap_values = metrics['gap_per_degree_protein'][cath_degree]
-            atom_type_values = metrics['weighted_same_type_per_degree_protein'][cath_degree]
+            atom_type_values = metrics.get('weighted_same_type_per_degree_protein', {}).get(cath_degree, [1] * len(pair_infos))
             radius_values = metrics['radius_per_degree_protein'][cath_degree]
             keys_to_keep = ['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree', 'src_ligand_n_atoms', 'tar_ligand_n_atoms']
             for pair_info, ligand_rmsd, embedding_similarity, corr_rmsd, gap, atom_val, radius in zip(pair_infos, ligand_rmsd_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values):
@@ -89,12 +93,12 @@ class SoftBBBase(L.LightningModule, ABC):
                     **{k: pair_info[k] for k in keys_to_keep},
                     'src_ligand': pair_info.get('ligand_id', ''),
                     'tar_ligand': pair_info.get('ligand_id', ''),
-                    'ligand_rmsd': ligand_rmsd.item(),
-                    'embedding_similarity': embedding_similarity.item(),
-                    'corr_rmsd': corr_rmsd.item(),
-                    'entropy': gap.item(),
+                    'ligand_rmsd': ligand_rmsd,
+                    'embedding_similarity': embedding_similarity,
+                    'corr_rmsd': corr_rmsd,
+                    'entropy': gap,
                     'atom_type_fraction': atom_val,
-                    'radius_of_gyration': radius.item(),
+                    'radius_of_gyration': radius,
                 })
         
         if protein_rmsd_data and hasattr(self.logger.experiment, 'get_name'):
@@ -110,6 +114,8 @@ class SoftBBBase(L.LightningModule, ABC):
         if 'loss_dict' not in outputs:
             return
         outputs['loss_dict'].pop('per_sample', None)
+        if not 'loss' in outputs:
+            return
         batch_size = batch['tar_pretrained_embeddings'].shape[0]
         for loss_name, value in outputs['loss_dict'].items():
             self.log(f'valid_{loss_name}_loss', value, batch_size=batch_size, prog_bar=False, on_epoch=True)

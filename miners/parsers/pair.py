@@ -14,7 +14,7 @@ def parse_protein_pairs(pairs_df: pd.DataFrame, prev_df: pd.DataFrame | None = N
                 tar_chain = line['tar_chain'],
                 src_name = line['src_protein'],
                 src_chain = line['src_chain'],
-                cath_level = line['CATH_degree'],
+                cath_level = line['cath_degree'],
             ))
     # logging.info(f"found {len(pairs)} pairs for {ligand}")
     if prev_df is None:

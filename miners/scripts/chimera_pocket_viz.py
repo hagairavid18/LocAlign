@@ -276,7 +276,7 @@ def make_pseudo_bond_file_from_residue_indices(
                 return residue
         return None
     
-    template_corr_atoms,query_corr_atoms = [],[] 
+    template_corr_atoms, query_corr_atoms = [],[]
 
     for (query_idx, template_idx), score, (query_atom_index, template_atom_index) in zip(corr_residue_indices, corr_values, atom_indexes_list):
         try:
@@ -294,11 +294,18 @@ def make_pseudo_bond_file_from_residue_indices(
 
             t_atom_name = template_atom.get_name()
             q_atom_name = query_atom.get_name()
-
-            lines.append(f"#1/{t_chain_id}:{template_idx}@{t_atom_name} #2/{q_chain_id}:{query_idx}@{q_atom_name}")
             
-            template_corr_atoms.append(f'#1/{t_chain_id}:{template_idx}@{t_atom_name}')
-            query_corr_atoms.append(f'#2/{q_chain_id}:{query_idx}@{q_atom_name}')
+            # Compute distance between atoms
+            t_coord = template_atom.get_coord()
+            q_coord = query_atom.get_coord()
+            distance = np.linalg.norm(t_coord - q_coord)
+
+            # Only plot if distance is <= 1 Å
+            if distance <= 2.0:
+                lines.append(f"#1/{t_chain_id}:{template_idx}@{t_atom_name} #2/{q_chain_id}:{query_idx}@{q_atom_name}")
+                
+                template_corr_atoms.append(f'#1/{t_chain_id}:{template_idx}@{t_atom_name}')
+                query_corr_atoms.append(f'#2/{q_chain_id}:{query_idx}@{q_atom_name}')
 
         except:
             print(f"Skipping correspondence ({template_idx}, {query_idx}) - index out of bounds")
@@ -312,7 +319,7 @@ def make_pseudo_bond_file_from_residue_indices(
             f.write(line + "\n")
 
     # print(f"Saved {len(corr_residue_indices)} pseudobonds to {output_file}")
-    return output_file,template_corr_atoms,query_corr_atoms
+    return output_file, template_corr_atoms, query_corr_atoms
 
 
 def make_chimera_script(
@@ -495,7 +502,7 @@ def make_chimera_script(
     list_commands.append('open correspondences.pb')
 
     # Common ions that might be ligands
-    common_ions = ['ZN', 'MG', 'CA', 'FE', 'MN', 'CU', 'CO', 'NI', 'K', 'NA', 'CL', 'BR', 'I', 'F']
+    common_ions = ['ZN', 'MG', 'CA', 'FE', 'MN', 'CU', 'CO', 'NI', 'K', 'NA', 'CL', 'BR', 'I', 'F', 'FES']
     
     # Don't hide solvent if ligand is a solvent molecule or an ion
     if ligand not in common_ions:
