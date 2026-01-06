@@ -1,0 +1,58 @@
+ligand,tar_protein,tar_chain,src_protein,src_chain,cath_degree,Comments
+ZN,1ddz,A,7bez,A,0,Carbonic Anhydrase class beta  vs cadmium specific; Cys2 His1 Asp1 binding site
+general,1ddz,A,3boh,A,0,Carbonic Anhydrase class beta  vs cadmium specific; Cys2 His1 Asp1 binding site
+general,1ddz,A,3bob,A,0,Carbonic Anhydrase class beta  vs cadmium specific; Cys2 His1 Asp1 binding site
+ZN,1zaa,C,1ptq,A,0,"Zinc fingers, C2H2 vs C3H1 binding site"
+ZN,1m4l,A,1lnf,E,0,"Carboxypeptidase
+ vs thermolysine His2 Asp 1 binding site"
+ZN,1a1f,A,1tf6,A,0,Zinc (Same domain)
+CA,1CLL,A,2HET,A,0,Calmodulin + Recoverin (EF hand)
+CA,1CLL,A,1A2X,A,0,Calmodulin + Troponin (EF hand)
+CA,2HET,A,1A2X,A,0,Recoverin + Troponin (EF hand)
+general,1HLG,A,1CSE,E,0,Alpha/Beta hydrolase + Subtilisin  His/Ser/Asp triad
+general,1DPO,A,1CSE,E,0,Rat trypsin + Substilisin His/Ser/Asp triad
+general,1HLG,A,1DPO,A,0,Rat trypsin + Alpha/Beta hydrolase His/Ser/Asp triad
+general,1DPO,A,1EVE,A,0,Rat trypsin + acetylcholinesterase (His/Ser/Asp vs His/Ser/Glu triad)
+general,1BQI,A,1TL9,A,0,"Papain + Calpain (Cystein protease, Cys/His/Asn)"
+general,1BQI,A,6P3Q,A,0,"Papain + Calpain (Cystein protease, Cys/His/Asn)"
+general,1AVP,A,1L1N,A,0,"Adenain + Picornain (Cystein protease, Cys/His/Asp)"
+general,2BR6,A,2VC5,A,0,Metallo beta lactamase + Amidohydrolase (Quorum-quenching lactonases)
+general,3DHC,A,2VC5,A,0,Metallo beta lactamase + Amidohydrolase (Quorum-quenching lactonases)
+general,2BR6,A,3OJG,A,0,Metallo beta lactamase + Amidohydrolase (Quorum-quenching lactonases)
+general,2BR6,A,1v04,A,0,Metallo beta lactamase + SERUM PARAOXONASE/ARYLESTERASE 1(Quorum-quenching lactonases)
+HEM,1N5U,A,1A3N,A,0,Albumin + Hemoglobin Alpha
+HEM,1N5U,A,1A3N,B,0,Albumin + Hemoglobin Beta
+HEM,1jbq,A,1Z10,A,0,Cystathionine beta-synthase + Cytochrome P450 (Heme binding with Cystein)
+HEM,1A3N,A,1Z10,A,0,Homeglobin Alpha + Cytochrome P450
+HEM,1A3N,A,1jbq,A,0,Homeglobin Alpha + Cystathionine beta-synthase
+HEC,1ci3,M,2yiu,B,0,Cytochrome c Heme-Binding Motif
+HEC,1ci3,M,1co6,A,0,Cytochrome c Heme-Binding Motif; High-quality alignment
+NAP,5sda,A,3qe2,A,0,"Dihydrofolate reductase (DHFR)
+ + NADPH–cytochrome P450 reductase (POR)"
+NAP,2bh9,A,5sda,A,0,GLUCOSE-6-PHOSPHATE 1-DEHYDROGENASE + DHFR
+NAP,5sda,A,1djl,A,0,DHFR + Transhydrogenase D3
+NAP,3qe2,A,1djl,A,0,NADPH–cytochrome P450 reductase (POR) + Transhydrogenase D3
+ADP,1byq,A,1bg2,A,0,Kinesin+HSP90
+ADP,5KHW,A,1bg2,A,0,JAK1 Kinase + HSP90
+ADP,5KHW,A,1byq,A,0,JAK1 Kinase + Kinesin
+ADP,8ZI9,F,1byq,A,0,Actin alpha cardiac muscle + Kinesin
+ADP,5KHW,A,8ZI9,F,0,AJK1 Kinase + Actin alpha cardiac muscle
+SAM,1n6a,A,1nw3,A,0,"SET7/9 + 	
+histone methyltransferase DOT1L"
+SAM,1n6a,A,1zq9,B,0,SET 7/9 + Dimethyladenosine transferase
+SAM,1zq9,B,2r3a,A,0,Dimethyladenosine transferase + Histone-lysine N-methyltransferase SUV39H2
+general,1ubq,A,1wm3,A,0,Ubiquitin + SUMO
+general,1jeb,A,3rgk,A,0,Hemoglobin+Myoglobin
+GNP,1c1y,A,1kk1,A,0,G proteins global alignment
+LI,1nqj,B,3b6o,A,0,Lithium binding site
+FE2,1ey2,A,4oj8,A,0,FE2 binding site
+FE2,4oj8,B,5zur,B,0,FE2 binding site; high-quality alignment
+FE,6l3w,A,6rxn,A,0,FE binding site
+FE,1xvx,A,6gq8,A,0,FE binding site; High-quality alignment
+FES,1x0g,C,3gce,A,0,FES binding site; High-quality alignment
+CU,5nns,A,6ryx,A,0,Copper binding site
+CO,3dwc,B,3hdi,A,0,Cobalt binding site; High-quality alignment
+PLP,1rcq,A,7aat,A,0,PLP binding site (two-to-one residue correspondence)
+ANP,7ph3,A,7x4n,E,0,Linear motif; high-quality alignment
+ANP,3zfd,A,4cej,A,0,Linear motif; high-quality alignment
+GDP,2qa5,B,5i34,A,0,High-quality alignment
