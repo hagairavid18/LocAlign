@@ -528,6 +528,124 @@ def make_chimera_script(
         for command in list_commands:
             f.write(command + '\n')
     return chimera_file
+
+
+def make_chimera_script_multiple(
+	output_folder,
+	table_results,
+	top = 10):
+	exclude = table_results['output_folder'].isnull() | table_results['src_ligand'].isnull()
+	table_results = table_results[~exclude].iloc[:top]
+	if len(table_results)==0:
+		return
+
+	colors_and_transparency = {
+	'target': {            
+	        'receptor': ('tan', 0),
+	        'ligand': ('black',0),
+	    },
+	    
+    'source': {            
+	        'ligand': [
+	        ('red',30),
+	        ('orangered',30),
+	        ('darkorange',30),
+	        ('gold',30),
+	        ('yellowgreen',30),
+	        ('mediumseagreen',30),
+	        ('darkcyan',30),
+	        ('deepskyblue',30),
+	        ('dodgerblue',30),
+			('blue',30),	        
+	        ]
+	    }
+	}		
+
+	output_folders = [x.split('/')[-1] for x in table_results['output_folder']]
+
+	nmodels = 0
+	list_commands = []
+	tar_file = os.path.join(output_folders[0], 'template_receptor.pdb')
+
+	tar_protein = table_results['tar_protein'].iloc[0]
+	tar_chain = table_results['tar_chain'].iloc[0]
+	tar_name = f'{tar_protein}{tar_chain}'
+	tar_ligand = table_results['tar_ligand'].iloc[0]
+
+	model_ranks = {}
+	list_commands.append(f'open {tar_file} name {tar_name}')
+	nmodels += 1
+	model_ranks['tar_protein'] = nmodels
+
+	tar_ligand_file = os.path.join(output_folders[0], 'template_ligand.pdb')
+	has_tar_ligand = table_results['tar_ligand'].notnull().any()
+	if has_tar_ligand:
+		tar_ligand_name = f'{tar_protein}{tar_chain}:{tar_ligand}'
+		tar_ligand = table_results['tar_ligand'].iloc[0]
+		list_commands.append(f'open {tar_ligand_file} name {tar_ligand_name}')
+		nmodels += 1
+		model_ranks['tar_ligand'] = nmodels		
+
+	src_ligand_files = [os.path.join(output_folder, 'transformed_query_ligand.pdb') for output_folder in output_folders]
+	score_column = "pLRMSD_normalized" if "pLRMSD_normalized" in table_results.columns else "pLRMSD"
+	src_ligand_names = [f'{row["src_ligand"]}:{row["src_protein"]}{row["src_chain"]}_score{row[score_column]:.2f}' for _,row in table_results.iterrows()]
+
+	model_ranks['src_ligands'] = []
+	for src_ligand_file,src_ligand_name in zip(src_ligand_files,src_ligand_names):
+		list_commands.append( f'open {src_ligand_file} name {src_ligand_name}')
+		nmodels += 1
+		model_ranks['src_ligands'].append(nmodels)
+
+
+	list_commands.append(f'dssp')
+	list_commands.append(f"sel #{model_ranks['tar_protein']}")
+	list_commands.append(f'hide sel atoms')
+	list_commands.append(f"color sel {colors_and_transparency['target']['receptor'][0]} transparency {colors_and_transparency['target']['receptor'][1]}")
+
+	if has_tar_ligand:
+		list_commands.append(f"sel #{model_ranks['tar_ligand']}")
+		list_commands.append(f'show sel atoms')
+		list_commands.append(f'style sel stick')
+		list_commands.append(f"color sel {colors_and_transparency['target']['ligand'][0]} transparency {colors_and_transparency['target']['ligand'][1]}")
+
+
+	for k in range(len(table_results)):
+		list_commands.append(f"sel #{model_ranks['src_ligands'][k]}")
+		list_commands.append(f'show sel atoms')
+		list_commands.append(f"color sel {colors_and_transparency['source']['ligand'][k %  len(colors_and_transparency['source']['ligand']) ][0]} transparency {colors_and_transparency['source']['ligand'][k % len(colors_and_transparency['source']['ligand'])][1]}")
+
+
+
+	# Common ions that might be ligands
+	common_ions = ['ZN', 'MG', 'CA', 'FE', 'MN', 'CU', 'CO', 'NI', 'K', 'NA', 'CL', 'BR', 'I', 'F', 'FES']
+
+	all_ligands = table_results['src_ligand'].tolist() + table_results['tar_ligand'].tolist()
+	has_ion_ligand = any([ligand in common_ions for ligand in all_ligands])
+
+	if not has_ion_ligand:
+		list_commands.append('hide solvent')
+
+	if has_ion_ligand:
+		ligand_models = []    	
+		if has_tar_ligand & (tar_ligand in common_ions):
+			ligand_models.append(f"#{model_ranks['tar_ligand']}")
+
+		for k in range(len(table_results)):
+			if table_results['src_ligand'].iloc[k] in common_ions:
+				ligand_models.append(f"#{model_ranks['src_ligands'][k]}")
+		list_commands.append(f"sel {' | '.join(ligand_models)}")
+		list_commands.append('style sel sphere')
+
+	list_commands.append('lighting soft')
+	list_commands.append('set bgColor white')
+	list_commands.append('sel clear')	
+	chimera_file = os.path.join(output_folder,f'chimera_script_multiple.cxc')
+	with open(chimera_file,'w') as f:
+		for command in list_commands:
+			f.write(command + '\n')
+	return chimera_file
+
+
     
 def process_alignment(
     base_folder: str, 

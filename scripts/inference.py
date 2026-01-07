@@ -21,7 +21,7 @@ from aligner_dl.models.utils.collate import custom_collate_fn
 from aligner_dl.models.utils.misc import build_object
 from miners.utils.constants import PairHolder
 from miners.objects import Protein
-from scripts.chimera_pocket_viz import process_alignment
+from scripts.chimera_pocket_viz import process_alignment,make_chimera_script_multiple
 from scripts.run_scannet import extract_scannet
 
 
@@ -60,6 +60,7 @@ class InferenceRunner:
         calibration_model_path: str | None = None,
         ligand_calibration_model_path: str | None = None,
         max_pLRMSD: float | None = None,
+        max_pLRMSD_normed: float | None = None,
         tar_ligand_id: str | None = None,
         src_ligand_id: str | None = None,
     ) -> None:
@@ -71,7 +72,7 @@ class InferenceRunner:
             base_save_dir (str): Base directory to save inference results
             csv_path (str | None): Path to CSV file with protein pairs (must have tar_ligand, src_ligand columns)
             protein_pair (tuple[str, str, str, str] | None): Single protein pair (tar, tar_chain, src, src_chain)
-            protein_database_search (tuple[str,str,str] | None): Database search (src_protein, src_chain, database_csv)
+            protein_database_search (tuple[str,str,str] | None): Database search (tar_protein, tar_chain, database_csv)
             tar_ligand_id (str | None): Ligand for target (pair/database mode, default: 'general')
             src_ligand_id (str | None): Ligand for source (pair/database mode, default: 'general')
             src_motif (str | None): Comma-separated residue IDs for source motif
@@ -98,6 +99,7 @@ class InferenceRunner:
         self._src_motif = src_motif
         self._tar_motif = tar_motif
         self._max_pLRMSD = max_pLRMSD
+        self._max_pLRMSD_normed = max_pLRMSD_normed
         
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self._experiment_name = None
@@ -213,8 +215,8 @@ class InferenceRunner:
                         
         elif self._protein_database_search is not None:
             # Mode 3: Database search mode - src from CLI, tar from database CSV
-            src, src_chain, database_path = self._protein_database_search
-            src_norm, src_path = self._normalize_protein(src)
+            tar, tar_chain, database_path = self._protein_database_search
+            tar_norm, tar_path = self._normalize_protein(tar)
             df = pd.read_csv(database_path, dtype=str)
 
             if 'ligand' in df.columns:
@@ -226,21 +228,21 @@ class InferenceRunner:
                     df[column] = df[column].apply(self._parse_motif)
             
             # Validate database has required columns
-            required = ['tar_protein', 'tar_chain']
+            required = ['src_protein', 'src_chain']
             missing = [col for col in required if col not in df.columns]
             if missing:
                 raise ValueError(f"Database search mode requires CSV columns: {missing}")
             
             # Add source protein info to all rows
-            df['src_protein'] = src_norm
-            df['src_chain'] = src_chain
-            df['src_motif'] = self._src_motif
-            df['src_ligand'] = self._src_ligand_id
+            df['tar_protein'] = tar_norm
+            df['tar_chain'] = tar_chain
+            df['tar_motif'] = self._tar_motif
+            df['tar_ligand'] = self._tar_ligand_id
         
             for _, row in df.iterrows():
-                tar_norm, tar_path = self._normalize_protein(row['tar_protein'])
+                src_norm, src_path = self._normalize_protein(row['src_protein'])
                 ph = PairHolder(
-                    tar_protein=tar_norm,
+                    tar_protein=row['tar_protein'],
                     tar_protein_path=tar_path,
                     tar_chain=row['tar_chain'],
                     tar_motif=row.get('tar_motif', None),
@@ -570,12 +572,12 @@ class InferenceRunner:
         radius_gyration = radius * ( 1.3 * perplexity ** (0.4) )
         if self._calibration_model is not None:
             features = np.array([attribute_similarity,corr_rmsd,radius_gyration,perplexity])[None] # ['normalized_embedding_similarity','corr_rmsd','radius_of_gyration','perplexity']
-            pLRMSD = self._calibration_model.predict(features)[0]
+            pLRMSD = np.clip(self._calibration_model.predict(features)[0],0,10)
         else:
             pLRMSD = (  2 *  (1 - emb / np.log(400) ) + 2 * corr_rmsd + 1 * radius_gyration ) # A dummy formula.
 
-        if (self._ligand_calibration_model is not None) & (ph.tar_ligand_n_atoms is not None):
-            features = np.array(ph.tar_ligand_n_atoms)[:,None] if len(ph.tar_ligand_n_atoms)>0 else np.array([[-1]])
+        if (self._ligand_calibration_model is not None) & (ph.src_ligand_n_atoms is not None):
+            features = np.array(ph.src_ligand_n_atoms)[:,None] if len(ph.src_ligand_n_atoms)>0 else np.array([[-1]])
             eLRMSD = self._ligand_calibration_model.predict( features )[0]
         else:
             eLRMSD = None
@@ -593,8 +595,13 @@ class InferenceRunner:
         ph._radius = radius
         
         if (self._protein_database_search is not None ) & (self._max_pLRMSD is not None): 
-            if pLRMSD>= self._max_pLRMSD: # Skip building output file in this case.
-                return num_correspondences
+            plot_example = (pLRMSD <= self._max_pLRMSD)
+            if eLRMSD is not None:
+                pLRMSD_normed = pLRMSD / eLRMSD
+                plot_example = plot_example | (pLRMSD_normed <= self._max_pLRMSD_normed)
+            if not plot_example: # Skip building output file in this case.
+                    return num_correspondences
+        
                 
         save_folder = os.path.join(
             self._output_dir,
@@ -645,7 +652,7 @@ class InferenceRunner:
         rows = [p.to_dict() for p in all_pairs]
         results_df = pd.DataFrame(rows)
                 
-        if (self._protein_database_search is not None ) & (results_df['tar_motif'].notnull().any()):
+        if (self._protein_database_search is not None ) & (results_df['src_motif'].notnull().any()):
             results_df['pLRMSD_normalized'] = results_df['pLRMSD'] / results_df['eLRMSD']
             sort_by = 'pLRMSD_normalized'
         else:
@@ -657,6 +664,10 @@ class InferenceRunner:
                 del results_df[column]
         results_df = results_df.sort_values(by=sort_by, ascending=True, na_position='last')
         results_df.to_csv(os.path.join(self._output_dir, "inference_results.csv"), index=False, float_format='%.3f')
+                
+        if (self._protein_database_search is not None):
+            make_chimera_script_multiple(self._output_dir,results_df,top=10)
+        return
     
     def run(self) -> None:
         """
@@ -728,16 +739,10 @@ def parse_args():
     group.add_argument(
         '--protein_database_search',
         nargs=3,
-        metavar=("SRC_PROTEIN","SRC_CHAIN","DATABASE_CSV"),
+        metavar=("TAR_PROTEIN","TAR_CHAIN","DATABASE_CSV"),
         help="Database Mode: Search source protein against database. CSV must have [tar_protein, tar_chain]. Optional: tar_ligand (default: 'general'). Use --src_ligand_id for source."
     )
     
-    parser.add_argument(
-        "--src_motif",
-        type=str,
-        default=None,
-        help="Comma-separated residue IDs for source motif (e.g., '10,11,12'). Only used with --protein_pair."
-    )
     parser.add_argument(
         "--tar_motif",
         type=str,
@@ -745,11 +750,23 @@ def parse_args():
         help="Comma-separated residue IDs for target motif (e.g., '20,21,22'). Only used with --protein_pair."
     )
     parser.add_argument(
+        "--src_motif",
+        type=str,
+        default=None,
+        help="Comma-separated residue IDs for source motif (e.g., '10,11,12'). Only used with --protein_pair."
+    )    
+    parser.add_argument(
         "--max_pLRMSD",
         type=float,
         default = 4.,
         help = 'In protein_database_search mode, do not generate output directory if pLRMSD is above this threshold'
     )
+    parser.add_argument(
+        "--max_pLRMSD_normed",
+        type=float,
+        default = 2.,
+        help = 'In protein_database_search mode, do not generate output directory if pLRMSD is above this threshold'
+    )    
     
     parser.add_argument(
         "--calibration_model_path",
@@ -782,6 +799,7 @@ def main():
         protein_pair=args.protein_pair,
         protein_database_search=args.protein_database_search,
         max_pLRMSD=args.max_pLRMSD,
+        max_pLRMSD_normed=args.max_pLRMSD_normed,
         src_motif=args.src_motif,
         tar_motif=args.tar_motif
     )
