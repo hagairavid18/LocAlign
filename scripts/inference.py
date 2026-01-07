@@ -701,7 +701,7 @@ def parse_args():
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt",
+        default="checkpoints/baseline/epoch=9-step=87120.ckpt",
         help="Path to model checkpoint (default: preconfigured baseline)."
     )
     parser.add_argument(
