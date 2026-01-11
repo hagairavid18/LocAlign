@@ -11,7 +11,7 @@ from miners.utils.misc import build_object, save_results_to_csv
 from miners.utils.process_pair import baseline_pair
 from parsers.pair import parse_protein_pairs
 
-CHUNK_SIZE = 50
+CHUNK_SIZE = 100
 
 start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 os.makedirs(os.path.join("miners", "logs", 'baseline'), exist_ok=True)
@@ -19,27 +19,45 @@ logging.basicConfig(filename=os.path.join("miners", "logs", 'baseline', start_ti
 
 logger = logging.getLogger(__name__)
 
+# Global variable for worker process to hold aligners
+_worker_aligners = None
+
+
+def _init_worker(aligner_configs):
+    """Initialize aligners once per worker process."""
+    global _worker_aligners
+    _worker_aligners = [build_object(cfg, "aligners") for cfg in aligner_configs]
+
+
+def _baseline_pair_wrapper(pair_dict):
+    """Wrapper that uses the worker-local aligners."""
+    return baseline_pair(pair_dict, _worker_aligners)
+
 
 def run(pairs_df: pd.DataFrame, protein_aligner_config: dict[str, Any], save_path: str,
          debug: bool = False, prev_df: pd.DataFrame | None = None) -> None:
      
-    protein_aligners = [build_object(aligner_config, "aligners") for aligner_config in protein_aligner_config]
     result_list = []
-    pool = multiprocessing.Pool(30)
     
     ligand_pairs: list[dict[str, str]] = parse_protein_pairs(pairs_df, prev_df)
 
-    for i in range(0, len(ligand_pairs), CHUNK_SIZE):
-        chunk = ligand_pairs[i:i + CHUNK_SIZE]
-        if not debug:
-            results_async = [pool.apply_async(baseline_pair, (pair_dict, protein_aligners)) for pair_dict in chunk]
+    if not debug:
+        # Create pool with initializer to build aligners once per worker
+        pool = multiprocessing.Pool(30, initializer=_init_worker, initargs=(protein_aligner_config,))
+        
+        for i in range(0, len(ligand_pairs), CHUNK_SIZE):
+            chunk = ligand_pairs[i:i + CHUNK_SIZE]
+            results_async = [pool.apply_async(_baseline_pair_wrapper, (pair_dict,)) for pair_dict in chunk]
             result_list += [result.get() for result in results_async]
-        else:
-            result_list += [baseline_pair(pair_dict, protein_aligners) for pair_dict in chunk]
-        save_results_to_csv(result_list, start_time, "baseline_temp_results_sw", prev_df)
-    
-    pool.close()
-    pool.join()
+            save_results_to_csv(result_list, start_time, "baseline_temp_results_plasma", prev_df)
+        
+        pool.close()
+        pool.join()
+    else:
+        # In debug mode, build aligners in main process
+        protein_aligners = [build_object(aligner_config, "aligners") for aligner_config in protein_aligner_config]
+        result_list = [baseline_pair(pair_dict, protein_aligners) for pair_dict in ligand_pairs]
+        save_results_to_csv(result_list, start_time, "baseline_temp_results_plasma", prev_df)
     df = save_results_to_csv(result_list, start_time, "baseline_results_sw", prev_df)
     # pairs_df = pairs_df.drop(['TMAligner_protein_rmsd', 'TMAligner_rmsd', 'TMAligner_rotations', 'TMAligner_translations'], axis=1)
     merged_df = pd.merge(pairs_df, df, on=['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree'], how='left')
@@ -48,6 +66,11 @@ def run(pairs_df: pd.DataFrame, protein_aligner_config: dict[str, Any], save_pat
 
 
 if __name__ == "__main__":
+    # Use spawn to avoid fork-related deadlocks with torch/ESM in child processes
+    try:
+        multiprocessing.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass
 
     parser = argparse.ArgumentParser(description='alignment parser')
     parser.add_argument('-c', '--config')
