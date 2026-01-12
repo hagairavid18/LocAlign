@@ -41,12 +41,12 @@ python scripts/inference.py \
 python scripts/inference.py \
     --checkpoint checkpoints/baseline/epoch=9-step=87120.ckpt \
     --protein_database_search 8vc8 A example_inputs/biolip2_nr_database_with_motif.csv \
-    --src_ligand_id ATP \
+    --tar_ligand_id ATP \
     --max_pLRMSD 4.0 \
     --base_save_dir inference_results
 ```
 
-The database CSV must contain: `tar_protein`, `tar_chain`. Optional: `tar_motif` (list of residue IDs), `tar_ligand` (defaults to 'general').
+The database CSV must contain: `src_protein`, `src_chain`. Optional: `src_motif` (list of residue IDs), `src_ligand` (defaults to 'general').
 
 ### 3. Output files
 Results are saved to timestamped directories under `base_save_dir/`. Each protein pair generates:

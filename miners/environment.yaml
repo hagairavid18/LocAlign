@@ -28,3 +28,4 @@ pip:
   - tmtools
   - jax[cpu]
   - git+https://github.com/deepmind/dm-haiku
+  - fair-esm

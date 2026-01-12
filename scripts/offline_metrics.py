@@ -18,10 +18,10 @@ ABLATION_DIRS = [
 
 def evaluate_success(row, ligand_rmsd_threshold=4.0, criteria=SUCCESS_CRITERIA):
     """
-    Evaluate success criteria, using only ligand_rmsd for Dali/SoftAlign/TMalign.
+    Evaluate success criteria, using only ligand_rmsd for Dali/SoftAlign/TMalign/PLASMA.
     """
     exp = row.get('experiment')
-    if exp in ('Dali', 'SoftAlign', 'TMalign'):
+    if exp in ('Dali', 'SoftAlign', 'TMalign', 'PLASMA'):
         return row['ligand_rmsd'] < ligand_rmsd_threshold
     success = True
     success &= row['corr_rmsd'] < criteria['corr_rmsd']

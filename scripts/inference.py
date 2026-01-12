@@ -198,6 +198,7 @@ class InferenceRunner:
             for _, row in df.iterrows():
                 tar_norm, tar_path = self._normalize_protein(row['tar_protein'])
                 src_norm, src_path = self._normalize_protein(row['src_protein'])
+                
                 ph = PairHolder(
                     tar_protein=tar_norm,
                     tar_protein_path=tar_path,
@@ -221,8 +222,7 @@ class InferenceRunner:
             tar_norm, tar_path = self._normalize_protein(tar)
             df = pd.read_csv(database_path, dtype=str)
 
-            if 'ligand' in df.columns:
-                df['tar_ligand'] = df['ligand']
+            if 'ligand' in df.columns and 'src_ligand' not in df.columns:
                 df['src_ligand'] = df['ligand']
 
             for column in ['tar_motif','src_motif','tar_ligand_n_atoms','src_ligand_n_atoms']:
@@ -235,7 +235,7 @@ class InferenceRunner:
             if missing:
                 raise ValueError(f"Database search mode requires CSV columns: {missing}")
             
-            # Add source protein info to all rows
+            # Add target protein info to all rows
             df['tar_protein'] = tar_norm
             df['tar_chain'] = tar_chain
             df['tar_motif'] = self._tar_motif
