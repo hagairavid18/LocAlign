@@ -382,7 +382,7 @@ def ScanNet(
                                    N_heads=nattentionheads_pooling,
                                    kernel_regularizer=kernel_regularizer,
                                    kernel_norm=kernel_norm,
-                                   name='atom_to_aa_pooling')([aa_to_atom_indices,SCAN_filters_atom])
+                                   name='atom_to_aa_pooling')([masked_aa_to_atom_indices,SCAN_filters_atom])
         
         # Attention-based aggregation of atom features to amino acid scale.
         SCAN_filters_atom_aggregated_activity = addNonLinearity(SCAN_filters_atom_aggregated_input, activation,name='SCAN_filters_atom_aggregated_activity')

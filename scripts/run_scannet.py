@@ -30,6 +30,9 @@ def _save_scannet_features_worker(args):
             features[list_layers.index('atom_to_aa_indices')] -
             features[list_layers.index('atom_to_aa_indices')][0]
         )[:, 0]
+                
+        sequence_indices_atom = np.clip(sequence_indices_atom,-1, len(residues_to_atom_indices) -1 )
+        residues_to_atom_indices = np.clip(residues_to_atom_indices,-1, len(sequence_indices_atom) -1 )
         
         frames_atom = features[list_layers.index('frames_atom')]
         offset = round(frames_atom[:, 0, :].mean() / 3000) * 3000
