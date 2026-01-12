@@ -7,7 +7,7 @@ sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
 from ScanNet_mini.preprocessing import PDBio, PDB_processing
 import Bio.PDB
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
-
+import copy
 warnings.filterwarnings("ignore", category=PDBConstructionWarning)
 
 
@@ -338,8 +338,8 @@ def make_chimera_script(
     # Version motif: Highlights the ligand, if present, and the learned alignment.
     
     show_ligand = ligand not in  [None,'general']
-    show_template_ligand = show_ligand & os.path.exists(os.path.join(output_folder,'template_ligand.pdb') )
-    show_query_ligand = show_ligand & os.path.exists(os.path.join(output_folder,'transformed_query_ligand.pdb'))
+    show_template_ligand = show_ligand and ( os.path.exists(os.path.join(output_folder,'template_ligand.pdb') ) and (os.path.getsize(os.path.join(output_folder,'template_ligand.pdb') ) > 10) )
+    show_query_ligand = show_ligand and ( os.path.exists(os.path.join(output_folder,'transformed_query_ligand.pdb')) and (os.path.getsize(os.path.join(output_folder,'transformed_query_ligand.pdb') ) > 10) )
     # Use case where we want to show both ligands: finding common structural motif.
     # Use case where want to show neither: catalytic sites or unknown ligand, etc.
     # Use case where we want to show the template ligand, but query is unavailable: comparing unbound query against database of templates with bound ligands.
@@ -578,7 +578,7 @@ def make_chimera_script_multiple(
 	model_ranks['tar_protein'] = nmodels
 
 	tar_ligand_file = os.path.join(output_folders[0], 'template_ligand.pdb')
-	has_tar_ligand = table_results['tar_ligand'].notnull().any()
+	has_tar_ligand = table_results['tar_ligand'].notnull().any() and os.path.exists(tar_ligand_file) and (os.path.filesize(tar_ligand_file)>10)
 	if has_tar_ligand:
 		tar_ligand_name = f'{tar_protein}{tar_chain}:{tar_ligand}'
 		tar_ligand = table_results['tar_ligand'].iloc[0]
@@ -594,7 +594,7 @@ def make_chimera_script_multiple(
 	for src_ligand_file,src_ligand_name in zip(src_ligand_files,src_ligand_names):
 		list_commands.append( f'open {src_ligand_file} name {src_ligand_name}')
 		nmodels += 1
-		model_ranks['src_ligands'].append(nmodels)
+		model_ranks['src_ligands'].append( copy.copy(nmodels))
 
 
 	list_commands.append(f'dssp')
@@ -741,7 +741,7 @@ def process_alignment(
                                 os.path.join(output_folder, 'transformed_query_receptor.pdb')
                                 ,mode='without_ligand')
 
-    extract_chains_andor_ligand_and_apply_transform(query_only_ligand_struct, query_chain_id, query_ligand,
+    extract_chains_andor_ligand_and_apply_transform(query_only_ligand_struct, query_chain_id, query_ligand[:3],
                                 os.path.join(output_folder, 'transformed_query_ligand.pdb')
                                 ,mode='only_ligand')
 

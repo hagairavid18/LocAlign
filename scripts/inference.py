@@ -122,6 +122,8 @@ class InferenceRunner:
             return None
         if isinstance(val, list):
             return val
+        if isinstance(val,int):
+            return [val]
         s = str(val).strip()
         if s == "":
             return None
@@ -625,21 +627,21 @@ class InferenceRunner:
             print(f"Failed to save transformation: {e}")
         
         # Generate visualization using Chimera via process_alignment (pass arrays directly)
-        try:
-            process_alignment(
-                base_folder=save_folder,
-                cache_dir= os.path.join(self._base_save_dir, '.cache'),
-                template=tar + metadata['tar_chain'],
-                template_ligand=tar_ligand,
-                query=src + metadata['src_chain'],
-                query_ligand=src_ligand,
-                query_transformation=(R_np, t_np),
-                corr_values=top_corr_values.detach().cpu().numpy(),
-                corr_indices=top_corr_indices.detach().cpu().numpy(),
-                atom_indexes_list=top_corr_indices_atom.detach().cpu().numpy()
-            )
-        except Exception as e:
-            print(f"Unexpected error during visualization: {e}")
+        # try:
+        process_alignment(
+            base_folder=save_folder,
+            cache_dir= os.path.join(self._base_save_dir, '.cache'),
+            template=tar + metadata['tar_chain'],
+            template_ligand=tar_ligand,
+            query=src + metadata['src_chain'],
+            query_ligand=src_ligand,
+            query_transformation=(R_np, t_np),
+            corr_values=top_corr_values.detach().cpu().numpy(),
+            corr_indices=top_corr_indices.detach().cpu().numpy(),
+            atom_indexes_list=top_corr_indices_atom.detach().cpu().numpy()
+        )
+        # except Exception as e:
+        #     print(f"Unexpected error during visualization: {e}")
 
         # Record output folder on the pair for traceability
         ph.output_folder = save_folder

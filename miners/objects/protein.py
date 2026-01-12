@@ -417,7 +417,7 @@ class Protein:
         ligand_chain = Chain(chain.id)
         for residue in list(chain):
             if residue.resname == ligand_name:
-                heavy_residue = Residue(residue.id, residue.resname, residue.get_segid())
+                heavy_residue = Residue(residue.id, residue.resname[:3], residue.get_segid())
                 for atom in residue.get_atoms():
                     if atom.element != "H":
                         heavy_residue.add(atom)

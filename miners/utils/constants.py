@@ -81,8 +81,11 @@ class PairHolder:
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_02_01_2025'
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_10_08_2025'
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_17_08_2025'
-LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_25_10_2025'
+# LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_25_10_2025'
 # LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_24_09_2025_examples'
+
+LIGAND_DIR = '/Users/jerometubiana/GitHub/LocAlign/ligands_0801/'
+
 RESULTS_COLUMNS = ['ligand_id', 'tar_protein', 'src_protein', 'tar_chain', 'src_chain', 'cath_degree',
                      'tar_ligand_n_atoms', 'src_ligand_n_atoms', "failure_message"]
 
