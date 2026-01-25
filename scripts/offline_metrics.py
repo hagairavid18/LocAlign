@@ -21,7 +21,12 @@ def evaluate_success(row, ligand_rmsd_threshold=4.0, criteria=SUCCESS_CRITERIA):
     Evaluate success criteria, using only ligand_rmsd for Dali/SoftAlign/TMalign/PLASMA.
     """
     exp = row.get('experiment')
-    if exp in ('Dali', 'SoftAlign', 'TMalign', 'PLASMA'):
+    
+    # For baseline aligners, check if ligand_rmsd is NaN
+    if pd.isna(row['ligand_rmsd']):
+        return False
+    
+    if exp in ('Dali', 'SoftAlign', 'TMalign', 'PLASMA', 'USAlign', 'USAlign_fns', 'USAlign_sns', 'APoc'):
         return row['ligand_rmsd'] < ligand_rmsd_threshold
     success = True
     success &= row['corr_rmsd'] < criteria['corr_rmsd']
@@ -93,7 +98,8 @@ def main():
         # Find all CSV files in this directory
         csv_files = []
         excluded_files = {'all_experiments_with_success.csv', 'experiment_summary.csv', 
-                          'experiment_summary_easy.csv', 'experiment_summary_hard.csv', 'success_rates.csv'}
+                          'experiment_summary_easy.csv', 'experiment_summary_hard.csv', 'success_rates.csv',
+                          'baseline.csv', 'baseline_sample_1000_without_src_motif.csv', 'baseline_sample_1000_with_src_motif.csv'}
         for csv_path in Path(ablation_dir).glob("*.csv"):
             if csv_path.name not in excluded_files:
                 csv_files.append(csv_path)

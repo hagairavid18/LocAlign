@@ -92,16 +92,41 @@ class Protein:
             except Exception as e:
                 logger.warning(f"Failed to load cached structure for {self._pdb_id}: {e}")
         
-        # First, allow direct local file paths (pdb or cif)
+        # First, allow direct local file paths (pdb, pdb.gz, cif, cif.gz)
         if os.path.isfile(self._pdb_name):
             local_path = self._pdb_name
             try:
-                if local_path.lower().endswith('.cif'):
+                # Determine file type and handle compression
+                if local_path.lower().endswith('.cif.gz'):
                     parser = MMCIFParser()
+                    # Decompress to temporary location
+                    temp_cif = os.path.join(cache_dir, f"{self._pdb_id}_temp.cif")
+                    with gzip.open(local_path, 'rb') as f_in:
+                        with open(temp_cif, 'wb') as f_out:
+                            f_out.write(f_in.read())
+                    structure = parser.get_structure(self._pdb_id, temp_cif)
+                    # Clean up temp file
+                    os.remove(temp_cif)
+                    logger.info(f"Loaded local compressed structure from {local_path}")
+                elif local_path.lower().endswith('.pdb.gz'):
+                    parser = PDBParser(QUIET=True)
+                    # Decompress to temporary location
+                    temp_pdb = os.path.join(cache_dir, f"{self._pdb_id}_temp.pdb")
+                    with gzip.open(local_path, 'rb') as f_in:
+                        with open(temp_pdb, 'wb') as f_out:
+                            f_out.write(f_in.read())
+                    structure = parser.get_structure(self._pdb_id, temp_pdb)
+                    # Clean up temp file
+                    os.remove(temp_pdb)
+                    logger.info(f"Loaded local compressed structure from {local_path}")
+                elif local_path.lower().endswith('.cif'):
+                    parser = MMCIFParser()
+                    structure = parser.get_structure(self._pdb_id, local_path)
+                    logger.info(f"Loaded local structure from {local_path}")
                 else:
                     parser = PDBParser(QUIET=True)
-                structure = parser.get_structure(self._pdb_id, local_path)
-                logger.info(f"Loaded local structure from {local_path}")
+                    structure = parser.get_structure(self._pdb_id, local_path)
+                    logger.info(f"Loaded local structure from {local_path}")
             except Exception as e:
                 logger.error(f"Failed to parse local structure {local_path}: {e}")
                 structure = Structure(self._pdb_id)

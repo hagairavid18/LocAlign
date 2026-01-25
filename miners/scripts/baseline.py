@@ -49,7 +49,7 @@ def run(pairs_df: pd.DataFrame, protein_aligner_config: dict[str, Any], save_pat
             chunk = ligand_pairs[i:i + CHUNK_SIZE]
             results_async = [pool.apply_async(_baseline_pair_wrapper, (pair_dict,)) for pair_dict in chunk]
             result_list += [result.get() for result in results_async]
-            save_results_to_csv(result_list, start_time, "baseline_temp_results_plasma", prev_df)
+            save_results_to_csv(result_list, start_time, "baseline_temp_results", prev_df)
         
         pool.close()
         pool.join()
@@ -57,7 +57,7 @@ def run(pairs_df: pd.DataFrame, protein_aligner_config: dict[str, Any], save_pat
         # In debug mode, build aligners in main process
         protein_aligners = [build_object(aligner_config, "aligners") for aligner_config in protein_aligner_config]
         result_list = [baseline_pair(pair_dict, protein_aligners) for pair_dict in ligand_pairs]
-        save_results_to_csv(result_list, start_time, "baseline_temp_results_plasma", prev_df)
+        save_results_to_csv(result_list, start_time, "baseline_temp_results", prev_df)
     df = save_results_to_csv(result_list, start_time, "baseline_results_sw", prev_df)
     # pairs_df = pairs_df.drop(['TMAligner_protein_rmsd', 'TMAligner_rmsd', 'TMAligner_rotations', 'TMAligner_translations'], axis=1)
     merged_df = pd.merge(pairs_df, df, on=['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree'], how='left')

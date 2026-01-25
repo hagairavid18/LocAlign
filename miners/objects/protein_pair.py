@@ -133,26 +133,76 @@ class ProteinPair:
         src_chain = self._src_protein.get_model(self._src_model_idx, True)
         tar_coord, seq1, _ = Protein.get_residue_data(tar_chain)
         src_coord, seq2, _ = Protein.get_residue_data(src_chain)
-        if aligner.name in  ["DaliAligner", "SoftAlignAligner"]:
+        
+        # Special handling for USAligner - run with 3 different modes
+        if aligner.name == "USAligner":
+            modes = [
+                (0, ""),      # monomeric (default) - no suffix
+                (5, "_fns"),  # fully non-sequential
+                (6, "_sns")   # semi-non-sequential
+            ]
+            
+            for mode, suffix in modes:
+                R, t, corr_rmsd, _ = aligner.impose_structure(
+                    self._tar_protein, 
+                    self._src_protein, 
+                    f'{self._ligand_dir}/{self._ligand_name}',
+                    alignment_mode=mode
+                )
+                
+                if self._save_transformed_models:
+                    self._apply_transformations_and_save_transformed_models(R, t, aligner)
+                
+                if len(R) > 0:
+                    ligand_rmsd = self._compute_ligand_rmsd(R[0], t[0])
+                else:
+                    ligand_rmsd = None
+                
+                # Add suffix to attribute names
+                aligner_name = f"{aligner.name}{suffix}"
+                holder.__setattr__(f"{aligner_name}_rotations", R)
+                holder.__setattr__(f"{aligner_name}_translations", t)
+                holder.__setattr__(f"{aligner_name}_ligand_rmsd", ligand_rmsd)
+                holder.__setattr__(f"{aligner_name}_corr_rmsd", corr_rmsd)
+        
+        elif aligner.name in ["DaliAligner", "SoftAlignAligner", "APOCAligner"]:
             R, t, corr_rmsd, _ = aligner.impose_structure(self._tar_protein, self._src_protein, f'{self._ligand_dir}/{self._ligand_name}')
+            
+            if self._save_transformed_models:
+                self._apply_transformations_and_save_transformed_models(R, t, aligner)
+            
+            if len(R) > 0:
+                # choose the best transformation based on ligand RMSD
+                ligand_rmsd = self._compute_ligand_rmsd(R[0], t[0])
+                ligand_rmsd2 = self._compute_ligand_rmsd(R[0].T, t[0])
+                ligand_rmsd3 = self._compute_ligand_rmsd(R[0], -t[0])
+                ligand_rmsd4 = self._compute_ligand_rmsd(R[0].T, -t[0])
+                print(f"{aligner.name} ligand rmsds: {ligand_rmsd}, {ligand_rmsd2}, {ligand_rmsd3}, {ligand_rmsd4}")
+                # ligand_rmsd = min([ligand_rmsd1, ligand_rmsd2, ligand_rmsd3, ligand_rmsd4])
+
+            else:       
+                ligand_rmsd = None
+            
+            holder.__setattr__(f"{aligner.name}_rotations", R)
+            holder.__setattr__(f"{aligner.name}_translations", t)
+            holder.__setattr__(f"{aligner.name}_ligand_rmsd", ligand_rmsd)
+            holder.__setattr__(f"{aligner.name}_corr_rmsd", corr_rmsd)
+        
         else:
             R, t, corr_rmsd, _ = aligner.impose_structure(tar_coord, src_coord, seq1, seq2)
-
-        if self._save_transformed_models:
-            self._apply_transformations_and_save_transformed_models(R, t, aligner)
-        
-        if len(R) > 0:
-            ligand_rmsd =  self._compute_ligand_rmsd(R[0], t[0])
-        
-        else:
-            ligand_rmsd = None
-        
-        holder.__setattr__(f"{aligner.name}_rotations", R)
-        holder.__setattr__(f"{aligner.name}_translations", t)
-        holder.__setattr__(f"{aligner.name}_ligand_rmsd", ligand_rmsd)
-        holder.__setattr__(f"{aligner.name}_corr_rmsd", corr_rmsd)
-        # holder.__setattr__(f"{aligner.name}_bbr", all_bbr)
-        # holder.__setattr__(f"{aligner.name}_bbc", all_bbc)
+            
+            if self._save_transformed_models:
+                self._apply_transformations_and_save_transformed_models(R, t, aligner)
+            
+            if len(R) > 0:
+                ligand_rmsd = self._compute_ligand_rmsd(R[0], t[0])
+            else:
+                ligand_rmsd = None
+            
+            holder.__setattr__(f"{aligner.name}_rotations", R)
+            holder.__setattr__(f"{aligner.name}_translations", t)
+            holder.__setattr__(f"{aligner.name}_ligand_rmsd", ligand_rmsd)
+            holder.__setattr__(f"{aligner.name}_corr_rmsd", corr_rmsd)
 
     def _compute_ligand_rmsd(self, R, t):
         try:

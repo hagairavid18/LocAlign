@@ -1,0 +1,29 @@
+trainer:
+  exp_name: "baseline-APOCAligner-ligand_split"
+  tags: ["baseline", "ligand_split", "apoc", "pocket_aware"]
+  max_epochs: 30
+  validate_only: true
+  profiler: false
+  
+model:
+  name: Baseline
+  args:
+    model_name: "APOCAligner"
+ 
+dataset:
+  validation:
+    name: ScanNetDataset
+    args:
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
+      esm_model: "esm2_t30_150M_UR50D"
+      df_path: datasets/csv_files/ligand_25_10/val_baseline_apoc.csv
+      seed: 81
+      # n_samples: 100
+      min_cath: 0
+      max_cath: 4
+ 
+dataloader:
+  train_batch_size: 8
+  valid_batch_size: 1
+  test_batch_size: 1
+  n_workers: 15

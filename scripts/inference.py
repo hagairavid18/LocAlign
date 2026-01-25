@@ -248,7 +248,7 @@ class InferenceRunner:
                     tar_protein_path=tar_path,
                     tar_chain=row['tar_chain'],
                     tar_motif=row.get('tar_motif', None),
-                    src_protein=row['src_protein'],
+                    src_protein=src_norm,
                     src_protein_path=src_path,
                     src_chain=row['src_chain'],
                     src_motif=row.get('src_motif', None),
@@ -573,14 +573,14 @@ class InferenceRunner:
         attribute_similarity = emb / (gap * np.log(400) )
         radius_gyration = radius * ( 1.3 * perplexity ** (0.4) )
         if self._calibration_model is not None:
-            features = np.array([attribute_similarity,corr_rmsd,radius_gyration,perplexity])[None] # ['normalized_embedding_similarity','corr_rmsd','radius_of_gyration','perplexity']
+            features = np.array([attribute_similarity, corr_rmsd, radius_gyration,perplexity])[None] # ['normalized_embedding_similarity','corr_rmsd','radius_of_gyration','perplexity']
             pLRMSD = np.clip(self._calibration_model.predict(features)[0],0,10)
         else:
-            pLRMSD = (  2 *  (1 - emb / np.log(400) ) + 2 * corr_rmsd + 1 * radius_gyration ) # A dummy formula.
+            pLRMSD = (2 * (1 - emb / np.log(400) ) + 2 * corr_rmsd + 1 * radius_gyration ) # A dummy formula.
 
         if (self._ligand_calibration_model is not None) & (ph.src_ligand_n_atoms is not None):
             features = np.array(ph.src_ligand_n_atoms)[:,None] if len(ph.src_ligand_n_atoms)>0 else np.array([[-1]])
-            eLRMSD = self._ligand_calibration_model.predict( features )[0]
+            eLRMSD = self._ligand_calibration_model.predict(features)[0]
         else:
             eLRMSD = None
             
