@@ -1,4 +1,26 @@
 
+<h1 align="center">LocAlign</h1>
+<h3 align="center">Local Protein Structural Alignment<br>with Geometric Deep Learning</h3>
+
+<p align="center">
+    <img src="Figure1.svg" alt="LocAlign overview" width="500"/>
+    <br>
+    <em>Figure 1. LocAlign overview.</em>
+</p>
+
+
+LocAlign is a geometric deep learning-based algorithm for local structural alignment of proteins. It identifies functionally relevant structural motifs across proteins with different folds, overcoming limitations of standard alignment tools. LocAlign predicts atom-level correspondences and 3D superimpositions, enabling motif discovery, functional annotation, and drug off-target screening without requiring ground-truth alignments.
+
+
+
+
+<p align="center">
+    <img src="Figure2.svg" alt="LocAlign architecture" width="500"/>
+    <br>
+    <em>Figure 2. LocAlign architecture.</em>
+</p>
+
+
 ## How to run LocAlign inference:
 
 ### 1. Install the inference environment
@@ -64,8 +86,10 @@ Results are saved to timestamped directories under `base_save_dir/`. Each protei
 - `correspondences.pb` - Chimera pseudobond file showing atom-level correspondences between proteins
 
 **Visualization scripts:**
-- `chimera_script_pocket.cxc` - ChimeraX script highlighting binding pockets
-- `chimera_script_motif.cxc` - ChimeraX script highlighting aligned structural motifs
+ - `chimera_script_pocket.cxc` – ChimeraX script that highlights binding pockets
+ - `chimera_script_motif.cxc` – ChimeraX script that highlights aligned structural motifs
+ - `chimera_script_global.cxc` – ChimeraX script for a global view of the alignment
+ - `chimera_script_multiple.cxc` – ChimeraX script for database search mode, where all top hits are aligned to the query
 
 **Results CSV:**
 - `inference_results.csv` - Summary of all pairs with pLRMSD, perplexity, attribute_similarity, correspondence_rmsd, and radius_gyration metrics. Sorted by pLRMSD (lower is better).
