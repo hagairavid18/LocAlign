@@ -3,7 +3,7 @@
 <h3 align="center">Local Protein Structural Alignment<br>with Geometric Deep Learning</h3>
 
 <p align="center">
-    <img src="Figure1.svg" alt="LocAlign overview" width="500" style="background:white; border:1px solid #ddd; padding:8px; border-radius:8px;" />
+    <img src="readme_figure1.png" alt="LocAlign overview" width="500" style="background:white; border:1px solid #ddd; padding:8px; border-radius:8px;" />
     <br>
     <em>Figure 1. LocAlign overview.</em>
 </p>
@@ -15,7 +15,7 @@ LocAlign is a geometric deep learning-based algorithm for local structural align
 
 
 <p align="center">
-    <img src="Figure2.svg" alt="LocAlign architecture" width="500" style="background:white; border:1px solid #ddd; padding:8px; border-radius:8px;" />
+    <img src="readme_figure2.png" alt="LocAlign architecture" width="500" style="background:white; border:1px solid #ddd; padding:8px; border-radius:8px;" />
     <br>
     <em>Figure 2. LocAlign architecture.</em>
 </p>
