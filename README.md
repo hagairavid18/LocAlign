@@ -3,23 +3,23 @@
 <h3 align="center">Local Protein Structural Alignment<br>with Geometric Deep Learning</h3>
 
 <p align="center">
-    <img src="readme_figure1.png" alt="LocAlign overview" width="500" style="background:white; border:1px solid #ddd; padding:8px; border-radius:8px;" />
-    <br>
-    <em>Figure 1. LocAlign overview.</em>
+  LocAlign is a geometric deep learning-based algorithm for local structural alignment of proteins. It identifies functionally relevant structural motifs across proteins with different folds, overcoming limitations of standard alignment tools. LocAlign predicts atom-level correspondences and 3D superimpositions, enabling motif discovery, functional annotation, and drug off-target screening without requiring ground-truth alignments.
 </p>
 
-
-LocAlign is a geometric deep learning-based algorithm for local structural alignment of proteins. It identifies functionally relevant structural motifs across proteins with different folds, overcoming limitations of standard alignment tools. LocAlign predicts atom-level correspondences and 3D superimpositions, enabling motif discovery, functional annotation, and drug off-target screening without requiring ground-truth alignments.
-
-
-
-
-<p align="center">
-    <img src="readme_figure2.png" alt="LocAlign architecture" width="500" style="background:white; border:1px solid #ddd; padding:8px; border-radius:8px;" />
-    <br>
-    <em>Figure 2. LocAlign architecture.</em>
-</p>
-
+<table width="100%" style="border-collapse: collapse; border: none;">
+  <tr style="border: none;">
+    <td align="center" style="border: none; width: 50%; padding: 5px;">
+      <img src="readme_figure1.png" alt="LocAlign overview" style="width: 100%; background: white; border: 1px solid #ddd; padding: 5px; border-radius: 8px;" />
+      <br>
+      <em>Figure 1. LocAlign overview.</em>
+    </td>
+    <td align="center" style="border: none; width: 50%; padding: 5px;">
+      <img src="readme_figure2.png" alt="LocAlign architecture" style="width: 100%; background: white; border: 1px solid #ddd; padding: 5px; border-radius: 8px;" />
+      <br>
+      <em>Figure 2. LocAlign architecture.</em>
+    </td>
+  </tr>
+</table>
 
 ## How to run LocAlign inference:
 
