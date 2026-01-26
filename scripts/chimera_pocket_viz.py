@@ -118,7 +118,7 @@ def extract_chains_andor_ligand_and_apply_transform(struct, chain_ids, ligand_id
         
         
 
-def get_pocket(receptor_file,ligand_file):
+def get_pocket(receptor_file, ligand_file):
     _,chains1 = PDBio.load_chains(receptor_file, verbose=False)
     _,chains2 = PDBio.load_chains(ligand_file, verbose=False)
 
@@ -131,14 +131,20 @@ def get_pocket(receptor_file,ligand_file):
         if not ligand_atom.name == 'H':
             ligand_atoms_coordinates.append(ligand_atom.get_coord())
     ligand_atoms_coordinates = np.array(ligand_atoms_coordinates)
-    
+
     in_contact = []
-    for receptor_res in range(len(receptor_atom_coordinates)):    
-        distances = np.sqrt( ((receptor_atom_coordinates[receptor_res][np.newaxis] - ligand_atoms_coordinates[:,np.newaxis])**2).sum(-1) )
-        in_contact.append( distances.min() < 4)
+    if ligand_atoms_coordinates.shape[0] == 0:
+        # No ligand atoms found, so no residues are in contact
+        in_contact = [False] * len(receptor_atom_coordinates)
+    else:
+        for receptor_res in range(len(receptor_atom_coordinates)):
+            distances = np.sqrt(
+                ((receptor_atom_coordinates[receptor_res][np.newaxis] - ligand_atoms_coordinates[:, np.newaxis]) ** 2).sum(-1)
+            )
+            in_contact.append(distances.min() < 4)
     in_contact = np.array(in_contact)
-        
-    receptor_PDB_indices = PDB_processing.get_PDB_indices(chains1,return_model=False,return_chain=True)
+
+    receptor_PDB_indices = PDB_processing.get_PDB_indices(chains1, return_model=False, return_chain=True)
     pocket_residues = np.array(receptor_PDB_indices)[in_contact]
     return pocket_residues
     

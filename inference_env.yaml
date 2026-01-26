@@ -1,4 +1,4 @@
-name: localign_infer3
+name: localign_infer
 
 channels:
   - pytorch
