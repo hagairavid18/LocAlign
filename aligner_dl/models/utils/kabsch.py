@@ -31,7 +31,7 @@ def kabsch_torch(P, Q):
 
     # Validate right-handed coordinate system
     if torch.det(torch.matmul(Vt.transpose(0, 1), U.transpose(0, 1))) < 0.0:
-        Vt[:, -1] *= -1.0
+        Vt[-1, :] *= -1.0
 
     # Optimal rotation
     R = torch.matmul(Vt.transpose(0, 1), U.transpose(0, 1))
@@ -62,8 +62,9 @@ def weighted_kabsch_torch(P: torch.Tensor, Q: torch.Tensor, weights: torch.Tenso
     weights = weights + zero_mask * 1e-6  # Avoid zero weights
 
     # Compute weighted centroids
-    centroid_P = torch.sum(P * weights.unsqueeze(-1), dim=1)  # [B, 3]
-    centroid_Q = torch.sum(Q * weights.unsqueeze(-1), dim=1)  # [B, 3]
+    weight_sum = weights.sum(dim=1, keepdim=True)  # [B, 1]
+    centroid_P = torch.sum(P * weights.unsqueeze(-1), dim=1) / weight_sum  # [B, 3]
+    centroid_Q = torch.sum(Q * weights.unsqueeze(-1), dim=1) / weight_sum  # [B, 3]
 
     # Center the point clouds
     P_centered = P - centroid_P.unsqueeze(1)  # [B, K, 3]
