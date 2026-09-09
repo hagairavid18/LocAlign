@@ -584,7 +584,7 @@ def make_chimera_script_multiple(
 	model_ranks['tar_protein'] = nmodels
 
 	tar_ligand_file = os.path.join(output_folders[0], 'template_ligand.pdb')
-	has_tar_ligand = table_results['tar_ligand'].notnull().any() and os.path.exists(tar_ligand_file) and (os.path.filesize(tar_ligand_file)>10)
+	has_tar_ligand = table_results['tar_ligand'].notnull().any() and os.path.exists(tar_ligand_file) and (os.path.getsize(tar_ligand_file)>10)
 	if has_tar_ligand:
 		tar_ligand_name = f'{tar_protein}{tar_chain}:{tar_ligand}'
 		tar_ligand = table_results['tar_ligand'].iloc[0]
