@@ -194,13 +194,13 @@ class LocAlign(SoftBBBase):
             batch_indices: Batch dimension indices for gathering
             
         Returns:
-            Tuple of (correspondence_residue_indices, correspondence_atom_indices)
+            Tuple of (correspondence_residue_indices, correspondence_atom_indices, correspondence_atom_types, correspondence_pocket_mask)
         """
         # Gather residue indices
         src_residue_idx = batch['src_residue_indices'].gather(1, topk_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
         tar_residue_idx = batch['tar_residue_indices'].gather(1, topk_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
         corr_residue_indices = torch.stack([src_residue_idx, tar_residue_idx], dim=-1)
-        
+
         # Gather atom indices
         src_atom_idx = batch['src_atom_original_indices'].gather(1, topk_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
         tar_atom_idx = batch['tar_atom_original_indices'].gather(1, topk_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
@@ -209,8 +209,12 @@ class LocAlign(SoftBBBase):
         src_atom_type = batch['src_atom_types'].gather(1, topk_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
         tar_atom_type = batch['tar_atom_types'].gather(1, topk_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
         corr_atom_types = torch.stack([src_atom_type, tar_atom_type], dim=-1)
-        
-        return corr_residue_indices, corr_atom_indices, corr_atom_types
+
+        src_pocket_mask = batch['src_pocket_mask'].gather(1, topk_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
+        tar_pocket_mask = batch['tar_pocket_mask'].gather(1, topk_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
+        corr_pocket_mask = torch.stack([src_pocket_mask, tar_pocket_mask], dim=-1)
+
+        return corr_residue_indices, corr_atom_indices, corr_atom_types, corr_pocket_mask
 
     def _run_step(
         self, 
@@ -327,11 +331,11 @@ class LocAlign(SoftBBBase):
         
         # Return with correspondence metadata if requested
         if return_correspondences:
-            corr_residue_indices, corr_atom_indices, corr_atom_types = self._extract_correspondence_metadata(
+            corr_residue_indices, corr_atom_indices, corr_atom_types, corr_pocket_mask = self._extract_correspondence_metadata(
                 batch, topk_src_indices, topk_tar_indices, top_corr_indices, batch_indices
             )
-            return all_iter_outputs, top_corr_values, corr_residue_indices, corr_atom_indices, corr_atom_types
-        
+            return all_iter_outputs, top_corr_values, corr_residue_indices, corr_atom_indices, corr_atom_types, corr_pocket_mask
+
         return all_iter_outputs
 
     def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -357,14 +361,14 @@ class LocAlign(SoftBBBase):
             dict[str, torch.Tensor]: 
         """
         batch = move_batch_to_device(batch, self.device)
-        all_iter_outputs, corr_values, corr_residue_indices, corr_atom_indices, corr_atom_types = self._run_step(batch, return_correspondences=True)
+        all_iter_outputs, corr_values, corr_residue_indices, corr_atom_indices, corr_atom_types, corr_pocket_mask = self._run_step(batch, return_correspondences=True)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_pretrained_embeddings'].dtype)
         for iter_outputs in all_iter_outputs:
             curr_loss, loss_dict = self._loss(batch, iter_outputs, per_sample=True)
             loss += curr_loss
         loss /= len(all_iter_outputs)  # Average loss over all iterations
 
-        outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': iter_outputs, 'metadata': batch['metadata'], 'corr_values': corr_values, 'corr_indices': corr_residue_indices, 'corr_atom_indices': corr_atom_indices, 'corr_atom_types': corr_atom_types}
+        outputs = {'loss': loss , 'loss_dict': loss_dict, 'transformation_dict': iter_outputs, 'metadata': batch['metadata'], 'corr_values': corr_values, 'corr_indices': corr_residue_indices, 'corr_atom_indices': corr_atom_indices, 'corr_atom_types': corr_atom_types, 'corr_pocket_mask': corr_pocket_mask}
         self._metrics.update(batch, outputs)
         return outputs
     
@@ -379,11 +383,11 @@ class LocAlign(SoftBBBase):
             dict[str, torch.Tensor]: 
         """
         batch = move_batch_to_device(batch, self.device)
-        all_iter_results, corr_values, corr_residue_indices, corr_atom_indices, corr_atom_types = self._run_step(batch, return_correspondences=True)
+        all_iter_results, corr_values, corr_residue_indices, corr_atom_indices, corr_atom_types, corr_pocket_mask = self._run_step(batch, return_correspondences=True)
         curr_loss, loss_dict = self._loss(batch, all_iter_results[-1], inference=True)
-        
 
-        outputs = {'transformation_dict': all_iter_results[-1], 'metadata': batch['metadata'], 'corr_values': corr_values, 'corr_indices': corr_residue_indices, 'corr_atom_indices': corr_atom_indices}
+
+        outputs = {'transformation_dict': all_iter_results[-1], 'metadata': batch['metadata'], 'corr_values': corr_values, 'corr_indices': corr_residue_indices, 'corr_atom_indices': corr_atom_indices, 'corr_pocket_mask': corr_pocket_mask}
         outputs['loss'] = curr_loss
         outputs['loss_dict'] = loss_dict
         return outputs

@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 class ScanNetDataset(BasePairDataset):
     _MAX_LIGAND_LENGTH = 500
+    _POCKET_DISTANCE_THRESHOLD = 4.0
 
     def __init__(
             self, 
@@ -183,8 +184,19 @@ class ScanNetDataset(BasePairDataset):
 
         ret['src_ligand_mask'] = F.pad(torch.ones(len(src_ligand_coordinates)), (0, self._MAX_LIGAND_LENGTH - len(src_ligand_coordinates)), value=0).bool()
         ret['tar_ligand_mask'] = F.pad(torch.ones(len(tar_ligand_coordinates)), (0, self._MAX_LIGAND_LENGTH - len(tar_ligand_coordinates)), value=0).bool()
-        
+
+        for key, ligand_coordinates in [("src", src_ligand_coordinates), ("tar", tar_ligand_coordinates)]:
+            n_atoms = embedding_dicts[key]['atom_embeddings'].shape[0]
+            atom_coordinates = embedding_dicts[key]['atom_frames'][:, 0, :]
+            pocket_mask = self._compute_pocket_mask(atom_coordinates, ligand_coordinates)
+            ret[f'{key}_pocket_mask'] = F.pad(pocket_mask, (0, self._max_atoms - n_atoms), value=0).bool()
+
         return ret
+
+    def _compute_pocket_mask(self, atom_coordinates: torch.Tensor, ligand_coordinates: torch.Tensor) -> torch.Tensor:
+        """Per-atom mask, 1 if the atom's closest ligand atom is within the binding-site distance threshold."""
+        distances = torch.cdist(atom_coordinates.float(), ligand_coordinates.float())
+        return distances.min(dim=1).values <= self._POCKET_DISTANCE_THRESHOLD
 
     def _read_embedding(
         self, 
