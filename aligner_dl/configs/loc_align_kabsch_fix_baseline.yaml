@@ -1,0 +1,102 @@
+trainer:
+  exp_name: baseline-homology-kabsch-fix-h100
+  tags: ["baseline", "homology_split", "small_ligands", "kabsch_fix"]
+  max_epochs: 10
+  validate_only: false
+  check_val_every_n_epoch: 1
+  gradient_clipping: 30.0
+model:
+  name: LocAlign
+  args:
+    n_iter_recycling: 4
+    input_layer:
+      name:
+        EmbeddingBlock
+      args:
+        n_blocks: 2
+        input_dim: 1004
+        hidden_dim: 256
+        output_dim: 256
+        dropout: 0.1
+        norm_in_last_layer: true
+        last_norm_learnable: true
+    denoiser:
+      name:
+        CDM
+      args:
+        n_nodes: 400
+        n_gnn_layers: 10
+        n_rbf_functions: 32
+        with_angles: true
+    keypoints_selection:
+      name: KeypointsSelection
+      args:
+        embedding_size: 256
+        n_rbf_functions: 32
+        top_k: 1000
+    loss:
+      name: LocAlignLoss
+      args:
+        return_non_linear: true
+        weight_dict:
+          corr_rmsd: 1.0
+          embedding: 0.5
+          gap: 0.0
+          ligand_rmsd: 5.0
+          radius: 0.5
+        embedding_method: 'contrastive_clip_normalized'
+    metric:
+      name: MetricsCollection
+      module: metrics.collection
+      args:
+        metrics:
+          pocket:
+            name: PocketRMSD
+            module: metrics.pocket_ligand_rmsd
+            args: {}
+          atom_type:
+            name: AtomTypeCorrespondence
+            module: metrics.atom_type_correspondence
+            args: {}
+
+    optimizer:
+      name: Adam
+      args:
+        learning_rate: 0.0005
+        scheduler:
+          name: OneCycleLR
+          interval: step
+          args:
+            max_lr: 0.0005
+            epochs: 10
+            steps_per_epoch: 8712
+            div_factor: 25
+
+dataset:
+  train:
+    name: ScanNetDataset
+    args:
+      df_path: /home/iscb/wolfson/hagairavid/LocAlign/datasets/csv_files/homology_25_10/train.csv
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
+      esm_model: "esm2_t30_150M_UR50D"
+      use_esm: true
+      esm_layer: 18
+      seed: 41
+      max_cath: 8
+      bbc_filter_ratio: 20
+      max_length: 2000
+  validation:
+    name: ScanNetDataset
+    args:
+      df_path: /home/iscb/wolfson/hagairavid/LocAlign/datasets/csv_files/homology_25_10/val.csv
+      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
+      esm_model: "esm2_t30_150M_UR50D"
+      use_esm: true
+      esm_layer: 18
+      seed: 81
+      max_cath: 4
+      max_length: 5000
+dataloader:
+  train_batch_size: 8
+  valid_batch_size: 8
+  n_workers: 12
