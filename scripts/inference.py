@@ -113,31 +113,45 @@ class InferenceRunner:
 
     @staticmethod
     def _parse_motif(val):
-        """Parse tar_motif field into a list or return None.
+        """Parse a motif/atom-count field into a list, or return None.
 
-        Accepts: None/NaN, already-list, or stringified list (via ast.literal_eval).
-        Anything else returns None.
+        Accepts: None/NaN, an already-parsed list, a bare int, a comma-separated
+        string (e.g. "10,11,12", the documented CLI/CSV format), or a
+        stringified Python literal (e.g. "[10, 11, 12]"). Anything else
+        returns None.
         """
         if val is None or (isinstance(val, float) and np.isnan(val)):
             return None
         if isinstance(val, list):
             return val
-        if isinstance(val,int):
+        if isinstance(val, int):
             return [val]
         s = str(val).strip()
         if s == "":
             return None
         try:
-            parsed = [int(x) for x in val.split(',')]
+            parsed = ast.literal_eval(s)
+            if isinstance(parsed, (list, tuple)):
+                return list(parsed)
+            if isinstance(parsed, int):
+                return [parsed]
         except Exception:
             pass
         try:
-            parsed = ast.literal_eval(s)
-            if isinstance(parsed, list):
-                return parsed
+            return [int(x) for x in s.split(',')]
         except Exception:
             return None
-        return None
+
+    @staticmethod
+    def _get_or_default(row, col: str, default):
+        """Like row.get(col, default), but also falls back to default for a
+        present-but-blank/NaN cell (pandas represents an empty CSV cell as
+        NaN even when the column dtype is str, so a plain .get() never
+        catches it)."""
+        val = row.get(col, default)
+        if val is None or (isinstance(val, float) and np.isnan(val)):
+            return default
+        return val
 
     @staticmethod
     def _hash_path(val: str) -> str:
@@ -180,15 +194,15 @@ class InferenceRunner:
         
         elif self._csv_path is not None:
             df = pd.read_csv(self._csv_path, dtype=str)
-            for column in ['tar_motif','src_motif','tar_ligands_n_atoms','src_ligands_n_atoms']:
+            for column in ['tar_motif','src_motif','tar_ligand_n_atoms','src_ligand_n_atoms']:
                 if column in df.columns:
                     df[column] = df[column].apply(self._parse_motif)
-            
-            if 'ligand' in df.columns:
-                df['src_ligand'] = df['ligand']
-                df['tar_ligand'] = df['ligand']
 
-                # df = df.rename(columns={'ligand':'tar_ligand'})
+            if 'ligand' in df.columns:
+                if 'src_ligand' not in df.columns:
+                    df['src_ligand'] = df['ligand']
+                if 'tar_ligand' not in df.columns:
+                    df['tar_ligand'] = df['ligand']
             # Validate required columns
             required = ['tar_protein', 'tar_chain', 'src_protein', 'src_chain']
             missing = [col for col in required if col not in df.columns]
@@ -208,14 +222,14 @@ class InferenceRunner:
                     src_protein_path=src_path,
                     src_chain=row['src_chain'],
                     src_motif=row.get('src_motif', None),
-                    tar_ligand=row.get('tar_ligand', self.DEFAULT_LIGAND),
-                    src_ligand=row.get('src_ligand', self.DEFAULT_LIGAND),
+                    tar_ligand=self._get_or_default(row, 'tar_ligand', self.DEFAULT_LIGAND),
+                    src_ligand=self._get_or_default(row, 'src_ligand', self.DEFAULT_LIGAND),
                     tar_ligand_n_atoms = row.get('tar_ligand_n_atoms', None),
                     src_ligand_n_atoms = row.get('src_ligand_n_atoms', None),
                 )
                 self._pairs.append(ph)
             self._df = df
-                        
+
         elif self._protein_database_search is not None:
             # Mode 3: Database search mode - src from CLI, tar from database CSV
             tar, tar_chain, database_path = self._protein_database_search
@@ -252,10 +266,10 @@ class InferenceRunner:
                     src_protein_path=src_path,
                     src_chain=row['src_chain'],
                     src_motif=row.get('src_motif', None),
-                    tar_ligand=row.get('tar_ligand', self.DEFAULT_LIGAND),
-                    src_ligand=row['src_ligand'],
+                    tar_ligand=self._get_or_default(row, 'tar_ligand', self.DEFAULT_LIGAND),
+                    src_ligand=self._get_or_default(row, 'src_ligand', self.DEFAULT_LIGAND),
                     tar_ligand_n_atoms = row.get('tar_ligand_n_atoms', None),
-                    src_ligand_n_atoms = row.get('src_ligand_n_atoms', None),                    
+                    src_ligand_n_atoms = row.get('src_ligand_n_atoms', None),
                 )
                 self._pairs.append(ph)
             self._df = df
@@ -273,8 +287,8 @@ class InferenceRunner:
         Raises:
             FileNotFoundError: If checkpoint directory doesn't exist
         """
-        self._experiment_name = self._checkpoint_path.split('/')[-2]
-        self._checkpoint_dir = self._checkpoint_path.rsplit('/', 1)[0]
+        self._checkpoint_dir = os.path.dirname(self._checkpoint_path)
+        self._experiment_name = os.path.basename(self._checkpoint_dir)
         
         if not os.path.isdir(self._checkpoint_dir):
             raise FileNotFoundError(f"Checkpoint directory not found: {self._checkpoint_dir}")
