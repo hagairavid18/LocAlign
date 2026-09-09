@@ -11,13 +11,13 @@ Status column tracks whether a fix has been applied on the `bugfixes` branch.
 | 2 | ✅ Fixed (`fix/kabsch-centroid-reflection`) | `aligner_dl/models/utils/kabsch.py:33-34` | `kabsch_torch`'s reflection-correction negated `Vt[:, -1]` (wrong axis) instead of `Vt[-1, :]`, giving a valid but suboptimal rotation whenever a reflection fix was needed. |
 | 3 | Open | `miners/objects/protein_pair.py:66-67` | `_init_models` returns `self._tar_protein.get_model(...)` for **both** target and source — `self._src_model` is actually built from the target protein. Also `__init__` calls `_init_models()` with no args, ignoring any non-zero model index passed to the constructor. |
 | 4 | Open | `miners/aligners/ransac_svd_aligner.py:79-83` | `moving_coord` is never assigned (only `srcing_coord` is) → `NameError` on every call. `RANSACAligner.impose_structure` is completely broken. |
-| 5 | Open | `scripts/inference.py:114-140` | `_parse_motif` discards the correctly-parsed list for the documented format (`--tar_motif 10,11,12`); falls through a second parser and returns `None`. Motif constraints silently vanish for the documented CLI input format. |
+| 5 | ✅ Fixed (`fix/inference-motif-and-ligand-bugs`) | `scripts/inference.py:114-140` | `_parse_motif` discards the correctly-parsed list for the documented format (`--tar_motif 10,11,12`); falls through a second parser and returns `None`. Motif constraints silently vanish for the documented CLI input format. |
 
 ## High — crashes or clearly wrong output
 
 | # | Status | Location | Issue |
 |---|--------|----------|-------|
-| 6 | Open | `scripts/chimera_pocket_viz.py:581` | Calls `os.path.filesize` (doesn't exist; should be `getsize`) — crashes every database-search run with a target ligand file. |
+| 6 | ✅ Fixed (`fix/inference-motif-and-ligand-bugs`) | `scripts/chimera_pocket_viz.py:581` | Calls `os.path.filesize` (doesn't exist; should be `getsize`) — crashes every database-search run with a target ligand file. |
 | 7 | Open | `aligner_dl/losses/soft_bb_loss.py:86-92` | `PocketLoss()` with default args (`return_non_linear=False`) raises `UnboundLocalError` — the returned variable is only set in the branch that's off by default. |
 | 8 | Open (deprioritized — `HardBB` is deprecated) | `aligner_dl/models/hard_bb.py:27-58` | `validation_step` builds `reciprocal_pairs` across the whole batch, then indexes coordinates per-`batch_id` without filtering to that sample's pairs — mixes unrelated samples when batch size > 1; `R`/`t` can also be referenced before assignment. |
 | 9 | Open | `scripts/chimera_pocket_viz.py:793-815` | `__main__` CLI block calls `process_alignment` with a stale/wrong signature (missing required `cache_dir`, passes nonexistent kwargs) — running the script directly crashes immediately. |
@@ -32,14 +32,14 @@ Status column tracks whether a fix has been applied on the `bugfixes` branch.
 | 13 | Open | `miners/parsers/biolip_reader.ipynb` (cells 20-21) | `heavy_atom_count` is a stale leftover loop variable, not computed per-row; under `multiprocessing.Pool`, every output row gets the same wrong constant for `ligand_n_atoms`. |
 | 14 | Open | `miners/parsers/biolip_reader.ipynb` (cell 21) | `unique_pairs`/`missing_chains` are plain `set()`s passed into worker processes (not `Manager()`-backed); mutations never propagate back, so cross-chunk dedup silently does nothing. |
 | 15 | Open (deprioritized — not currently used) | `aligner_dl/datasets/base_pair_dataset.py:49-58` | `_calculate_sample_weights` computes ligand-frequency rebalancing weights, then immediately overwrites them with `1` — the rebalancing is a no-op. |
-| 16 | Open | `scripts/inference.py:187-189` vs `225-226` | The `ligand` fallback column unconditionally clobbers existing `tar_ligand`/`src_ligand` in CSV mode but is guarded in database mode — inconsistent; silently drops user-specified per-side ligands in CSV mode. |
-| 17 | Open | `scripts/inference.py:211-212, 255-258` | `row.get(col, default)` doesn't catch blank/NaN cells (CSV read as `dtype=str`), so the documented "defaults to general" behavior doesn't trigger for empty-but-present cells. |
+| 16 | ✅ Fixed (`fix/inference-motif-and-ligand-bugs`) | `scripts/inference.py:187-189` vs `225-226` | The `ligand` fallback column unconditionally clobbers existing `tar_ligand`/`src_ligand` in CSV mode but is guarded in database mode — inconsistent; silently drops user-specified per-side ligands in CSV mode. |
+| 17 | ✅ Fixed (`fix/inference-motif-and-ligand-bugs`) | `scripts/inference.py:211-212, 255-258` | `row.get(col, default)` doesn't catch blank/NaN cells (CSV read as `dtype=str`), so the documented "defaults to general" behavior doesn't trigger for empty-but-present cells. Database-search mode's `src_ligand` also had no default at all previously. |
 
 ## Lower priority
 
 | # | Status | Location | Issue |
 |---|--------|----------|-------|
-| 18 | Open | `scripts/inference.py:276-277` | Checkpoint path parsing via `.split('/')`/`.rsplit('/',1)` instead of `os.path`, breaks for paths without a directory component. |
+| 18 | ✅ Fixed (`fix/inference-motif-and-ligand-bugs`) | `scripts/inference.py:276-277` | Checkpoint path parsing via `.split('/')`/`.rsplit('/',1)` instead of `os.path`, breaks for paths without a directory component. |
 | 19 | Open | `scripts/chimera_pocket_viz.py:726` vs `744` | Query ligand name truncated to 3 chars, template isn't (copy-paste asymmetry); breaks for ligand codes >3 chars. |
 | 20 | Open | `scripts/chimera_pocket_viz.py:281-312` | Bare `except:` mislabels all errors as "index out of bounds" and swallows them. |
 | 21 | Open | `scripts/run_scannet_from_csv.py:16-18` | Computes `repo_root` for path-independence but then uses `os.getcwd()` instead, contradicting its own docstring. |
@@ -47,7 +47,15 @@ Status column tracks whether a fix has been applied on the `bugfixes` branch.
 | 23 | Open | `aligner_dl/datasets/scannet_dataset.py:134-137` | Broad exception handling replaces failed samples via recursive `__getitem__`, risking deep recursion if failures are widespread, and hides systematic bugs (missing files, parsing errors) instead of surfacing them. |
 | 24 | Open | `aligner_dl/datasets/scannet_dataset.py:229` | Atom subsampling uses the global `np.random.choice`, which can produce correlated/non-reproducible results across forked `DataLoader` workers despite the seeding done in `__init__`. |
 
+## Found and fixed while addressing #5/#16/#17 (`fix/inference-motif-and-ligand-bugs`)
+
+| # | Status | Location | Issue |
+|---|--------|----------|-------|
+| 25 | ✅ Fixed | `scripts/inference.py:183` (CSV mode) | The motif/atom-count parsing loop referenced `tar_ligands_n_atoms`/`src_ligands_n_atoms` (plural "ligands"), which never matched the actual column names (`tar_ligand_n_atoms`/`src_ligand_n_atoms`) used everywhere else — these columns were silently never parsed into lists in CSV mode, unlike database-search mode. |
+| 26 | ✅ Fixed | `scripts/inference.py:270` (database-search mode) | `src_ligand=row['src_ligand']` used direct dict-style access with no default at all, contradicting the documented optional-column behavior (defaults to `'general'`) — would `KeyError` if the database CSV had neither a `ligand` nor `src_ligand` column. |
+
 ## Branches
 
 - `bugfixes` — integration branch for all fixes (kept, not deleted after merge).
 - `fix/kabsch-centroid-reflection` — fixes #1 and #2, merged into `bugfixes`.
+- `fix/inference-motif-and-ligand-bugs` — fixes #5, #6, #16, #17, #18, #25, #26, merged into `bugfixes`.
