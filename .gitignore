@@ -41,3 +41,20 @@ inference_results/
 cache/
 slurm*
 submit_job.sh
+
+# Reproducibility release exceptions (see docs/REPRODUCIBILITY.md):
+# canonical pair manifests and ligand atom mapping artifacts are tracked
+# despite the blanket *.csv/*.json ignores above.
+!/datasets/csv_files/homology_25_10/train.csv
+!/datasets/csv_files/homology_25_10/val.csv
+!/datasets/csv_files/homology_25_10/val_baseline.csv
+!/datasets/csv_files/homology_25_10/val_baseline_usalign.csv
+!/datasets/csv_files/ligand_25_10/train.csv
+!/datasets/csv_files/ligand_25_10/val.csv
+!/datasets/csv_files/ligand_25_10/val_baseline.csv
+!/datasets/csv_files/ligand_25_10/val_baseline_apoc.csv
+!/datasets/csv_files/ligand_25_10/val_baseline_plasma.csv
+!/datasets/csv_files/ligand_25_10/val_baseline_usalign.csv
+!/datasets/csv_files/*/excluded_pairs.csv
+!/datasets/ligand_atom_mappings/
+!/datasets/ligand_atom_mappings/**
