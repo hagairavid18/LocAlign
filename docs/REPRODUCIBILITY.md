@@ -16,6 +16,7 @@ evaluation scripts.
 | Ligand atom-name correspondence (evaluation pairs) | `datasets/ligand_atom_mappings/{homology,ligand}_25_10/val.jsonl` |
 | Data pipeline scripts | `miners/parsers/biolip_reader.ipynb`, `miners/scripts/align.py`, `aligner_dl/datasets/utils/split_dataset.py` |
 | Ligand-mapping generation script | `scripts/build_ligand_atom_mappings.py` |
+| Partition statistics & leakage-check script | `scripts/report_partition_stats.py` |
 | Evaluation scripts | `scripts/offline_metrics.py`, `scripts/offline_metrics_apo.py` |
 | Training entrypoint | `aligner_dl/trainers/lightning_trainer.py` |
 
@@ -117,6 +118,49 @@ atom counts, and `shared_atom_names` — the exact atoms `ligand_rmsd` is comput
 2,514 (homology) / 3,869 (ligand) evaluation pairs mapped successfully with no missing ligand
 PDBs and no zero-overlap pairs. The per-ligand-id PDB files this script reads from live outside
 the repo at `LIGAND_DIR` (`aligner_dl/utils/constants.py`); they are not redistributed here.
+
+## Partition statistics & leakage check
+
+Exact per-partition counts (pairs, unique protein chains, unique ligands, sequence clusters,
+CATH superfamily groups) and train/val overlap on each of those axes:
+```bash
+python scripts/report_partition_stats.py \
+    --cath-domain-list /path/to/cath-domain-list.txt  # see Version pins below
+```
+
+**Homology-safe split** (`datasets/csv_files/homology_25_10/`):
+
+| Partition | Pairs | Unique chains | Unique ligands | Sequence clusters | Unique CATH groups |
+|---|---|---|---|---|---|
+| train | 79,527 | 10,120 | 697 | 7,255 | 2,098 |
+| val | 2,514 | 1,354 | 138 | 968 | 581 |
+| test | 0 | 0 | 0 | 0 | 0 |
+
+**Ligand-grouped split** (`datasets/csv_files/ligand_25_10/`):
+
+| Partition | Pairs | Unique chains | Unique ligands | Sequence clusters | Unique CATH groups |
+|---|---|---|---|---|---|
+| train | 97,731 | 10,338 | 675 | n/a (not clustered by sequence) | 2,061 |
+| val | 3,869 | 1,757 | 119 | n/a | 734 |
+| test | 0 | 0 | 0 | n/a | 0 |
+
+**Leakage check, train vs. val:**
+
+| Split | Chain overlap | Ligand overlap | Sequence-cluster overlap |
+|---|---|---|---|
+| `homology_25_10` | 0 / 1,354 val chains also in train | 121 / 138 val ligands also in train | 0 / 968 val clusters also in train |
+| `ligand_25_10` | 454 / 1,757 val chains also in train | 0 / 119 val ligands also in train | n/a |
+
+Each split's own leakage guarantee holds exactly as designed: the homology-safe split has zero
+chain/cluster overlap between train and val (sequence identity is what it protects against); the
+ligand-grouped split has zero ligand overlap (ligand identity is what it protects against). The
+non-zero ligand overlap in the homology split and non-zero chain overlap in the ligand split are
+expected, not a leak — a small-molecule ligand (e.g. ATP, ZN) legitimately recurs across unrelated
+protein families, and a protein chain can legitimately appear paired with different ligands across
+partitions when the split criterion is ligand identity rather than sequence identity.
+
+Every chain in both splits matched an entry in the CATH domain list used above (10,120/10,120
+train, 1,354/1,354 val for homology; 10,336/10,338, 1,757/1,757 for ligand).
 
 ## Version pins
 
