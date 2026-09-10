@@ -1,0 +1,82 @@
+trainer:
+  exp_name: apo-reval-ligand-apo-holo
+  tags:
+  - apo-reanalysis
+  - ligand
+  - apo_holo
+  max_epochs: 10
+  validate_only: true
+  check_val_every_n_epoch: 1
+  gradient_clipping: 30.0
+  ckpt_path: /home/iscb/wolfson/hagairavid/LocAlign/checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt
+model:
+  args:
+    denoiser:
+      args:
+        n_gnn_layers: 10
+        n_nodes: 400
+        n_rbf_functions: 32
+        with_angles: true
+      name: CDM
+    input_layer:
+      args:
+        dropout: 0.1
+        hidden_dim: 256
+        input_dim: 1004
+        last_norm_learnable: true
+        n_blocks: 2
+        norm_in_last_layer: true
+        output_dim: 256
+      name: EmbeddingBlock
+    keypoints_selection:
+      args:
+        embedding_size: 256
+        n_rbf_functions: 32
+        top_k: 1000
+      name: KeypointsSelection
+    loss:
+      args:
+        embedding_method: contrastive_clip_normalized
+        return_non_linear: true
+        weight_dict:
+          corr_rmsd: 1.0
+          embedding: 0.5
+          gap: 0.0
+          ligand_rmsd: 5.0
+          radius: 0.5
+      name: LocAlignLoss
+    metric:
+      args:
+        metrics:
+          atom_type:
+            args: {}
+            module: metrics.atom_type_correspondence
+            name: AtomTypeCorrespondence
+          pocket:
+            args: {}
+            module: metrics.pocket_ligand_rmsd
+            name: PocketRMSD
+      module: metrics.collection
+      name: MetricsCollection
+    n_iter_recycling: 4
+    optimizer:
+      args:
+        learning_rate: 0.0005
+      name: Adam
+  name: LocAlign
+dataset:
+  validation:
+    name: ScanNetDataset
+    args:
+      base_scannet_path: /home/iscb/wolfson/hagairavid/scannet_2212
+      df_path: /home/iscb/wolfson/hagairavid/LocAlign/datasets/csv_files/ligand_25_10/val_apo_holo.csv
+      esm_layer: 18
+      esm_model: esm2_t30_150M_UR50D
+      max_cath: 4
+      max_length: 5000
+      seed: 81
+      use_esm: true
+dataloader:
+  train_batch_size: 8
+  valid_batch_size: 8
+  n_workers: 12
