@@ -94,13 +94,31 @@ def split_csv(
     df = pd.read_csv(input_csv)
     # df = df[:50]
     print(f"Read CSV with {len(df)} rows")
-    df = df.drop_duplicates(subset=['tar_protein', 'src_protein'], keep=False)
+
+    excluded_chunks = []
+
+    dup_mask = df.duplicated(subset=['tar_protein', 'src_protein'], keep=False)
+    if dup_mask.any():
+        dup_excluded = df[dup_mask].copy()
+        dup_excluded['exclusion_reason'] = 'duplicate_pair'
+        excluded_chunks.append(dup_excluded)
+    df = df[~dup_mask]
     print(f"Removed duplicates, {len(df)} rows remaining")
     # remove n_transforamtions != 1
     # df = df[df['n_transformations'] == 1]
     # print(f"Filtered by n_transformations == 1, {len(df)} rows remaining")
-    df = df[df['failure_message'].isnull() | (df['failure_message'] == "")]
+    failure_mask = df['failure_message'].notnull() & (df['failure_message'] != "")
+    if failure_mask.any():
+        failure_excluded = df[failure_mask].copy()
+        failure_excluded['exclusion_reason'] = 'failure_message: ' + failure_excluded['failure_message'].astype(str)
+        excluded_chunks.append(failure_excluded)
+    df = df[~failure_mask]
     print(f"Filtered out failures, {len(df)} rows remaining")
+
+    if excluded_chunks:
+        excluded_log_path = os.path.join(output_dir, "excluded_pairs.csv")
+        pd.concat(excluded_chunks, ignore_index=True).to_csv(excluded_log_path, index=False)
+        print(f"Wrote {sum(len(c) for c in excluded_chunks)} excluded rows to {excluded_log_path}")
 
      # Ensure the "ligand_id" column exists if group_by_ligand is True
     if group_by_ligand and "ligand_id" not in df.columns:
