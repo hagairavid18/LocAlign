@@ -1,0 +1,55 @@
+{
+  "tag": "ligandloss0_epoch8",
+  "checkpoint_dir": "/home/iscb/wolfson/hagairavid/LocAlign/checkpoints/baseline-ligand=split-ligandloss0",
+  "checkpoint_file": "epoch=8-step=97191.ckpt",
+  "n_samples": 3186,
+  "total_time_seconds": 164.4901201725006,
+  "weighted_pocket_fraction_overall": 0.0010378497876666168,
+  "weighted_pocket_fraction_per_degree": {
+    "0": 0.0003992292449364121,
+    "1": 0.0003042539554726761,
+    "2": 0.0005762468516395446,
+    "3": 0.0004353445761522208,
+    "4": 0.005172375405018036,
+    "5": 0.0,
+    "6": 0.0,
+    "7": 0.0,
+    "8": 0.0
+  },
+  "weighted_same_type_overall": 0.9871060363129857,
+  "weighted_same_type_per_degree": {
+    "0": 0.9749240045154983,
+    "1": 0.991973303068307,
+    "2": 0.9888104661029972,
+    "3": 0.9923815593339395,
+    "4": 0.9959551012859895,
+    "5": 0.0,
+    "6": 0.0,
+    "7": 0.0,
+    "8": 0.0
+  },
+  "ligand_rmsd_below_4_total_proportion": 0,
+  "ligand_rmsd_per_degree": {
+    "0": 7.120174880884381,
+    "1": 6.834007681755944,
+    "2": 6.624618823407952,
+    "3": 6.551417842579348,
+    "4": 3.115244826087012,
+    "5": 0,
+    "6": 0,
+    "7": 0,
+    "8": 0
+  },
+  "counts_per_degree": {
+    "0": 899,
+    "1": 823,
+    "2": 634,
+    "3": 414,
+    "4": 416,
+    "5": 0,
+    "6": 0,
+    "7": 0,
+    "8": 0
+  },
+  "total_count": 3186
+}

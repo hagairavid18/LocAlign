@@ -224,10 +224,48 @@ def main():
             print(f"Success Rates for {dir_name}:")
             print(summary_df)
             print("=" * 60)
+
+            # Per-exact-cath_degree breakdown (Reviewer 1, comment 2): the split above folds
+            # cath_degree<4 and cath_degree==4 into two buckets. Report each degree separately
+            # (0, 1, 2, 3, 4, ...) instead, so "no difference within 0-3" can actually be checked
+            # rather than assumed by the fold.
+            #
+            # Also include the main model itself (baseline.csv / its two src-motif variants),
+            # which the comparison loop above deliberately excludes (it's the reference model,
+            # not an ablation/baseline-aligner to compare against). Without this, the exact
+            # per-degree numbers behind the abstract's "different fold" success-rate claim
+            # wouldn't be in this file at all.
+            main_model_frames = []
+            for fname in ["baseline.csv", "baseline_sample_1000_with_src_motif.csv",
+                          "baseline_sample_1000_without_src_motif.csv"]:
+                fpath = os.path.join(ablation_dir, fname)
+                if os.path.exists(fpath):
+                    mdf = process_experiment(fpath, Path(fname).stem, SUCCESS_CRITERIA)
+                    main_model_frames.append(mdf)
+            degree_source_df = pd.concat([combined_df] + main_model_frames, ignore_index=True) if main_model_frames else combined_df
+
+            degree_rows = []
+            for threshold in [1, 2, 4]:
+                col_name = f"success_ligand_rmsd<{threshold}"
+                per_degree = degree_source_df.groupby(["experiment", "cath_degree"])[col_name].agg(["mean", "count"])
+                for (experiment, degree), row in per_degree.iterrows():
+                    degree_rows.append({
+                        "experiment": experiment,
+                        "cath_degree": degree,
+                        "ligand_rmsd_threshold": threshold,
+                        "success_rate": round(row["mean"], 5),
+                        "n": int(row["count"]),
+                    })
+            degree_df = pd.DataFrame(degree_rows).sort_values(
+                ["experiment", "ligand_rmsd_threshold", "cath_degree"]
+            )
+            degree_path = os.path.join(ablation_dir, "success_rates_by_cath_degree.csv")
+            degree_df.to_csv(degree_path, index=False)
+            print(f"\nPer-exact-degree success rates saved to: {degree_path}")
         else:
             print("\nWarning: 'cath_degree' column not found. Cannot compute filtered success rates.")
             summary_df = pd.DataFrame(summary_data)
-        
+
         # Save summary for this directory
         summary_path = os.path.join(ablation_dir, "success_rates.csv")
         summary_df.to_csv(summary_path)

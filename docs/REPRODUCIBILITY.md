@@ -125,8 +125,11 @@ Exact per-partition counts (pairs, unique protein chains, unique ligands, sequen
 CATH superfamily groups) and train/val overlap on each of those axes:
 ```bash
 python scripts/report_partition_stats.py \
-    --cath-domain-list /path/to/cath-domain-list.txt  # see Version pins below
+    --cath_domain_list cath-classification-data/cath-domain-list.txt \
+    --csv_dirs datasets/csv_files/homology_25_10 datasets/csv_files/ligand_25_10 \
+    --out_dir results/partition_stats  # CATH version: see Version pins below
 ```
+Writes `{split}_partition_counts.csv` and `{split}_leakage_check.csv` per split to `--out_dir`.
 
 **Homology-safe split** (`datasets/csv_files/homology_25_10/`):
 
