@@ -10,10 +10,10 @@ evaluation scripts.
 
 | Artifact | Path |
 |---|---|
-| Homology-safe split (main model) | `datasets/csv_files/homology_25_10/{train,val}.csv` |
-| Ligand-grouped split | `datasets/csv_files/ligand_25_10/{train,val}.csv` |
-| Baseline-comparison manifests (same pairs + precomputed baseline results) | `datasets/csv_files/{homology,ligand}_25_10/val_baseline*.csv` |
-| Ligand atom-name correspondence (evaluation pairs) | `datasets/ligand_atom_mappings/{homology,ligand}_25_10/val.jsonl` |
+| Homology-safe split (main model) | `datasets/csv_files/homology_25_10/{train,test}.csv` |
+| Ligand-grouped split | `datasets/csv_files/ligand_25_10/{train,test}.csv` |
+| Baseline-comparison manifests (same pairs + precomputed baseline results) | `datasets/csv_files/{homology,ligand}_25_10/test_baseline*.csv` |
+| Ligand atom-name correspondence (evaluation pairs) | `datasets/ligand_atom_mappings/{homology,ligand}_25_10/test.jsonl` |
 | Data pipeline scripts | `miners/parsers/biolip_reader.ipynb`, `miners/scripts/align.py`, `aligner_dl/datasets/utils/split_dataset.py` |
 | Ligand-mapping generation script | `scripts/build_ligand_atom_mappings.py` |
 | Partition statistics & leakage-check script | `scripts/report_partition_stats.py` |
@@ -26,7 +26,7 @@ raw PDB/mmCIF structures, the raw BioLiP text dump, and the full CATH classifica
 redistributing them); the `train.csv` splits' row-level ligand atom mappings (~80k-100k pairs —
 these are recomputed on the fly by the training dataloader itself, see below, so materializing
 them here would just be a slow, redundant copy of what running the code already does).
-`train.csv` and `val.csv`/`val_baseline*.csv` manifests themselves *are* released in full.
+`train.csv` and `test.csv`/`test_baseline*.csv` manifests themselves *are* released in full.
 
 ## Pipeline stages and exact commands
 
@@ -77,8 +77,13 @@ non-empty `failure_message` from Stage C, and (as of this change) writes both to
 row counts.
 
 `homology_25_10`/`ligand_25_10` = split-generation date (25 Oct 2025), not a threshold value.
-`test.csv` in both directories is effectively empty — reported numbers use `val*.csv` as the
-held-out evaluation set, not a separate test split.
+`split_dataset.py` internally draws a "val" and a "test" partition. In the released splits the
+internal "test" partition was empty, and the "val" partition is the held-out set on which all
+reported numbers are computed. That set was originally saved as `val.csv` and has been renamed
+`test.csv` (with all derived files, e.g. `val_baseline*.csv` → `test_baseline*.csv`), because
+it served as the test set. `train.csv` was not re-split. How the test set was used during
+training is described exactly in
+[Training protocol and use of the test set](#training-protocol-and-use-of-the-test-set).
 
 ## Exclusion logs
 
@@ -90,7 +95,7 @@ were persisted. This PR makes that persistent going forward:
   Stage C failures) to `<output_dir>/excluded_pairs.csv`.
 
 We did not rerun the full historical pipeline to reconstruct the exact exclusion list behind
-the already-committed `train`/`val` manifests (this would require re-touching the raw
+the already-committed `train`/`test` manifests (this would require re-touching the raw
 BioLiP/CATH/structure data at real compute cost); the manifests themselves are released
 verbatim instead, and new/rerun pipeline executions will now produce exclusion logs by
 construction.
@@ -106,12 +111,12 @@ Component Dictionary atom naming). `scripts/build_ligand_atom_mappings.py` reimp
 that same logic to materialize it explicitly for the evaluation splits:
 ```bash
 python scripts/build_ligand_atom_mappings.py \
-    --manifest datasets/csv_files/homology_25_10/val.csv \
-    --output datasets/ligand_atom_mappings/homology_25_10/val.jsonl
+    --manifest datasets/csv_files/homology_25_10/test.csv \
+    --output datasets/ligand_atom_mappings/homology_25_10/test.jsonl
 
 python scripts/build_ligand_atom_mappings.py \
-    --manifest datasets/csv_files/ligand_25_10/val.csv \
-    --output datasets/ligand_atom_mappings/ligand_25_10/val.jsonl
+    --manifest datasets/csv_files/ligand_25_10/test.csv \
+    --output datasets/ligand_atom_mappings/ligand_25_10/test.jsonl
 ```
 Each line is one pair: `ligand_id`, `tar_protein`/`tar_chain`, `src_protein`/`src_chain`,
 atom counts, and `shared_atom_names` — the exact atoms `ligand_rmsd` is computed over. All
@@ -122,7 +127,7 @@ the repo at `LIGAND_DIR` (`aligner_dl/utils/constants.py`); they are not redistr
 ## Partition statistics & leakage check
 
 Exact per-partition counts (pairs, unique protein chains, unique ligands, sequence clusters,
-CATH superfamily groups) and train/val overlap on each of those axes:
+CATH superfamily groups) and train/test overlap on each of those axes:
 ```bash
 python scripts/report_partition_stats.py \
     --cath_domain_list cath-classification-data/cath-domain-list.txt \
@@ -136,26 +141,24 @@ Writes `{split}_partition_counts.csv` and `{split}_leakage_check.csv` per split 
 | Partition | Pairs | Unique chains | Unique ligands | Sequence clusters | Unique CATH groups |
 |---|---|---|---|---|---|
 | train | 79,527 | 10,120 | 697 | 7,255 | 2,098 |
-| val | 2,514 | 1,354 | 138 | 968 | 581 |
-| test | 0 | 0 | 0 | 0 | 0 |
+| test | 2,514 | 1,354 | 138 | 968 | 581 |
 
 **Ligand-grouped split** (`datasets/csv_files/ligand_25_10/`):
 
 | Partition | Pairs | Unique chains | Unique ligands | Sequence clusters | Unique CATH groups |
 |---|---|---|---|---|---|
 | train | 97,731 | 10,338 | 675 | n/a (not clustered by sequence) | 2,061 |
-| val | 3,869 | 1,757 | 119 | n/a | 734 |
-| test | 0 | 0 | 0 | n/a | 0 |
+| test | 3,869 | 1,757 | 119 | n/a | 734 |
 
-**Leakage check, train vs. val:**
+**Leakage check, train vs. test:**
 
 | Split | Chain overlap | Ligand overlap | Sequence-cluster overlap |
 |---|---|---|---|
-| `homology_25_10` | 0 / 1,354 val chains also in train | 121 / 138 val ligands also in train | 0 / 968 val clusters also in train |
-| `ligand_25_10` | 454 / 1,757 val chains also in train | 0 / 119 val ligands also in train | n/a |
+| `homology_25_10` | 0 / 1,354 test chains also in train | 121 / 138 test ligands also in train | 0 / 968 test clusters also in train |
+| `ligand_25_10` | 454 / 1,757 test chains also in train | 0 / 119 test ligands also in train | n/a |
 
 Each split's own leakage guarantee holds exactly as designed: the homology-safe split has zero
-chain/cluster overlap between train and val (sequence identity is what it protects against); the
+chain/cluster overlap between train and test (sequence identity is what it protects against); the
 ligand-grouped split has zero ligand overlap (ligand identity is what it protects against). The
 non-zero ligand overlap in the homology split and non-zero chain overlap in the ligand split are
 expected, not a leak — a small-molecule ligand (e.g. ATP, ZN) legitimately recurs across unrelated
@@ -163,7 +166,7 @@ protein families, and a protein chain can legitimately appear paired with differ
 partitions when the split criterion is ligand identity rather than sequence identity.
 
 Every chain in both splits matched an entry in the CATH domain list used above (10,120/10,120
-train, 1,354/1,354 val for homology; 10,336/10,338, 1,757/1,757 for ligand).
+train, 1,354/1,354 test for homology; 10,336/10,338, 1,757/1,757 for ligand).
 
 ## Version pins
 
@@ -183,7 +186,7 @@ documented explicitly rather than fixed, to avoid changing training/eval behavio
 | Location | Value | Controls |
 |---|---|---|
 | `aligner_dl/trainers/lightning_trainer.py` `--seed` (CLI) | default 41 | `L.seed_everything` at training start |
-| `aligner_dl/configs/loc_align.yaml` per-dataset `seed` | 41 (train), 81 (val) | dataset-level shuffling/sampling |
+| `aligner_dl/configs/loc_align.yaml` per-dataset `seed` | 41 (train), 81 (test) | dataset-level shuffling/sampling |
 | `aligner_dl/models/layers/norm.py` | hardcoded `torch.manual_seed(42)` | **not** controlled by `--seed`; fixed regardless of CLI value |
 | `aligner_dl/datasets/base_pair_dataset.py` `set_seed()` | see call sites | dataset construction |
 | `aligner_dl/datasets/utils/split_dataset.py` | hardcoded `random.seed(42)` | MMseqs2 clustering / split assignment |
@@ -206,7 +209,39 @@ python -m aligner_dl.trainers.lightning_trainer \
 ```
 `--validate_only` runs validation only against an existing checkpoint. Baseline/ablation
 configs (`aligner_dl/configs/{softalign,tm_align,usalign,usalign_fns,dali,apoc,plasma}.yaml`)
-follow the same CLI, pointed at the corresponding `val_baseline*.csv` manifest.
+follow the same CLI, pointed at the corresponding `test_baseline*.csv` manifest.
+
+### Training protocol and use of the test set
+
+This describes how the released models were actually trained. The Lightning "validation"
+loop in the code evaluates `test.csv` (the config key is still `validation`).
+
+- **Hyperparameters.** As reported by the authors, most hyperparameter tuning was done on an
+  earlier version of the dataset, not on the released splits.
+- **Checkpointing.** `aligner_dl/trainers/lightning_trainer.py` registers one callback,
+  `ModelCheckpoint(save_top_k=-1, every_n_epochs=1)`, which saves every epoch. It has no
+  `monitor` (the saved callback state has `monitor=None`) and no `save_last`, and there is no
+  `EarlyStopping` callback.
+- **LR schedule.** `OneCycleLR` is stepped every optimizer step
+  (`aligner_dl/models/soft_bb_base.py::configure_optimizers`). That method also sets
+  `'monitor': 'valid_loss'`, but Lightning only reads `monitor` for `ReduceLROnPlateau`, so it
+  has no effect here. The schedule depends only on the step count. Note that the
+  `model_config.yaml` saved next to each checkpoint does not contain the scheduler block,
+  because `SoftBBBase.__init__` pops it from the optimizer config; the schedule is in
+  `aligner_dl/configs/loc_align.yaml`.
+- **Loss-weight ramp.** The corr-RMSD loss weight (`aligner_dl/losses/soft_bb_loss.py::update_lambda`)
+  follows a fixed sine ramp over `global_step / total_steps`, so it also depends only on the step count.
+- **Test-set evaluation during training.** The held-out set was evaluated once per epoch for
+  logging only (Comet metrics and `per_sample_results_{epoch}.csv`).
+- **Homology-split model** (`checkpoints/baseline/epoch=9-step=87120.ckpt`): trained on
+  `train.csv` for 10 epochs with the fixed OneCycle schedule. The last-epoch checkpoint was
+  used. The test set was only monitored and logged, and played no role in selecting it.
+- **Ligand-split models** (main model and the `quality0` / `ligandloss0` ablations): training
+  was stopped after 9 of 10 scheduled epochs (step 97,191 of `total_steps` 107,800). The
+  decision to stop was informed by monitoring the held-out set. The last saved checkpoint was
+  used.
+
+No model was trained on `train.csv` + `test.csv` combined.
 
 ## Evaluation
 
@@ -218,7 +253,7 @@ the top of the script — adjust to your environment) and reports success rate u
 `SUCCESS_CRITERIA` (`corr_rmsd < 2.0`, `ligand_rmsd < 4.0`, `atom_type_fraction > 0.5`; baseline
 aligners are judged on `ligand_rmsd` alone). `scripts/offline_metrics_apo.py` is the analogous
 script for the apo/holo reanalysis (tracked separately, see that script's own splits under
-`val_apo_apo.csv`/`val_apo_holo.csv`/`val_holo_holo_subset.csv`).
+`test_apo_apo.csv`/`test_apo_holo.csv`/`test_holo_holo_subset.csv`).
 
 ## Known limitations
 

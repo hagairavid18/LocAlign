@@ -100,7 +100,9 @@ dataset:
   validation:
     name: ScanNetDataset
     args:
-      df_path: datasets/csv_files/homology_25_10/val.csv
+      # Held-out test set (formerly val.csv). Evaluated every epoch for logging only;
+      # no checkpoint selection or early stopping uses it (see docs/REPRODUCIBILITY.md).
+      df_path: datasets/csv_files/homology_25_10/test.csv
       base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true

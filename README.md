@@ -114,7 +114,7 @@ The visualization shows:
 
 ## Training, evaluation data, and reproducibility
 
-The exact train/val pair manifests, ligand atom mappings, data-pipeline exclusion criteria,
+The exact train/test pair manifests, ligand atom mappings, data-pipeline exclusion criteria,
 CATH/BioLiP version pins, random seeds, and commands to reproduce training and evaluation are
 documented in [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md). The released manifests live
 under `datasets/csv_files/{homology,ligand}_25_10/`.

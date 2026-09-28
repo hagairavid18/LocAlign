@@ -16,7 +16,7 @@ dataset:
     args:
       base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
       esm_model: "esm2_t30_150M_UR50D"
-      df_path: datasets/csv_files/ligand_25_10/val_baseline_plasma.csv
+      df_path: datasets/csv_files/ligand_25_10/test_baseline_plasma.csv
       seed: 81
       # n_samples: 100
       min_cath: 0

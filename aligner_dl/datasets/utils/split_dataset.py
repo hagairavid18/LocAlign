@@ -292,8 +292,13 @@ def split_csv(
 
     # Save the splits into CSV files
     train_df.to_csv(os.path.join(output_dir, "train.csv"), index=False)
-    val_df.to_csv(os.path.join(output_dir, "val.csv"), index=False)
-    test_df.to_csv(os.path.join(output_dir, "test.csv"), index=False)
+    # The 'val' partition is the held-out evaluation set: all reported numbers are
+    # computed on it and it is saved as test.csv (see docs/REPRODUCIBILITY.md,
+    # "Training protocol and use of the test set", for exactly how it was used in training). The internal 'test' partition was empty in the released
+    # splits; if non-empty, it is written separately so it cannot overwrite test.csv.
+    val_df.to_csv(os.path.join(output_dir, "test.csv"), index=False)
+    if len(test_df):
+        test_df.to_csv(os.path.join(output_dir, "extra_holdout.csv"), index=False)
 
     print(f"Data split completed. Files and histograms saved in {output_dir}")
 

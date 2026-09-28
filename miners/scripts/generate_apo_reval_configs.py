@@ -32,7 +32,7 @@ CONFIG_OUT_DIR = os.path.join(REPO_ROOT, "aligner_dl/configs")
 # validation proteins - confirmed 0/1354 homology + 0/1757 ligand real
 # protein+chain tokens found there. scannet_2212 is what
 # aligner_dl/configs/loc_align.yaml (the current master config) actually uses, and
-# has 100% coverage of both val.csv splits, so it - not the checkpoint's saved
+# has 100% coverage of both test.csv splits, so it - not the checkpoint's saved
 # value - is what both Phase B (materialize_apo_artifacts.py) and this re-eval
 # config must point at.
 BASE_SCANNET_PATH = "/home/iscb/wolfson/hagairavid/scannet_2212"
@@ -55,7 +55,7 @@ def main() -> None:
 
     for split_name, split_dir in SPLITS.items():
         for table_name in TABLES:
-            df_path = os.path.join(split_dir, f"val_{table_name}.csv")
+            df_path = os.path.join(split_dir, f"test_{table_name}.csv")
             exp_name = f"apo-reval-{split_name}-{table_name.replace('_', '-')}"
 
             validation_args = dict(dataset_config["args"])
