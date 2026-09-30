@@ -112,3 +112,10 @@ The visualization shows:
 - **Motif specification**: Use `--tar_motif` and `--src_motif` with comma-separated residue IDs (e.g., `--tar_motif 10,11,12`) in pair mode to specify binding site / motif residues for focused alignment.
 - **Local cache**: All downloads, embeddings, and features are cached in `base_save_dir/.cache/` for reuse across runs.
 
+## Training, evaluation data, and reproducibility
+
+The exact train/val pair manifests, ligand atom mappings, data-pipeline exclusion criteria,
+CATH/BioLiP version pins, random seeds, and commands to reproduce training and evaluation are
+documented in [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md). The released manifests live
+under `datasets/csv_files/{homology,ligand}_25_10/`.
+

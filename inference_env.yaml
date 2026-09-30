@@ -1,4 +1,4 @@
-name: localign_infer
+name: inference_env
 
 channels:
   - pytorch

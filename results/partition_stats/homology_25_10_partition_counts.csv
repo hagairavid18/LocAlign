@@ -1,0 +1,4 @@
+partition,pairs,unique_chains,unique_ligands,sequence_clusters,cath_groups
+train,79527,10120,697,7255,2098
+val,2514,1354,138,968,581
+test,0,0,0,n/a,0

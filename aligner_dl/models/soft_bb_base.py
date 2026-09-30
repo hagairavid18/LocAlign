@@ -55,6 +55,7 @@ class SoftBBBase(L.LightningModule, ABC):
             'ligand_rmsd_below_4_proportion_per_degree': 'ligand_rmsd_below_4',
             'weighted_same_type_per_degree': 'atom_type_same_fraction',
             'random_baseline_per_degree': 'random_baseline_per_degree',
+            'weighted_pocket_fraction_per_degree': 'binding_site_correspondence_fraction',
         }
         
         # Log total metrics
@@ -86,9 +87,10 @@ class SoftBBBase(L.LightningModule, ABC):
             corr_rmsd_values = metrics['corr_rmsd_per_degree_protein'][cath_degree]
             gap_values = metrics['gap_per_degree_protein'][cath_degree]
             atom_type_values = metrics.get('weighted_same_type_per_degree_protein', {}).get(cath_degree, [1] * len(pair_infos))
+            pocket_fraction_values = metrics.get('weighted_pocket_fraction_per_degree_protein', {}).get(cath_degree, [None] * len(pair_infos))
             radius_values = metrics['radius_per_degree_protein'][cath_degree]
             keys_to_keep = ['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree', 'src_ligand_n_atoms', 'tar_ligand_n_atoms']
-            for pair_info, ligand_rmsd, embedding_similarity, corr_rmsd, gap, atom_val, radius in zip(pair_infos, ligand_rmsd_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values):
+            for pair_info, ligand_rmsd, embedding_similarity, corr_rmsd, gap, atom_val, radius, pocket_val in zip(pair_infos, ligand_rmsd_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values, pocket_fraction_values):
                 protein_rmsd_data.append({
                     **{k: pair_info[k] for k in keys_to_keep},
                     'src_ligand': pair_info.get('ligand_id', ''),
@@ -99,6 +101,7 @@ class SoftBBBase(L.LightningModule, ABC):
                     'entropy': gap,
                     'atom_type_fraction': atom_val,
                     'radius_of_gyration': radius,
+                    'binding_site_correspondence_fraction': pocket_val,
                 })
         
         if protein_rmsd_data and hasattr(self.logger.experiment, 'get_name'):

@@ -60,6 +60,10 @@ model:
             name: AtomTypeCorrespondence
             module: metrics.atom_type_correspondence
             args: {}
+          binding_site:
+            name: BindingSiteCorrespondence
+            module: metrics.binding_site_correspondence
+            args: {}
      
     optimizer:
       name: Adam
