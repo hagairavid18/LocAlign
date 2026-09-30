@@ -81,9 +81,8 @@ row counts.
 internal "test" partition was empty, and the "val" partition is the held-out set on which all
 reported numbers are computed. That set was originally saved as `val.csv` and has been renamed
 `test.csv` (with all derived files, e.g. `val_baseline*.csv` → `test_baseline*.csv`), because
-it served as the test set. `train.csv` was not re-split. How the test set was used during
-training is described exactly in
-[Training protocol and use of the test set](#training-protocol-and-use-of-the-test-set).
+it served as the test set. `train.csv` was not re-split. See
+[Training protocol](#training-protocol).
 
 ## Exclusion logs
 
@@ -201,9 +200,18 @@ To reproduce training as closely as possible: use `--seed 41` (the default) and 
 conda env create -f inference_env.yaml   # or your own training env with the same deps
 conda activate inference_env
 
+# Homology-safe split (main model)
 python -m aligner_dl.trainers.lightning_trainer \
     --config aligner_dl/configs/loc_align.yaml \
     --log_dir logs/loc_align \
+    --seed 41 \
+    --device gpu
+
+# Ligand-grouped split (main model; the ablations use
+# loc_align_ligand_split_quality0.yaml / loc_align_ligand_split_ligandloss0.yaml)
+python -m aligner_dl.trainers.lightning_trainer \
+    --config aligner_dl/configs/loc_align_ligand_split.yaml \
+    --log_dir logs/loc_align_ligand_split \
     --seed 41 \
     --device gpu
 ```
@@ -211,37 +219,46 @@ python -m aligner_dl.trainers.lightning_trainer \
 configs (`aligner_dl/configs/{softalign,tm_align,usalign,usalign_fns,dali,apoc,plasma}.yaml`)
 follow the same CLI, pointed at the corresponding `test_baseline*.csv` manifest.
 
-### Training protocol and use of the test set
+### Training protocol
 
-This describes how the released models were actually trained. The Lightning "validation"
-loop in the code evaluates `test.csv` (the config key is still `validation`).
+The test set was never used for training or hyperparameter tuning. Hyperparameters were
+chosen on an earlier version of the dataset. No model was trained on `train.csv` + `test.csv`
+combined. The Lightning "validation" loop in the code evaluates `test.csv` (the config key is
+still `validation`); it was run once per epoch and logged (Comet metrics and
+`per_sample_results_{epoch}.csv`).
 
-- **Hyperparameters.** As reported by the authors, most hyperparameter tuning was done on an
-  earlier version of the dataset, not on the released splits.
+- **Homology split** (`checkpoints/baseline/epoch=9-step=87120.ckpt`): trained on `train.csv`
+  for the full 10-epoch schedule; the final checkpoint was used.
+- **Ligand split**: for the ligand split, the checkpoint after 9 of the 10 scheduled epochs was
+  used (the learning-rate schedule spans 10 epochs). To reproduce, use
+  `aligner_dl/configs/loc_align_ligand_split.yaml` (and `loc_align_ligand_split_quality0.yaml` /
+  `loc_align_ligand_split_ligandloss0.yaml` for the two ablations). These set
+  `trainer.max_epochs: 9` while keeping the OneCycleLR length at 10 epochs
+  (`epochs: 10`, `steps_per_epoch: 10780` → `total_steps` 107,800, the value stored in the
+  original checkpoints) and the corr-RMSD loss-weight ramp at 10 epochs
+  (`trainer.schedule_epochs: 10`). Training therefore ends at global step 97,191
+  (9 × 10,799 batches), matching the released checkpoints.
+
+Mechanics, for reference:
 - **Checkpointing.** `aligner_dl/trainers/lightning_trainer.py` registers one callback,
   `ModelCheckpoint(save_top_k=-1, every_n_epochs=1)`, which saves every epoch. It has no
-  `monitor` (the saved callback state has `monitor=None`) and no `save_last`, and there is no
-  `EarlyStopping` callback.
+  `monitor` and no `save_last`, and there is no `EarlyStopping` callback.
 - **LR schedule.** `OneCycleLR` is stepped every optimizer step
-  (`aligner_dl/models/soft_bb_base.py::configure_optimizers`). That method also sets
-  `'monitor': 'valid_loss'`, but Lightning only reads `monitor` for `ReduceLROnPlateau`, so it
-  has no effect here. The schedule depends only on the step count. Note that the
-  `model_config.yaml` saved next to each checkpoint does not contain the scheduler block,
-  because `SoftBBBase.__init__` pops it from the optimizer config; the schedule is in
-  `aligner_dl/configs/loc_align.yaml`.
+  (`aligner_dl/models/soft_bb_base.py::configure_optimizers`). Its length comes only from the
+  config's `optimizer.args.scheduler.args` (`epochs × steps_per_epoch`), never from
+  `trainer.max_epochs`. That method also sets `'monitor': 'valid_loss'`, but Lightning only
+  reads `monitor` for `ReduceLROnPlateau`, so it has no effect here. The `model_config.yaml`
+  saved next to each checkpoint does not contain the scheduler block, because
+  `SoftBBBase.__init__` pops it from the optimizer config; the schedule is in the training
+  YAML.
 - **Loss-weight ramp.** The corr-RMSD loss weight (`aligner_dl/losses/soft_bb_loss.py::update_lambda`)
-  follows a fixed sine ramp over `global_step / total_steps`, so it also depends only on the step count.
-- **Test-set evaluation during training.** The held-out set was evaluated once per epoch for
-  logging only (Comet metrics and `per_sample_results_{epoch}.csv`).
-- **Homology-split model** (`checkpoints/baseline/epoch=9-step=87120.ckpt`): trained on
-  `train.csv` for 10 epochs with the fixed OneCycle schedule. The last-epoch checkpoint was
-  used. The test set was only monitored and logged, and played no role in selecting it.
-- **Ligand-split models** (main model and the `quality0` / `ligandloss0` ablations): training
-  was stopped after 9 of 10 scheduled epochs (step 97,191 of `total_steps` 107,800). The
-  decision to stop was informed by monitoring the held-out set. The last saved checkpoint was
-  used.
+  follows a fixed sine ramp over `global_step / total_steps`, where
+  `total_steps = len(train_loader) × trainer.schedule_epochs` (default: `trainer.max_epochs`).
 
-No model was trained on `train.csv` + `test.csv` combined.
+A CPU-only check (build the model from each ligand-split config, step its optimizer and
+scheduler to step 97,191, and compare with the saved checkpoints) reproduces the checkpoints'
+OneCycleLR `total_steps` (107,800), learning rate at step 97,191 (2.3988729944e-05) and
+corr-RMSD loss weight (0.990151; 0 for `quality0`) exactly.
 
 ## Evaluation
 

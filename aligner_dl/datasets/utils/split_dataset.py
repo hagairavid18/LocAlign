@@ -294,7 +294,7 @@ def split_csv(
     train_df.to_csv(os.path.join(output_dir, "train.csv"), index=False)
     # The 'val' partition is the held-out evaluation set: all reported numbers are
     # computed on it and it is saved as test.csv (see docs/REPRODUCIBILITY.md,
-    # "Training protocol and use of the test set", for exactly how it was used in training). The internal 'test' partition was empty in the released
+    # "Training protocol"). The internal 'test' partition was empty in the released
     # splits; if non-empty, it is written separately so it cannot overwrite test.csv.
     val_df.to_csv(os.path.join(output_dir, "test.csv"), index=False)
     if len(test_df):
