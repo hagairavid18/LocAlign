@@ -41,3 +41,4 @@ inference_results/
 cache/
 slurm*
 submit_job.sh
+logs/
