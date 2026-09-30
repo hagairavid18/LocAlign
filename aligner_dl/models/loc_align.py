@@ -210,9 +210,12 @@ class LocAlign(SoftBBBase):
         tar_atom_type = batch['tar_atom_types'].gather(1, topk_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
         corr_atom_types = torch.stack([src_atom_type, tar_atom_type], dim=-1)
 
-        src_pocket_mask = batch['src_pocket_mask'].gather(1, topk_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
-        tar_pocket_mask = batch['tar_pocket_mask'].gather(1, topk_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
-        corr_pocket_mask = torch.stack([src_pocket_mask, tar_pocket_mask], dim=-1)
+        if 'src_pocket_mask' in batch.keys(): 
+            src_pocket_mask = batch['src_pocket_mask'].gather(1, topk_src_indices)[batch_indices, top_corr_indices[:, :, 1]]
+            tar_pocket_mask = batch['tar_pocket_mask'].gather(1, topk_tar_indices)[batch_indices, top_corr_indices[:, :, 0]]
+            corr_pocket_mask = torch.stack([src_pocket_mask, tar_pocket_mask], dim=-1)
+        else:
+            corr_pocket_mask = 0 * corr_atom_types
 
         return corr_residue_indices, corr_atom_indices, corr_atom_types, corr_pocket_mask
 

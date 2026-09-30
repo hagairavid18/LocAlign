@@ -184,8 +184,8 @@ class InferenceRunner:
             tar_norm, tar_path = self._normalize_protein(tar)
             src_norm, src_path = self._normalize_protein(src)
             ph = PairHolder(
-                tar_protein=tar_norm, tar_protein_path=tar_path, tar_chain=tar_chain, tar_motif=self._tar_motif,
-                src_protein=src_norm, src_protein_path=src_path, src_chain=src_chain, src_motif=self._src_motif,
+                tar_protein=tar_norm, tar_protein_path=tar_path, tar_chain=tar_chain, tar_motif=self._parse_motif(self._tar_motif),
+                src_protein=src_norm, src_protein_path=src_path, src_chain=src_chain, src_motif=self._parse_motif(self._src_motif),
                 tar_ligand=self._tar_ligand_id,
                 src_ligand=self._src_ligand_id
             )
