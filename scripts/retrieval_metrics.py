@@ -12,6 +12,9 @@ cluster never match).
   Top_K_retrieval_not_FoldSeek  drop all hits in the query's cluster; fraction of
                                 queries with >= 1 of the top-K remaining hits
                                 having the same ligand.
+Ties in normalized_pLRMSD (common: the calibration models are boosted trees) are
+broken by database order in the two main columns; the *_random_ties columns give
+the expectation under uniformly random tie-breaking.
 
 Usage
   # from the full per-query lists (<work>/hits/qIII.csv.gz), also exporting the
@@ -25,6 +28,9 @@ outside the query's cluster, so every metric here is exactly reproducible from i
 import argparse
 import glob
 import os
+from math import comb
+
+import numpy as np
 
 import pandas as pd
 
@@ -65,6 +71,27 @@ def compact(hits):
     return pd.concat(keep).sort_values(['query_idx', 'rank'])
 
 
+def p_hit_random_ties(scores, pos, k):
+    """P(>=1 positive in the top-k) when ties in score are broken uniformly at random.
+
+    The calibrated pLRMSD / eLRMSD models are gradient-boosted trees, so scores are
+    piecewise constant and ties are common. The main metric breaks ties by the
+    stable database order; this is the tie-order-independent expectation.
+    """
+    scores, pos = np.asarray(scores), np.asarray(pos, bool)
+    if len(scores) <= k:
+        return float(pos.any())
+    s_k = scores[k - 1]
+    better = scores < s_k
+    if pos[better].any():
+        return 1.0
+    tied = scores == s_k
+    if tied[-1]:
+        raise ValueError('tie group reaches the end of the available hit list')
+    g, p, m = int(tied.sum()), int(pos[tied].sum()), k - int(better.sum())
+    return 1.0 - comb(g - p, m) / comb(g, m)
+
+
 def metrics(hits, queries):
     per_q = []
     for qi in queries['query_idx']:
@@ -75,6 +102,10 @@ def metrics(hits, queries):
             top, top_nc = h.head(k), nc.head(k)
             row[f'top{k}_hit'] = bool((top['same_ligand'] | top['same_cluster']).any())
             row[f'top{k}_hit_not_foldseek'] = bool(top_nc['same_ligand'].any())
+            row[f'top{k}_p_random_ties'] = p_hit_random_ties(
+                h['normalized_pLRMSD'], h['same_ligand'] | h['same_cluster'], k)
+            row[f'top{k}_p_random_ties_not_foldseek'] = p_hit_random_ties(
+                nc['normalized_pLRMSD'], nc['same_ligand'], k)
         lig = h[h['same_ligand']]
         row['first_same_ligand_rank'] = int(lig['rank'].iloc[0]) if len(lig) else None
         lig_nc = nc[nc['same_ligand']]
@@ -86,6 +117,8 @@ def metrics(hits, queries):
         rows.append({'K': k,
                      'Top_K_retrieval': per_q[f'top{k}_hit'].mean(),
                      'Top_K_retrieval_not_FoldSeek': per_q[f'top{k}_hit_not_foldseek'].mean(),
+                     'Top_K_retrieval_random_ties': per_q[f'top{k}_p_random_ties'].mean(),
+                     'Top_K_retrieval_not_FoldSeek_random_ties': per_q[f'top{k}_p_random_ties_not_foldseek'].mean(),
                      'n_queries': len(per_q)})
     return pd.DataFrame(rows), per_q
 

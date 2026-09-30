@@ -21,9 +21,16 @@ PY=/home/iscb/wolfson/hagairavid/miniforge3/envs/localign_infer3/bin/python
 cd "$REPO"
 echo "[$(date)] host=$(hostname) job=${SLURM_JOB_ID} task=${SLURM_ARRAY_TASK_ID:-none} commit=$(git rev-parse --short HEAD 2>/dev/null || echo NA)"
 
+# Fail fast if CUDA is not usable (e.g. a faulty GPU): inference.py silently
+# falls back to CPU, which is ~12x slower.
+if [ "${1:-}" != "precompute" ]; then
+    nvidia-smi -L || true
+    "$PY" -c "import torch,sys; ok=torch.cuda.is_available(); print('CUDA available:', ok, 'torch', torch.__version__, 'cuda', torch.version.cuda, torch.cuda.get_device_name(0) if ok else ''); sys.exit(0 if ok else 3)"
+fi
+
 if [ "${1:-}" = "precompute" ]; then
     "$PY" scripts/retrieval_search.py --precompute --seed 42
 else
-    "$PY" scripts/retrieval_search.py --query_index "${SLURM_ARRAY_TASK_ID:?}" --seed 42
+    "$PY" scripts/retrieval_search.py --query_index "${SLURM_ARRAY_TASK_ID:?}" --seed 42 ${RETR_EXTRA_ARGS:-}
 fi
 echo "[$(date)] done"
