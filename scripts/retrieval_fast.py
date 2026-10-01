@@ -142,8 +142,13 @@ def fp16_roundtrip(store):
 
 def load_shard(stager, si):
     # (Reading the whole file first and then pickle.loads was ~2x slower on a CPU node.)
-    with open(stager.path(si), 'rb') as f:
-        return pickle.load(f)
+    for attempt in range(3):  # a followed copy can be renamed into place between path() and open()
+        try:
+            with open(stager.path(si), 'rb') as f:
+                return pickle.load(f)
+        except FileNotFoundError:
+            if attempt == 2:
+                raise
 
 
 def seed_everything(seed):

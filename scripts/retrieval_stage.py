@@ -18,8 +18,10 @@ persists for later jobs on the same node).
     so verified files survive a preemption and are not copied again. When all
     shards are present the directory is renamed to packed_<digest>/ and
     COMPLETE is written. The job uses each shard as soon as its copy is done.
-  * Fallback: no checksums.json, not enough space, or another job holding the
-    lock -> shards are read from NFS as before.
+  * Follow: if another job on the node holds the lock (is copying), this job
+    waits for each verified shard to appear locally instead of competing for
+    NFS bandwidth; if the copier dies, the remaining shards are read from NFS.
+  * Fallback: no checksums.json or not enough space -> shards are read from NFS.
 Shard contents are byte-identical in all modes, so scores do not depend on it.
 Only files under <stage_root> are ever created or removed. To free the space on
 a node: rm -rf /tmp/localign_retrieval_<user> (from a job on that node).
@@ -75,7 +77,10 @@ class ShardStager:
         except BlockingIOError:
             self._lock_fd.close()
             self._lock_fd = None
-            log('[stage] another job on this node is copying; reading shards from NFS')
+            # Follow the other job's copy instead of competing with it for NFS bandwidth:
+            # use each verified shard as soon as it appears locally.
+            self.mode, self._lock_path = 'follow', os.path.join(stage_root, '.stage.lock')
+            log('[stage] another job on this node is copying; using its verified shards as they arrive')
             return
         if self._valid(self.final):  # finished by another job while we checked
             self._release()
@@ -119,8 +124,27 @@ class ShardStager:
         self._bytes += exp['size']
         return True
 
+    def _copier_alive(self):
+        with open(self._lock_path, 'w') as fd:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            return False
+
     def path(self, si):
         name = f'shard_{si:03d}.pkl'
+        if self.mode == 'follow':
+            size = self.ck[name]['size']
+            while True:
+                for d in (self.final, self.work):  # verified files only ever appear under these names
+                    p = os.path.join(d, name)
+                    if os.path.exists(p) and os.path.getsize(p) == size:
+                        return p
+                if not self._copier_alive():
+                    return os.path.join(self.packed, name)
+                time.sleep(10)
         if self.mode == 'copying':
             ok = self._futures[name].result()
             return os.path.join(self.work, name) if ok else os.path.join(self.packed, name)

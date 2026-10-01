@@ -25,6 +25,7 @@ echo "[$(date)] host=$(hostname) job=${SLURM_JOB_ID} task=${SLURM_ARRAY_TASK_ID:
 nvidia-smi -L || true
 # Node-local storage used for the staged shard copy (scripts/retrieval_stage.py).
 echo "TMPDIR=${TMPDIR:-unset}"; df -h /tmp /dev/shm 2>/dev/null || true
+rm -rf /tmp/localign_retrieval_${USER}/iotest  # leftover of an interrupted manual I/O test (ours)
 ls -ld /tmp/localign_retrieval_${USER}/packed_* 2>/dev/null || echo "no staged shard copy on this node yet"
 # Fail fast if CUDA is not usable (inference would silently fall back to CPU).
 "$PY" -c "import torch,sys; ok=torch.cuda.is_available(); print('CUDA available:', ok, 'torch', torch.__version__, 'cuda', torch.version.cuda, torch.cuda.get_device_name(0) if ok else ''); sys.exit(0 if ok else 3)"
