@@ -10,8 +10,10 @@ runs copied/renamed to:
     ablation_dfs/apo_reanalysis/{homology_split,ligand_split}/{holo_holo_subset,apo_apo,apo_holo}.csv
 
 Usage:
-    python scripts/offline_metrics_apo.py
+    python scripts/offline_metrics_apo.py                 # default dirs below
+    python scripts/offline_metrics_apo.py --dirs DIR [DIR ...]
 """
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -29,7 +31,12 @@ ABLATION_DIRS = [
 
 
 def main() -> None:
-    for ablation_dir in ABLATION_DIRS:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--dirs", nargs="+", default=ABLATION_DIRS,
+                        help="Directories holding {holo_holo_subset,apo_apo,apo_holo}.csv (default: %(default)s)")
+    args = parser.parse_args()
+
+    for ablation_dir in args.dirs:
         dir_name = Path(ablation_dir).name
         csv_files = sorted(Path(ablation_dir).glob("*.csv"))
         if not csv_files:
