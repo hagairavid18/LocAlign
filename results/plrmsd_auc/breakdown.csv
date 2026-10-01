@@ -1,0 +1,13 @@
+split,class,subset,metric,n,n_total_class,frac_at_cap,pLRMSD_median,pLRMSD_q1,pLRMSD_q3,norm_pLRMSD_median,norm_pLRMSD_q1,norm_pLRMSD_q3,n_pos,n_neg,auc
+homology,positive,all,distribution,2313,2313.0000,0.0350,4.5661,1.9603,7.6123,2.6974,1.1967,5.1816,,,
+homology,positive,below_cap,distribution,2232,2313.0000,0.0350,4.4238,1.9355,7.3693,2.5843,1.1725,4.8918,,,
+homology,negative,all,distribution,2993,2993.0000,0.0805,7.9241,6.1788,9.1760,5.4825,3.1920,6.7514,,,
+homology,negative,below_cap,distribution,2752,2993.0000,0.0805,7.7437,5.9630,8.9146,5.3206,3.0874,6.5046,,,
+homology,pos_vs_neg,below_cap,auc_-pLRMSD,4984,,,,,,,,,2232.0000,2752.0000,0.7486
+homology,pos_vs_neg,below_cap,auc_-normalized_pLRMSD,4984,,,,,,,,,2232.0000,2752.0000,0.7234
+ligand,positive,all,distribution,3186,3186.0000,0.5047,9.9921,7.4085,10.0000,2.7377,1.6852,2.9307,,,
+ligand,positive,below_cap,distribution,1578,3186.0000,0.5047,7.2291,2.4563,9.5620,1.8723,0.6852,2.8071,,,
+ligand,negative,all,distribution,2994,2994.0000,0.8307,10.0000,9.9982,10.0000,2.7782,2.6592,2.9968,,,
+ligand,negative,below_cap,distribution,507,2994.0000,0.8307,9.0641,7.5851,9.2706,2.4103,2.0170,2.7163,,,
+ligand,pos_vs_neg,below_cap,auc_-pLRMSD,2085,,,,,,,,,1578.0000,507.0000,0.6034
+ligand,pos_vs_neg,below_cap,auc_-normalized_pLRMSD,2085,,,,,,,,,1578.0000,507.0000,0.5554
