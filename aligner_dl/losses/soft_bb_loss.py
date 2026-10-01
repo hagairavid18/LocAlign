@@ -60,10 +60,14 @@ class LocAlignLoss(nn.Module):
         if inference:
             quality_loss_dict['loss'] = quality_loss
             return quality_loss, quality_loss_dict
-        ligand_rmsd = self._ligand_loss(batch, rotation_ab_pred, translation_ab_pred, reduce=False)
+        # Raw ligand RMSD in Angstrom, and the (optionally squashed) value used as the loss term.
+        ligand_rmsd_raw = self._ligand_loss(batch, rotation_ab_pred, translation_ab_pred, reduce=False, non_linear=False)
+        ligand_rmsd = self._ligand_loss.transform(ligand_rmsd_raw)
         total_loss = quality_loss + self._ligand_loss_weight * ligand_rmsd.mean()
-        # ligand_loss_dict = {'ligand_rmsd': ligand_rmsd}
-        quality_loss_dict['per_sample']['ligand_rmsd'] = ligand_rmsd
+        # Per-sample outputs feed per_sample_results_*.csv: 'ligand_rmsd' is the RMSD in Angstrom,
+        # 'ligand_rmsd_loss' is the loss term (r / (1 + r/rmsd0) when return_non_linear is set).
+        quality_loss_dict['per_sample']['ligand_rmsd'] = ligand_rmsd_raw
+        quality_loss_dict['per_sample']['ligand_rmsd_loss'] = ligand_rmsd
         ligand_loss_dict = {'ligand_rmsd': ligand_rmsd.mean()}
         if not per_sample:
             quality_loss_dict.pop('per_sample', None)
@@ -99,7 +103,17 @@ class LigandLoss(nn.Module):
         self._return_non_linear = return_non_linear
         self._alpha = alpha
     
-    def forward(self, batch, rotation_ab_pred, translation_ab_pred, reduce: bool = True):
+    def transform(self, rmsd_value):
+        """Map a raw RMSD (Angstrom) to the loss scale: r / (1 + r/rmsd0) if return_non_linear, else r."""
+        if self._return_non_linear:
+            return rmsd_value / (1 + rmsd_value / self._rmsd0)
+        return rmsd_value
+
+    def forward(self, batch, rotation_ab_pred, translation_ab_pred, reduce: bool = True, non_linear: bool | None = None):
+        """Ligand RMSD after applying the predicted transform to the source ligand.
+
+        non_linear: None uses the configured return_non_linear; False returns the raw RMSD in Angstrom.
+        """
         src_ligand_coordinates = batch['src_ligand_coordinates']
         tar_ligand_coordinates = batch['tar_ligand_coordinates']
         mask = batch['src_ligand_mask']
@@ -111,8 +125,10 @@ class LigandLoss(nn.Module):
 
         rmsd_value = torch.sqrt(masked_squared_diff.sum(dim=1) / valid_counts.clamp(min=1e-10))
 
-        if self._return_non_linear:
-            rmsd_value = rmsd_value / (1 + rmsd_value/ self._rmsd0)
+        if non_linear is None:
+            rmsd_value = self.transform(rmsd_value)
+        elif non_linear:
+            rmsd_value = rmsd_value / (1 + rmsd_value / self._rmsd0)
         if reduce:
             return {"ligand_rmsd": rmsd_value.mean()}
         else:

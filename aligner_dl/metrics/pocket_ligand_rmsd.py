@@ -25,6 +25,7 @@ class PocketRMSD(Module):
         # Initialize a dictionary to store protein names and their pocket_rmsd per degree
         self.pair_infos_per_degree = {deg: [] for deg in range(0, 9)}
         self.ligand_rmsd_per_degree_protein = {deg: [] for deg in range(0, 9)}
+        self.ligand_rmsd_loss_per_degree_protein = {deg: [] for deg in range(0, 9)}
         self.corr_rmsd_per_degree_protein = {deg: [] for deg in range(0, 9)}
         self.gap_per_degree_protein = {deg: [] for deg in range(0, 9)}
         self.embedding_similarity_per_degree_protein = {deg: [] for deg in range(0, 9)}
@@ -43,7 +44,9 @@ class PocketRMSD(Module):
             # Try to pull precomputed metrics from loss_dict; if missing, leave as None
             per_sample = outputs.get('loss_dict', {}).get('per_sample', {}) if isinstance(outputs, dict) else {}
 
+            # 'ligand_rmsd' is the RMSD in Angstrom; 'ligand_rmsd_loss' is the loss-scale value (may be absent).
             ligand_rmsd = per_sample.get('ligand_rmsd', None)
+            ligand_rmsd_loss = per_sample.get('ligand_rmsd_loss', None)
             embedding_val = per_sample.get('embedding', None)
             corr_rmsd = per_sample.get('corr_rmsd', None)
             gap_val = per_sample.get('gap', None)
@@ -51,7 +54,7 @@ class PocketRMSD(Module):
 
             # Append per-sample metrics (use None when invalid)
             self.sample_metrics['cath_degree_per_sample'].append(cath_degree)
-            self.sample_metrics['ligand_rmsd_per_sample'].append(ligand_rmsd.cpu() if hasattr(ligand_rmsd, 'cpu') else ligand_rmsd)
+            self.sample_metrics['ligand_rmsd_per_sample'].append(ligand_rmsd[batch_id].item() if ligand_rmsd is not None else None)
             self.sample_metrics['pair_infos'].append(pair_info)
 
             # Only aggregate per-degree metrics when ligand_rmsd is valid
@@ -60,6 +63,7 @@ class PocketRMSD(Module):
                 self.count_per_degree[cath_degree] += 1
             self.pair_infos_per_degree[cath_degree].append(pair_info)
             self.ligand_rmsd_per_degree_protein[cath_degree].append(ligand_rmsd[batch_id].item() if ligand_rmsd is not None else None)
+            self.ligand_rmsd_loss_per_degree_protein[cath_degree].append(ligand_rmsd_loss[batch_id].item() if ligand_rmsd_loss is not None else None)
             self.embedding_similarity_per_degree_protein[cath_degree].append(embedding_val[batch_id].item() if embedding_val is not None else None)
             self.corr_rmsd_per_degree_protein[cath_degree].append(corr_rmsd[batch_id].item() if corr_rmsd is not None else None)
             self.gap_per_degree_protein[cath_degree].append(gap_val[batch_id].item() if gap_val is not None else None)
@@ -108,6 +112,7 @@ class PocketRMSD(Module):
             **total_metrics, **per_degree_metrics, **counts, **self.sample_metrics, 
             'pair_infos_per_degree': self.pair_infos_per_degree, 
             'ligand_rmsd_per_degree_protein': self.ligand_rmsd_per_degree_protein,
+            'ligand_rmsd_loss_per_degree_protein': self.ligand_rmsd_loss_per_degree_protein,
             'corr_rmsd_per_degree_protein': self.corr_rmsd_per_degree_protein,
             'gap_per_degree_protein': self.gap_per_degree_protein,
             'radius_per_degree_protein': self.radius_of_gyration_per_degree_protein,

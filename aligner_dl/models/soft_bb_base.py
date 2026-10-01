@@ -89,13 +89,15 @@ class SoftBBBase(L.LightningModule, ABC):
             atom_type_values = metrics.get('weighted_same_type_per_degree_protein', {}).get(cath_degree, [1] * len(pair_infos))
             pocket_fraction_values = metrics.get('weighted_pocket_fraction_per_degree_protein', {}).get(cath_degree, [None] * len(pair_infos))
             radius_values = metrics['radius_per_degree_protein'][cath_degree]
+            ligand_rmsd_loss_values = metrics.get('ligand_rmsd_loss_per_degree_protein', {}).get(cath_degree, [None] * len(pair_infos))
             keys_to_keep = ['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree', 'src_ligand_n_atoms', 'tar_ligand_n_atoms']
-            for pair_info, ligand_rmsd, embedding_similarity, corr_rmsd, gap, atom_val, radius, pocket_val in zip(pair_infos, ligand_rmsd_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values, pocket_fraction_values):
+            for pair_info, ligand_rmsd, ligand_rmsd_loss, embedding_similarity, corr_rmsd, gap, atom_val, radius, pocket_val in zip(pair_infos, ligand_rmsd_values, ligand_rmsd_loss_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values, pocket_fraction_values):
                 protein_rmsd_data.append({
                     **{k: pair_info[k] for k in keys_to_keep},
                     'src_ligand': pair_info.get('ligand_id', ''),
                     'tar_ligand': pair_info.get('ligand_id', ''),
-                    'ligand_rmsd': ligand_rmsd,
+                    'ligand_rmsd': ligand_rmsd,  # Angstrom
+                    'ligand_rmsd_loss': ligand_rmsd_loss,  # loss-scale value (squashed if return_non_linear)
                     'embedding_similarity': embedding_similarity,
                     'corr_rmsd': corr_rmsd,
                     'entropy': gap,
