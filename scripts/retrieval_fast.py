@@ -41,6 +41,7 @@ import pandas as pd
 import torch
 import yaml
 from torch.utils.data import DataLoader, Subset
+from concurrent.futures import ThreadPoolExecutor
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO_ROOT)
@@ -128,6 +129,14 @@ def validate_packed(packed, max_atoms=5000):
     os.replace(tmp, man_path)
     print(man['status'].value_counts().to_string())
     print(f'chains with > {max_atoms} atoms (randomly subsampled by the dataset): {int((man.n_atoms > max_atoms).sum())}')
+
+
+def load_shard(packed, si):
+    """Read a shard with one large sequential read, then unpickle from memory.
+    (pickle.load on the NFS file object issues many small reads and was ~6x slower.)"""
+    with open(os.path.join(packed, f'shard_{si:03d}.pkl'), 'rb') as f:
+        buf = f.read()
+    return pickle.loads(buf)
 
 
 def seed_everything(seed):
@@ -245,6 +254,7 @@ def main():
     if args.max_shards is not None:
         shards = shards[:args.max_shards]
     scores = {}
+    pool, prefetch = ThreadPoolExecutor(max_workers=1), {}
     for si in shards:
         part_path = os.path.join(part_dir, f'shard_{si:03d}.csv.gz')
         if os.path.exists(part_path):
@@ -253,8 +263,10 @@ def main():
             print(f'shard {si}: reused {len(p)} scores', flush=True)
             continue
         ts = time.time()
-        with open(os.path.join(args.packed, f'shard_{si:03d}.pkl'), 'rb') as f:
-            store = pickle.load(f)
+        store = prefetch.pop(si).result() if si in prefetch else load_shard(args.packed, si)
+        nxt = [x for x in shards if x > si and not os.path.exists(os.path.join(part_dir, f'shard_{x:03d}.csv.gz'))]
+        if nxt and nxt[0] not in prefetch:
+            prefetch[nxt[0]] = pool.submit(load_shard, args.packed, nxt[0])  # overlaps with compute below
         store.update(query_store)
         PackedScanNetDataset.STORE = store
         t_load = time.time() - ts
