@@ -132,11 +132,9 @@ def validate_packed(packed, max_atoms=5000):
 
 
 def load_shard(packed, si):
-    """Read a shard with one large sequential read, then unpickle from memory.
-    (pickle.load on the NFS file object issues many small reads and was ~6x slower.)"""
+    # (Reading the whole file first and then pickle.loads was ~2x slower on a CPU node.)
     with open(os.path.join(packed, f'shard_{si:03d}.pkl'), 'rb') as f:
-        buf = f.read()
-    return pickle.loads(buf)
+        return pickle.load(f)
 
 
 def seed_everything(seed):
