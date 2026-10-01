@@ -2,10 +2,11 @@
 # Retrieval benchmark, fast path (packed features, several queries per task).
 # Submit from the repo root, e.g. 20 tasks x 5 queries:
 #   sbatch --array=0-19%6 --exclude=n-102 scripts/retrieval_fast.sbatch 5
+# (this cluster rejects multi-partition requests; override with --partition=gpu-h200-killable)
 # Task g handles queries [g*Q, (g+1)*Q). Finished queries are skipped and per-shard
 # partial scores are reused, so a preempted/requeued task resumes where it stopped.
 #SBATCH --job-name=retr-fast
-#SBATCH --partition=gpu-h100-killable,gpu-h200-killable
+#SBATCH --partition=gpu-h100-killable
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=24
 #SBATCH --mem=32G

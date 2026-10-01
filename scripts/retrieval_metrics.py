@@ -12,6 +12,8 @@ cluster never match).
   Top_K_retrieval_not_FoldSeek  drop all hits in the query's cluster; fraction of
                                 queries with >= 1 of the top-K remaining hits
                                 having the same ligand.
+metrics.csv has one block per stratum: 'all' (headline numbers) and queries whose
+ligand has < 10 / >= 10 heavy atoms (src_ligand_n_atoms of the query entry).
 Ties in normalized_pLRMSD (common: the calibration models are boosted trees) are
 broken by database order in the two main columns; the *_random_ties columns give
 the expectation under uniformly random tie-breaking.
@@ -26,6 +28,7 @@ The compact list keeps, per query, the top-200 hits overall plus the top-200 hit
 outside the query's cluster, so every metric here is exactly reproducible from it.
 """
 import argparse
+import ast
 import glob
 import os
 from math import comb
@@ -39,6 +42,7 @@ QUERIES = os.path.join(REPO_ROOT, 'datasets/retrieval/queries.csv')
 OUT_DIR = os.path.join(REPO_ROOT, 'results/retrieval')
 COMPACT = os.path.join(OUT_DIR, 'hits_top200.csv.gz')
 KS = (1, 3, 5, 10)
+SIZE_CUT = 10  # heavy atoms; stratification of queries by ligand size
 KEEP = 200
 
 
@@ -112,14 +116,21 @@ def metrics(hits, queries):
         row['first_same_ligand_rank_not_foldseek'] = int(lig_nc['rank'].iloc[0]) if len(lig_nc) else None
         per_q.append(row)
     per_q = pd.DataFrame(per_q)
+    # Query ligand size (heavy atoms, src_ligand_n_atoms of the query's DB entry).
+    n_atoms = queries.set_index('query_idx')['src_ligand_n_atoms'].map(lambda v: sum(ast.literal_eval(str(v))))
+    per_q['query_ligand_n_atoms'] = per_q['query_idx'].map(n_atoms)
+    strata = [('all', per_q),
+              (f'ligand<{SIZE_CUT}', per_q[per_q['query_ligand_n_atoms'] < SIZE_CUT]),
+              (f'ligand>={SIZE_CUT}', per_q[per_q['query_ligand_n_atoms'] >= SIZE_CUT])]
     rows = []
-    for k in KS:
-        rows.append({'K': k,
-                     'Top_K_retrieval': per_q[f'top{k}_hit'].mean(),
-                     'Top_K_retrieval_not_FoldSeek': per_q[f'top{k}_hit_not_foldseek'].mean(),
-                     'Top_K_retrieval_random_ties': per_q[f'top{k}_p_random_ties'].mean(),
-                     'Top_K_retrieval_not_FoldSeek_random_ties': per_q[f'top{k}_p_random_ties_not_foldseek'].mean(),
-                     'n_queries': len(per_q)})
+    for name, pq in strata:
+        for k in KS:
+            rows.append({'stratum': name, 'K': k,
+                         'Top_K_retrieval': pq[f'top{k}_hit'].mean(),
+                         'Top_K_retrieval_not_FoldSeek': pq[f'top{k}_hit_not_foldseek'].mean(),
+                         'Top_K_retrieval_random_ties': pq[f'top{k}_p_random_ties'].mean(),
+                         'Top_K_retrieval_not_FoldSeek_random_ties': pq[f'top{k}_p_random_ties_not_foldseek'].mean(),
+                         'n_queries': len(pq)})
     return pd.DataFrame(rows), per_q
 
 
