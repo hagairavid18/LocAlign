@@ -1,6 +1,6 @@
 """
 Report exact per-partition counts (pairs, unique chains, ligands, sequence clusters, CATH
-groups) and train/test leakage checks for both released splits (Reviewer 1, comment 5).
+groups) and train/test leakage checks for both released splits.
 
 Joins each split's manifests against the raw CATH domain classification file for per-chain
 CATH (Class.Architecture.Topology.Homology) group labels, using the same chain-key convention
