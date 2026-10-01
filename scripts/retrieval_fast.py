@@ -50,6 +50,7 @@ sys.path.insert(0, os.path.join(REPO_ROOT, 'aligner_dl'))
 
 from scripts.inference import InferenceRunner  # noqa: E402
 from scripts.retrieval_pack_features import load_chain  # noqa: E402
+from scripts.retrieval_stage import ShardStager  # noqa: E402
 from aligner_dl.datasets import ScanNetDataset  # noqa: E402
 from aligner_dl.models.utils.collate import custom_collate_fn  # noqa: E402
 from miners.utils.constants import PairHolder  # noqa: E402
@@ -131,9 +132,17 @@ def validate_packed(packed, max_atoms=5000):
     print(f'chains with > {max_atoms} atoms (randomly subsampled by the dataset): {int((man.n_atoms > max_atoms).sum())}')
 
 
-def load_shard(packed, si):
+def fp16_roundtrip(store):
+    for item in store.values():
+        item['esm'] = item['esm'].astype(np.float16).astype(np.float32)
+        for k, v in item['scannet'].items():
+            if isinstance(v, np.ndarray) and v.dtype == np.float32:
+                item['scannet'][k] = v.astype(np.float16).astype(np.float32)
+
+
+def load_shard(stager, si):
     # (Reading the whole file first and then pickle.loads was ~2x slower on a CPU node.)
-    with open(os.path.join(packed, f'shard_{si:03d}.pkl'), 'rb') as f:
+    with open(stager.path(si), 'rb') as f:
         return pickle.load(f)
 
 
@@ -170,6 +179,12 @@ def main():
     ap.add_argument('--max_shards', type=int, default=None, help='debug: only the first N shards')
     ap.add_argument('--device', default=None)
     ap.add_argument('--seed', type=int, default=42)
+    ap.add_argument('--stage_root', default=f"/tmp/localign_retrieval_{os.environ.get('USER', 'user')}",
+                    help='node-local directory for a verified copy of the shards (see retrieval_stage.py)')
+    ap.add_argument('--no_stage', action='store_true', help='always read shards from NFS')
+    ap.add_argument('--stage_streams', type=int, default=8)
+    ap.add_argument('--fp16_roundtrip', action='store_true',
+                    help='evaluation only: round float32 features through float16 (simulates fp16 shards)')
     ap.add_argument('--random_subsample', action='store_true',
                     help='subsample >5000-atom chains with the global RNG, as inference.py does')
     args = ap.parse_args()
@@ -192,7 +207,10 @@ def main():
     print(f'queries {qidx}; to do {todo}', flush=True)
     if not todo:
         return
-    tag = hashlib.sha1((','.join(map(str, todo)) + f'|{args.seed}|{args.random_subsample}').encode()).hexdigest()[:10]
+    tag_str = ','.join(map(str, todo)) + f'|{args.seed}|{args.random_subsample}'
+    if args.fp16_roundtrip:
+        tag_str += '|fp16'
+    tag = hashlib.sha1(tag_str.encode()).hexdigest()[:10]
     part_dir = os.path.join(args.partials_dir, tag)
     os.makedirs(part_dir, exist_ok=True)
 
@@ -227,6 +245,8 @@ def main():
         if item is None:
             raise RuntimeError(f'query {qi} has no features: {st}')
         query_store[q.src_protein + q.src_chain] = item
+    if args.fp16_roundtrip:
+        fp16_roundtrip(query_store)
 
     # One dataset over all pairs of the job (same construction as _prepare_dataloader).
     with open(os.path.join(runner._checkpoint_dir, 'dataset_config.yaml')) as f:
@@ -252,6 +272,9 @@ def main():
     if args.max_shards is not None:
         shards = shards[:args.max_shards]
     scores = {}
+    todo_shards = [si for si in shards if not os.path.exists(os.path.join(part_dir, f'shard_{si:03d}.csv.gz'))]
+    stager = ShardStager(args.packed, todo_shards, stage_root=None if args.no_stage else args.stage_root,
+                         n_streams=args.stage_streams, log=lambda m: print(m, flush=True))
     pool, prefetch = ThreadPoolExecutor(max_workers=1), {}
     for si in shards:
         part_path = os.path.join(part_dir, f'shard_{si:03d}.csv.gz')
@@ -261,10 +284,12 @@ def main():
             print(f'shard {si}: reused {len(p)} scores', flush=True)
             continue
         ts = time.time()
-        store = prefetch.pop(si).result() if si in prefetch else load_shard(args.packed, si)
+        store = prefetch.pop(si).result() if si in prefetch else load_shard(stager, si)
         nxt = [x for x in shards if x > si and not os.path.exists(os.path.join(part_dir, f'shard_{x:03d}.csv.gz'))]
         if nxt and nxt[0] not in prefetch:
-            prefetch[nxt[0]] = pool.submit(load_shard, args.packed, nxt[0])  # overlaps with compute below
+            prefetch[nxt[0]] = pool.submit(load_shard, stager, nxt[0])  # overlaps with compute below
+        if args.fp16_roundtrip:
+            fp16_roundtrip(store)
         store.update(query_store)
         PackedScanNetDataset.STORE = store
         t_load = time.time() - ts
@@ -289,6 +314,7 @@ def main():
         print(f'shard {si}: {len(idx)} pairs, load {t_load:.0f}s, total {time.time() - ts:.0f}s '
               f'({len(idx) / (time.time() - ts):.1f} pairs/s)', flush=True)
 
+    stager.finish()
     if args.max_shards is not None:
         # debug run: dump what we have for comparison, do not write final hit lists
         out = pair_df[['pair_idx', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'src_ligand']].copy()
