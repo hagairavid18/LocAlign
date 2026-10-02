@@ -101,8 +101,13 @@ class InferenceRunner:
                 ligand_calibration_model_path = default_path                
         self._ligand_calibration_model_path = ligand_calibration_model_path
 
-        self._src_motif = src_motif
-        self._tar_motif = tar_motif
+        # Parse CLI motifs ("10,11,12") into lists here: the dataset only treats a
+        # motif as a pocket prior if it is a list (it is round-tripped through
+        # filtered_pairs.csv and json-parsed only when bracketed). A raw string
+        # was previously written as-is and silently ignored in pair and
+        # database-search modes.
+        self._src_motif = self._parse_motif(src_motif)
+        self._tar_motif = self._parse_motif(tar_motif)
         self._max_pLRMSD = max_pLRMSD
         self._max_pLRMSD_normed = max_pLRMSD_normed
         self._max_atoms = max_atoms
