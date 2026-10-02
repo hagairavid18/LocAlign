@@ -17,7 +17,8 @@ def find_data_root() -> Path:
 
     Tracked files hang off CHECKOUT_ROOT instead. Resolution order: the LOCALIGN_DATA_ROOT
     environment variable; CHECKOUT_ROOT if it contains DATA_ROOT_SENTINEL; the main checkout
-    of the repository (through the git common dir) when running from a worktree and it
+    of the repository (through the git common dir, or the worktree's .git file when git is
+    not on PATH) when running from a worktree and it
     contains DATA_ROOT_SENTINEL; CHECKOUT_ROOT otherwise (a fresh clone without the untracked
     data).
     """
@@ -29,14 +30,23 @@ def find_data_root() -> Path:
         return root
     if (CHECKOUT_ROOT / DATA_ROOT_SENTINEL).is_dir():
         return CHECKOUT_ROOT
-    result = subprocess.run(
-        ['git', 'rev-parse', '--git-common-dir'],
-        cwd=CHECKOUT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0:
+    try:
+        result = subprocess.run(
+            ['git', 'rev-parse', '--git-common-dir'],
+            cwd=CHECKOUT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        result = None
+    git_file = CHECKOUT_ROOT / '.git'
+    if result is not None and result.returncode == 0:
         main_checkout = (CHECKOUT_ROOT / result.stdout.strip()).resolve().parent
+    elif git_file.is_file() and git_file.read_text().startswith('gitdir:'):
+        main_checkout = Path(git_file.read_text().split(':', 1)[1].strip()).resolve().parents[2]
+    else:
+        main_checkout = None
+    if main_checkout is not None:
         if (main_checkout / DATA_ROOT_SENTINEL).is_dir():
             return main_checkout
     return CHECKOUT_ROOT
