@@ -9,10 +9,16 @@ class BindingSiteCorrespondence(Module):
 
         An orthogonal, mapping-independent counterpart to the (symmetry-sensitive) ligand RMSD:
         for each correspondence i with soft-alignment weight w_i, checks whether both the source
-        and target keypoints lie within the binding site (closest ligand atom within 4A).
+        and target keypoints lie within the binding site: atoms of residues with at least one atom
+        within 4 Å of the ligand (ScanNetDataset._compute_pocket_mask).
+
+        Also records the base rate per sample: the fraction of the sample's atoms that are pocket
+        atoms, averaged over source and target, which is the expected fraction for correspondences
+        placed at random.
 
         Expects:
-            - batch contains `metadata` (per-sample dict with 'cath_degree').
+            - batch contains `metadata` (per-sample dict with 'cath_degree'), and `src_pocket_mask`,
+              `tar_pocket_mask`, `src_mask` and `tar_mask` ([B, max_atoms]).
             - outputs contains `corr_values` ([B, N]) and `corr_pocket_mask` ([B, N, 2], where
               [..., 0] is the source pocket mask and [..., 1] is the target pocket mask).
     """
@@ -24,7 +30,8 @@ class BindingSiteCorrespondence(Module):
     def reset(self):
         self.weighted_pocket_fraction_per_degree = {deg: 0.0 for deg in range(0, 9)}
         self.weighted_pocket_fraction_per_degree_protein = {deg: [] for deg in range(0, 9)}
-        self.sample_metrics = {'pocket_fraction_per_sample': [], 'cath_degree_per_sample': []}
+        self.pocket_base_rate_per_degree_protein = {deg: [] for deg in range(0, 9)}
+        self.sample_metrics = {'pocket_fraction_per_sample': [], 'pocket_base_rate_per_sample': [], 'cath_degree_per_sample': []}
         self.count_per_degree = {deg: 0 for deg in range(0, 9)}
         self.total_count = 0
 
@@ -42,11 +49,17 @@ class BindingSiteCorrespondence(Module):
 
             pocket_fraction = (weights * both_in_pocket).sum() / weights.sum()
             pocket_fraction = pocket_fraction.item()
+            base_rate = 0.5 * sum(
+                batch[f'{key}_pocket_mask'][batch_id][batch[f'{key}_mask'][batch_id].bool()].float().mean().item()
+                for key in ('src', 'tar')
+            )
 
             self.weighted_pocket_fraction_per_degree[cath_degree] += pocket_fraction
             self.weighted_pocket_fraction_per_degree_protein[cath_degree].append(pocket_fraction)
+            self.pocket_base_rate_per_degree_protein[cath_degree].append(base_rate)
             self.count_per_degree[cath_degree] += 1
             self.sample_metrics['pocket_fraction_per_sample'].append(pocket_fraction)
+            self.sample_metrics['pocket_base_rate_per_sample'].append(base_rate)
             self.sample_metrics['cath_degree_per_sample'].append(cath_degree)
 
             self.total_count += 1
@@ -65,6 +78,7 @@ class BindingSiteCorrespondence(Module):
             'weighted_pocket_fraction_per_degree': weighted_pocket_fraction_per_degree_avg,
             'weighted_pocket_fraction_overall': overall,
             'weighted_pocket_fraction_per_degree_protein': self.weighted_pocket_fraction_per_degree_protein,
+            'pocket_base_rate_per_degree_protein': self.pocket_base_rate_per_degree_protein,
             **self.sample_metrics,
             'counts_per_degree': self.count_per_degree,
             'total_count': self.total_count,

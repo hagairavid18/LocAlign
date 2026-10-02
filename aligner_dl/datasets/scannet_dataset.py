@@ -188,15 +188,28 @@ class ScanNetDataset(BasePairDataset):
         for key, ligand_coordinates in [("src", src_ligand_coordinates), ("tar", tar_ligand_coordinates)]:
             n_atoms = embedding_dicts[key]['atom_embeddings'].shape[0]
             atom_coordinates = embedding_dicts[key]['atom_frames'][:, 0, :]
-            pocket_mask = self._compute_pocket_mask(atom_coordinates, ligand_coordinates)
+            pocket_mask = self._compute_pocket_mask(
+                atom_coordinates, ligand_coordinates, embedding_dicts[key]['atom_residue_indices'])
             ret[f'{key}_pocket_mask'] = F.pad(pocket_mask, (0, self._max_atoms - n_atoms), value=0).bool()
 
         return ret
 
-    def _compute_pocket_mask(self, atom_coordinates: torch.Tensor, ligand_coordinates: torch.Tensor) -> torch.Tensor:
-        """Per-atom mask, 1 if the atom's closest ligand atom is within the binding-site distance threshold."""
+    def _compute_pocket_mask(
+        self,
+        atom_coordinates: torch.Tensor,
+        ligand_coordinates: torch.Tensor,
+        atom_residue_indices: torch.Tensor,
+    ) -> torch.Tensor:
+        """Per-atom binding-site mask: 1 for every atom of a pocket residue.
+
+        A pocket residue has at least one atom within _POCKET_DISTANCE_THRESHOLD (4 Å) of any ligand
+        atom. Residues are identified by atom_residue_indices, the PDB residue sequence number of each
+        atom. Only the atoms kept by _read_embedding are considered.
+        """
         distances = torch.cdist(atom_coordinates.float(), ligand_coordinates.float())
-        return distances.min(dim=1).values <= self._POCKET_DISTANCE_THRESHOLD
+        near_ligand = distances.min(dim=1).values <= self._POCKET_DISTANCE_THRESHOLD
+        pocket_residues = torch.unique(atom_residue_indices[near_ligand])
+        return torch.isin(atom_residue_indices, pocket_residues)
 
     def _read_embedding(
         self, 
