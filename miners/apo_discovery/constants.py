@@ -1,5 +1,5 @@
 # Water and monoatomic-ion residue names, deliberately narrow: for the apo binding-site
-# occupancy check (reviewer comment #1), only these are excluded when deciding whether a
+# occupancy check, only these are excluded when deciding whether a
 # candidate structure's pocket is "empty". Crystallization additives (PEG, glycerol, sulfate,
 # etc. - see aligner_dl.utils.constants.CRYSTALIZATION_LIGANDS) are NOT excluded here: they
 # still count as occupying the pocket, unlike in the primary-dataset ligand filter.

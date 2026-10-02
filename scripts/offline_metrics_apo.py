@@ -1,9 +1,8 @@
 """
-Success-rate aggregation for the reviewer-comment-#1 apo/holo reanalysis tables.
+Success-rate aggregation for the apo/holo reanalysis tables.
 Reuses process_experiment/evaluate_success from scripts/offline_metrics.py UNCHANGED
 (so the paper's existing success_rates.csv generation is untouched), just pointed at a
-new sibling directory. See the approved plan at
-/home/iscb/wolfson/hagairavid/.claude/plans/gleaming-greeting-stallman.md, section 7.
+new sibling directory.
 
 Expects, per split, the 3 per_sample_results_*.csv outputs from the apo-reval Lightning
 runs copied/renamed to:
@@ -18,14 +17,13 @@ from pathlib import Path
 
 import pandas as pd
 
-sys.path.append(os.getcwd())
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "aligner_dl"))
 
-from scripts.offline_metrics import SUCCESS_CRITERIA, process_experiment
+from scripts.offline_metrics import SUCCESS_CRITERIA, process_experiment  # noqa: E402
+from utils.constants import APO_REANALYSIS_SPLIT_DIRS  # noqa: E402
 
-ABLATION_DIRS = [
-    "/home/iscb/wolfson/hagairavid/LocAlign/ablation_dfs/apo_reanalysis/homology_split",
-    "/home/iscb/wolfson/hagairavid/LocAlign/ablation_dfs/apo_reanalysis/ligand_split",
-]
+ABLATION_DIRS = APO_REANALYSIS_SPLIT_DIRS
 
 
 def main() -> None:

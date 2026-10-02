@@ -1,9 +1,10 @@
 """
 Generate the 6 Lightning validation configs (3 apo/holo tables x 2 splits) needed to
-regenerate LocAlign's per-sample metrics on the reviewer-comment-#1 reanalysis tables,
+regenerate LocAlign's per-sample metrics on the apo/holo reanalysis tables,
 by copying the real baseline checkpoint's saved model/dataset config and swapping in
-each new table's df_path. See the approved plan at
-/home/iscb/wolfson/hagairavid/.claude/plans/gleaming-greeting-stallman.md, section 7.
+each new table's df_path. The generated paths are relative: checkpoints/ and datasets/
+resolve against the data root and ${SCANNET_DIR} is substituted
+(aligner_dl/utils/config_paths.py).
 
 Usage:
     python miners/scripts/generate_apo_reval_configs.py
@@ -14,18 +15,19 @@ flag exists but is unused) - so run each generated config as:
     python aligner_dl/trainers/lightning_trainer.py --config <generated_config>.yaml
 """
 import os
+import posixpath
+import sys
 
 import yaml
 
-REPO_ROOT = "/home/iscb/wolfson/hagairavid/LocAlign"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from aligner_dl.utils.constants import DATA_ROOT  # noqa: E402
+
 # Real checkpoint behind the renamed checkpoints/baseline/ dir (confirmed byte-identical).
-CKPT_PATH = os.path.join(
-    REPO_ROOT,
-    "checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt",
-)
-MODEL_CONFIG_PATH = os.path.join(REPO_ROOT, "checkpoints/baseline/model_config.yaml")
-DATASET_CONFIG_PATH = os.path.join(REPO_ROOT, "checkpoints/baseline/dataset_config.yaml")
-CONFIG_OUT_DIR = os.path.join(REPO_ROOT, "aligner_dl/configs")
+CKPT_PATH = "checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt"
+MODEL_CONFIG_PATH = os.path.join(DATA_ROOT, "checkpoints/baseline/model_config.yaml")
+DATASET_CONFIG_PATH = os.path.join(DATA_ROOT, "checkpoints/baseline/dataset_config.yaml")
+CONFIG_OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "aligner_dl/configs")
 
 # checkpoints/baseline/dataset_config.yaml's saved base_scannet_path
 # ("scannet_atom_types") is a stale/unused snapshot with zero coverage of the real
@@ -35,11 +37,11 @@ CONFIG_OUT_DIR = os.path.join(REPO_ROOT, "aligner_dl/configs")
 # has 100% coverage of both val.csv splits, so it - not the checkpoint's saved
 # value - is what both Phase B (materialize_apo_artifacts.py) and this re-eval
 # config must point at.
-BASE_SCANNET_PATH = "/home/iscb/wolfson/hagairavid/scannet_2212"
+BASE_SCANNET_PATH = "${SCANNET_DIR}"
 
 SPLITS = {
-    "homology": os.path.join(REPO_ROOT, "datasets/csv_files/homology_25_10"),
-    "ligand": os.path.join(REPO_ROOT, "datasets/csv_files/ligand_25_10"),
+    "homology": "datasets/csv_files/homology_25_10",
+    "ligand": "datasets/csv_files/ligand_25_10",
 }
 TABLES = ["holo_holo_subset", "apo_apo", "apo_holo"]
 
@@ -55,7 +57,7 @@ def main() -> None:
 
     for split_name, split_dir in SPLITS.items():
         for table_name in TABLES:
-            df_path = os.path.join(split_dir, f"val_{table_name}.csv")
+            df_path = posixpath.join(split_dir, f"val_{table_name}.csv")
             exp_name = f"apo-reval-{split_name}-{table_name.replace('_', '-')}"
 
             validation_args = dict(dataset_config["args"])

@@ -3,7 +3,7 @@ import os
 import warnings
 import numpy as np
 import sys
-sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ScanNet_mini'))
 from ScanNet_mini.preprocessing import PDBio, PDB_processing
 import Bio.PDB
 from Bio.PDB.PDBExceptions import PDBConstructionWarning

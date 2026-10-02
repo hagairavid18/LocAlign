@@ -8,7 +8,8 @@ import random
 from collections import defaultdict
 import warnings
 
-from utils.constants import LIGAND_DIR
+from utils.constants import LIGAND_DIR, MMSEQS_BINARY_NAME
+from utils.misc import find_binary
 from utils.misc import deserialize_nested_lists
 
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
@@ -45,7 +46,17 @@ def extract_sequence_from_pdb(pdb_file: str, chain_id: str =None) -> str:
     return sequence
 
 
-def cluster_sequences(list_sequences, seqid=1.0, coverage=0.8, covmode='0', path2mmseqstmp='/tmp', path2mmseqs='/home/iscb/wolfson/hagairavid/miniforge3/envs/aligner_dl2/bin/mmseqs'):
+def cluster_sequences(
+    list_sequences,
+    seqid=1.0,
+    coverage=0.8,
+    covmode='0',
+    path2mmseqstmp='/tmp',
+    path2mmseqs: str | None = None,
+):
+    """Cluster sequences with mmseqs easy-cluster; `path2mmseqs` defaults to the mmseqs found on PATH."""
+    if path2mmseqs is None:
+        path2mmseqs = find_binary(MMSEQS_BINARY_NAME)
     rng = np.random.randint(0, high=int(1e6))
     tmp_input = os.path.join(path2mmseqstmp, f'tmp_input_file_{rng}.fasta')
     tmp_output = os.path.join(path2mmseqstmp, f'tmp_output_file_{rng}')

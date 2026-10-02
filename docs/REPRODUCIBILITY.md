@@ -2,7 +2,7 @@
 
 This document describes the exact data, splits, and commands needed to reproduce LocAlign's
 training data, evaluation numbers, and (for the data pipeline) the pair manifests themselves.
-It responds to a reviewer request to release: pair manifests, split labels, ligand atom
+It covers the released pair manifests, split labels, ligand atom
 mappings, exclusion logs, the CATH version used, software commands, random seeds, and
 evaluation scripts.
 
@@ -27,6 +27,15 @@ redistributing them); the `train.csv` splits' row-level ligand atom mappings (~8
 these are recomputed on the fly by the training dataloader itself, see below, so materializing
 them here would just be a slow, redundant copy of what running the code already does).
 `train.csv` and `val.csv`/`val_baseline*.csv` manifests themselves *are* released in full.
+
+## Local setup
+
+All paths are resolved from `aligner_dl/utils/constants.py`. The repo data (`datasets/`,
+`checkpoints/`, `ablation_dfs/`) is found from the repo root (or the main checkout when run from a
+git worktree); data and tools outside the repo default to sibling directories of the repo
+(`../scannet_2212`, `../ligands_25_10_2025`, ...). If your layout differs, copy `.env.example` to
+`.env` and set the variables you need; it is loaded automatically, and variables set in the shell or
+job take precedence. `LOCALIGN_DATA_ROOT` relocates the data and must be set in the real environment.
 
 ## Pipeline stages and exact commands
 

@@ -135,7 +135,7 @@ class KeypointsSelection(nn.Module):
 if __name__ == '__main__':
     import sys,os
     import numpy as np
-    sys.path.append('/Users/jerometubiana/GitHub/ScanNet_Ub')
+    sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'ScanNet_mini'))
     os.environ['KERAS_BACKEND'] = 'torch'
     from predict_features import predict_features
     

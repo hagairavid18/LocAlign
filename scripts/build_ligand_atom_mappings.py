@@ -7,16 +7,15 @@ evaluation numbers can be inspected/reproduced without rerunning training
 code against the raw ligand PDB files.
 """
 import argparse
+import sys
 import json
 from pathlib import Path
 
 import pandas as pd
 from Bio.PDB import PDBParser
 
-# Kept as a literal rather than imported from aligner_dl.utils.constants: this
-# script's callers may have an unrelated third-party "utils" module earlier on
-# sys.path, which shadows aligner_dl/utils as a namespace package.
-DEFAULT_LIGAND_DIR = "/home/iscb/wolfson/hagairavid/ligands_25_10_2025"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from aligner_dl.utils.constants import LIGAND_DIR  # noqa: E402
 
 _parser = PDBParser(QUIET=True)
 
@@ -62,7 +61,7 @@ def build_mapping(manifest_csv: Path, ligand_dir: Path, out_path: Path) -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", required=True, type=Path, help="Pair manifest CSV (e.g. datasets/csv_files/homology_25_10/val.csv)")
-    ap.add_argument("--ligand-dir", default=Path(DEFAULT_LIGAND_DIR), type=Path, help="Directory of per-ligand-id ligand-only PDB files (aligner_dl.utils.constants.LIGAND_DIR)")
+    ap.add_argument("--ligand-dir", default=Path(LIGAND_DIR), type=Path, help="Directory of per-ligand-id ligand-only PDB files (aligner_dl.utils.constants.LIGAND_DIR)")
     ap.add_argument("--output", required=True, type=Path, help="Output JSONL path")
     args = ap.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)

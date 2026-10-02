@@ -67,9 +67,7 @@ def find_apo_structure(
 ) -> ApoResult:
     """Find a genuine apo structure for (ref_pdb_id, ref_chain_id) with its bound
     ligand's pocket unoccupied, transplant the (transformed) ligand onto it, and save
-    the result. See the approved plan at
-    /home/iscb/wolfson/hagairavid/.claude/plans/gleaming-greeting-stallman.md for the
-    full design rationale.
+    the result.
     """
     ref_pdb_id = ref_pdb_id.lower()
     result = ApoResult(ref_pdb_id=ref_pdb_id, ref_chain_id=ref_chain_id, ligand_id=ligand_id)

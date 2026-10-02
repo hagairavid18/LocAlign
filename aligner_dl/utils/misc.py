@@ -1,3 +1,5 @@
+import shutil
+
 import numpy as np
 
 
@@ -22,3 +24,11 @@ def serialize_nested_lists(data):
         return data.tolist()  # Convert ndarray to list for JSON serialization
     else:
         return data
+
+
+def find_binary(name: str) -> str:
+    """Absolute path of the executable `name` found on PATH; raises FileNotFoundError if missing."""
+    path = shutil.which(name)
+    if path is None:
+        raise FileNotFoundError(f'{name} was not found on PATH; install it or add it to PATH')
+    return path

@@ -20,6 +20,7 @@
   ```
 
 - Put helper functions in a utils module (for example `aligner_dl/utils/`), or at the bottom of the script, below the main logic and above the `if __name__ == "__main__":` block.
+- Do not use absolute paths, in code, configs, notebooks or data files. Paths inside the repo (`datasets/`, `checkpoints/`, `ablation_dfs/`, `results/`) hang off `DATA_ROOT` in `aligner_dl/utils/constants.py`. Data and tools outside the repo each have their own constant there (`SCANNET_DIR`, `LIGAND_DIR`, `SOFTALIGN_DIR`, ...) with a `LOCALIGN_*` environment variable override, defaulting to a path relative to `DATA_ROOT`; import them. In YAML configs write relative paths (resolved against `DATA_ROOT`) or `${SCANNET_DIR}`-style placeholders; `resolve_config_paths` in `aligner_dl/utils/config_paths.py` resolves them. Find executables on `PATH` with `find_binary`. Machine-specific values go in the untracked `.env` in the repo root (copy `.env.example`), which `constants.py` loads automatically; precedence is shell/job environment, then `.env`, then the default in code. Set `LOCALIGN_DATA_ROOT` in the real environment to relocate the data. Scripts that need the repo root for `sys.path` derive it from their own `__file__`.
 - Do not hard-code literal strings such as URLs, API field names or file paths inside functions. Define them in `aligner_dl/utils/constants.py` and import them.
 
 ## Results and generated files

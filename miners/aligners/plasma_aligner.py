@@ -2,7 +2,7 @@
 
 This aligner invokes PLASMA with pre-computed ESM embeddings:
 
-    /home/iscb/wolfson/hagairavid/PLASMA-Protein-Local-Alignment/align_pdb_chains.py \
+    <PLASMA_DIR>/align_pdb_chains.py \
       /path/to/pdb1.pdb A /path/to/pdb2.pdb B \
       --output-dir /path/to/output
 
@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import os
+from aligner_dl.utils.constants import PLASMA_DIR
 from pathlib import Path
 import subprocess
 import sys
@@ -33,8 +34,7 @@ logger = logging.getLogger(__name__)
 class PlasmaAligner:
     """Adapter to run the external PLASMA aligner with ESM embedding extraction."""
 
-    PLASMA_SCRIPT = \
-        "/home/iscb/wolfson/hagairavid/PLASMA-Protein-Local-Alignment/align_pdb_chains.py"
+    PLASMA_SCRIPT = os.path.join(PLASMA_DIR, "align_pdb_chains.py")
 
     def __init__(self, esm_model: str = "esm2_t33_650M_UR50D", esm_layer: int = 33) -> None:
         """Initialize PLASMA aligner with ESM model.

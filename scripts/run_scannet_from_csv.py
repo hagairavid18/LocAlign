@@ -15,7 +15,7 @@ from typing import Iterable
 # Make repo root importable regardless of current working directory
 script_dir = os.path.dirname(__file__)
 repo_root = os.path.abspath(os.path.join(script_dir, '..'))
-sys.path.append(os.getcwd())
+sys.path.insert(0, repo_root)
 from scripts.run_scannet import extract_scannet
 
 

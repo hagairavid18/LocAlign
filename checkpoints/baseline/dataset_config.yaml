@@ -1,5 +1,5 @@
 args:
-  base_scannet_path: /home/iscb/wolfson/hagairavid/scannet_atom_types
+  base_scannet_path: ${SCANNET_ATOM_TYPES_DIR}
   df_path: datasets/csv_files/homology_25_10/val.csv
   esm_layer: 18
   esm_model: esm2_t30_150M_UR50D

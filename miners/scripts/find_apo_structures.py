@@ -1,7 +1,5 @@
 """
-Find genuine apo structures for the pairs in LocAlign's validation CSVs (reviewer
-comment #1 reanalysis). See the approved plan at
-/home/iscb/wolfson/hagairavid/.claude/plans/gleaming-greeting-stallman.md.
+Find genuine apo structures for the pairs in LocAlign's validation CSVs.
 
 Usage:
     python miners/scripts/find_apo_structures.py --config miners/configs/apo_discovery_config.json

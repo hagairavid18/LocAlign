@@ -8,7 +8,7 @@ trainer:
   validate_only: true
   check_val_every_n_epoch: 1
   gradient_clipping: 30.0
-  ckpt_path: /home/iscb/wolfson/hagairavid/LocAlign/checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt
+  ckpt_path: checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt
 model:
   args:
     denoiser:
@@ -68,8 +68,8 @@ dataset:
   validation:
     name: ScanNetDataset
     args:
-      base_scannet_path: /home/iscb/wolfson/hagairavid/scannet_2212
-      df_path: /home/iscb/wolfson/hagairavid/LocAlign/datasets/csv_files/homology_25_10/val_apo_apo.csv
+      base_scannet_path: ${SCANNET_DIR}
+      df_path: datasets/csv_files/homology_25_10/val_apo_apo.csv
       esm_layer: 18
       esm_model: esm2_t30_150M_UR50D
       max_cath: 4

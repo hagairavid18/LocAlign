@@ -6,7 +6,7 @@ trainer:
   check_val_every_n_epoch: 1
   gradient_clipping: 30.0
   # profiler: false
-  # ckpt_path: "/home/iscb/wolfson/hagairavid/LocAlign/checkpoints/ablation-baseline-bn-fixed-bias-embed1/epoch=9-step=87120.ckpt"
+  # ckpt_path: "checkpoints/ablation-baseline-bn-fixed-bias-embed1/epoch=9-step=87120.ckpt"
 model:
   name: LocAlign
   args:
@@ -87,7 +87,7 @@ dataset:
     name: ScanNetDataset
     args:
       df_path: datasets/csv_files/homology_25_10/train.csv
-      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
+      base_scannet_path: '${SCANNET_DIR}'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       esm_layer: 18
@@ -101,7 +101,7 @@ dataset:
     name: ScanNetDataset
     args:
       df_path: datasets/csv_files/homology_25_10/val.csv
-      base_scannet_path: '/home/iscb/wolfson/hagairavid/scannet_2212'
+      base_scannet_path: '${SCANNET_DIR}'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       # n_samples: 10

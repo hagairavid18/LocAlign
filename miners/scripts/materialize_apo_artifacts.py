@@ -1,14 +1,13 @@
 """
 Materialize dataset artifacts (non-ligand PDB, ligand PDB, ScanNet features) for every
 accepted apo structure found by miners/scripts/find_apo_structures.py, so ScanNetDataset
-can read them by the same filename-token convention it uses for real PDB entries. See
-the approved plan at /home/iscb/wolfson/hagairavid/.claude/plans/gleaming-greeting-stallman.md.
+can read them by the same filename-token convention it uses for real PDB entries.
 
 Usage (localign_infer3 env, CPU-only - forces CUDA_VISIBLE_DEVICES="" itself,
 see below, since ScanNet feature extraction needs no GPU):
     python miners/scripts/materialize_apo_artifacts.py \
         --lookup_csv datasets/apo_structures/apo_lookup_results.csv \
-        --scannet_dir /home/iscb/wolfson/hagairavid/scannet_2212
+        --scannet_dir <external root>/scannet_2212
 """
 import argparse
 import logging
@@ -26,9 +25,10 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import pandas as pd
 
-sys.path.append(os.getcwd())
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from miners.objects.protein import Protein
+from aligner_dl.utils.constants import DATA_ROOT
 from miners.utils.constants import LIGAND_DIR
 from scripts.run_scannet import extract_scannet
 
@@ -45,7 +45,7 @@ def materialize_non_ligand_and_ligand_files(lookup_df: pd.DataFrame, ligand_dir:
     for _, row in lookup_df[lookup_df["status"] == "found"].iterrows():
         try:
             Protein(
-                pdb_name=row["local_pdb_path"],
+                pdb_name=os.path.join(DATA_ROOT, row["local_pdb_path"]),
                 chain_id=row["apo_chain_id"],
                 ligand_name=row["ligand_id"],
                 pdb_id=row["synthetic_id"],
