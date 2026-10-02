@@ -229,11 +229,29 @@ aligners are judged on `ligand_rmsd` alone). `scripts/offline_metrics_apo.py` is
 script for the apo/holo reanalysis (tracked separately, see that script's own splits under
 `val_apo_apo.csv`/`val_apo_holo.csv`/`val_holo_holo_subset.csv`).
 
+## Tests
+
+Thin unit tests and a Table 1 reproducibility check live in `tests/`. Run them from the repo root
+with the `localign_infer3` environment, which has every dependency the tests use:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The reproducibility test reads `ablation_dfs/{homology,ligand}_split/baseline.csv` under DATA_ROOT,
+and is skipped when those files are absent, for example in a fresh clone without the data. From a
+fresh clone, point it at a checkout with the data: `LOCALIGN_DATA_ROOT=/path/to/LocAlign python -m
+unittest discover -s tests`. The AUC tests are skipped when scikit-learn is not installed.
+
 ## Known limitations
 
 - Checkpoints are not released; retrain from the documented commands to reproduce reported
   numbers.
-- `scripts/offline_metrics.py`'s `ABLATION_DIRS` are hardcoded absolute paths from the original
-  development machine.
+- Per-pair evaluation outputs depend on the GPU type. The same checkpoint and config give identical
+  per-pair results on GPUs of one type (V100), but on another type (L40S) most per-pair values
+  change while the aggregates agree. For example, the ligand-split binding-site fraction is 0.1615
+  on both. The top-k correspondence selection turns small numeric differences into different
+  correspondences. Pairs with a chain above `max_length` atoms are also randomly subsampled, so
+  they depend on the seed.
 - `miners/utils/process_pair.py`'s `min_ligand_atoms=3` parameter is declared but never applied
   in the function body — a dead filter, not a functioning exclusion criterion.
