@@ -31,12 +31,13 @@ them here would just be a slow, redundant copy of what running the code already 
 
 ## Local setup
 
-All paths are resolved from `aligner_dl/utils/constants.py`. The repo data (`datasets/`,
-`checkpoints/`, `ablation_dfs/`) is found from the repo root (or the main checkout when run from a
+All paths are resolved from `aligner_dl/utils/constants.py`. Tracked files (`datasets/`,
+`example_inputs/`, configs) are read from the code's own checkout; untracked data (`checkpoints/`,
+`ablation_dfs/`, `results/`) is found from the repo root (or the main checkout when run from a
 git worktree); data and tools outside the repo default to sibling directories of the repo
 (`../scannet_2212`, `../ligands_25_10_2025`, ...). If your layout differs, copy `.env.example` to
 `.env` and set the variables you need; it is loaded automatically, and variables set in the shell or
-job take precedence. `LOCALIGN_DATA_ROOT` relocates the data and must be set in the real environment.
+job take precedence. `LOCALIGN_DATA_ROOT` relocates the untracked data and must be set in the real environment.
 
 ## Pipeline stages and exact commands
 

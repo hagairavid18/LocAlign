@@ -7,17 +7,19 @@ try:
 except ImportError:
     load_dotenv = None
 
+CHECKOUT_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT_ENV = 'LOCALIGN_DATA_ROOT'
 DATA_ROOT_SENTINEL = 'ablation_dfs'
 
 
 def find_data_root() -> Path:
-    """Directory that holds the repo data (datasets, checkpoints, ablation_dfs, results).
+    """Directory that holds the untracked repo data (checkpoints, ablation_dfs, results, ...).
 
-    Resolution order: the LOCALIGN_DATA_ROOT environment variable; the repo root (derived
-    from this file) if it contains DATA_ROOT_SENTINEL; the main checkout of the repository
-    (through the git common dir) when running from a worktree and it contains
-    DATA_ROOT_SENTINEL; the repo root otherwise (a fresh clone without the untracked data).
+    Tracked files hang off CHECKOUT_ROOT instead. Resolution order: the LOCALIGN_DATA_ROOT
+    environment variable; CHECKOUT_ROOT if it contains DATA_ROOT_SENTINEL; the main checkout
+    of the repository (through the git common dir) when running from a worktree and it
+    contains DATA_ROOT_SENTINEL; CHECKOUT_ROOT otherwise (a fresh clone without the untracked
+    data).
     """
     env = os.environ.get(DATA_ROOT_ENV)
     if env:
@@ -25,20 +27,19 @@ def find_data_root() -> Path:
         if not root.is_dir():
             raise FileNotFoundError(f'{DATA_ROOT_ENV}={env} is not a directory')
         return root
-    repo_root = Path(__file__).resolve().parents[2]
-    if (repo_root / DATA_ROOT_SENTINEL).is_dir():
-        return repo_root
+    if (CHECKOUT_ROOT / DATA_ROOT_SENTINEL).is_dir():
+        return CHECKOUT_ROOT
     result = subprocess.run(
         ['git', 'rev-parse', '--git-common-dir'],
-        cwd=repo_root,
+        cwd=CHECKOUT_ROOT,
         capture_output=True,
         text=True,
     )
     if result.returncode == 0:
-        main_checkout = (repo_root / result.stdout.strip()).resolve().parent
+        main_checkout = (CHECKOUT_ROOT / result.stdout.strip()).resolve().parent
         if (main_checkout / DATA_ROOT_SENTINEL).is_dir():
             return main_checkout
-    return repo_root
+    return CHECKOUT_ROOT
 
 
 def env_path(
@@ -57,10 +58,11 @@ DATA_ROOT = find_data_root()
 if load_dotenv is not None:
     load_dotenv(DATA_ROOT / '.env', override=False)
 PATH_CONFIG_KEYS = ('ckpt_path', 'df_path', 'base_scannet_path')
+UNTRACKED_PATH_CONFIG_KEYS = ('ckpt_path',)
 MUST_EXIST_CONFIG_KEYS = ('ckpt_path', 'df_path')
 
 CHECKPOINTS_DIR = str(DATA_ROOT / 'checkpoints')
-DATASETS_DIR = str(DATA_ROOT / 'datasets')
+DATASETS_DIR = str(CHECKOUT_ROOT / 'datasets')
 ABLATION_DFS_DIR = str(DATA_ROOT / 'ablation_dfs')
 LIGAND_DIR = env_path('LOCALIGN_LIGAND_DIR', DATA_ROOT.parent / 'ligands_25_10_2025')
 SCANNET_DIR = env_path('LOCALIGN_SCANNET_DIR', DATA_ROOT.parent / 'scannet_2212')
@@ -107,7 +109,7 @@ SYMMETRY_COUNTS_PATH = str(DATA_ROOT / 'ablation_dfs' / 'ligand_symmetry_counts.
 SYMMETRY_RELAXED_LIGAND_RMSD = 6.0
 
 ESM_CACHE_NAME = 'esm_cache_esm2_t30_150M_UR50D_18'
-BIOLIP_NR_DB_PATH = str(DATA_ROOT / 'example_inputs' / 'biolip2_nr_database.csv')
+BIOLIP_NR_DB_PATH = str(CHECKOUT_ROOT / 'example_inputs' / 'biolip2_nr_database.csv')
 PLRMSD_AUC_DIR = str(DATA_ROOT / 'results' / 'plrmsd_auc')
 PAIR_KEY_COLUMNS = ['tar_protein', 'tar_chain', 'src_protein', 'src_chain']
 INFERENCE_RAW_COLUMNS = {
