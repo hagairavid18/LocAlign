@@ -88,10 +88,11 @@ class SoftBBBase(L.LightningModule, ABC):
             gap_values = metrics['gap_per_degree_protein'][cath_degree]
             atom_type_values = metrics.get('weighted_same_type_per_degree_protein', {}).get(cath_degree, [1] * len(pair_infos))
             pocket_fraction_values = metrics.get('weighted_pocket_fraction_per_degree_protein', {}).get(cath_degree, [None] * len(pair_infos))
+            pocket_base_rate_values = metrics.get('pocket_base_rate_per_degree_protein', {}).get(cath_degree, [None] * len(pair_infos))
             radius_values = metrics['radius_per_degree_protein'][cath_degree]
             ligand_rmsd_loss_values = metrics.get('ligand_rmsd_loss_per_degree_protein', {}).get(cath_degree, [None] * len(pair_infos))
             keys_to_keep = ['ligand_id', 'tar_protein', 'tar_chain', 'src_protein', 'src_chain', 'cath_degree', 'src_ligand_n_atoms', 'tar_ligand_n_atoms']
-            for pair_info, ligand_rmsd, ligand_rmsd_loss, embedding_similarity, corr_rmsd, gap, atom_val, radius, pocket_val in zip(pair_infos, ligand_rmsd_values, ligand_rmsd_loss_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values, pocket_fraction_values):
+            for pair_info, ligand_rmsd, ligand_rmsd_loss, embedding_similarity, corr_rmsd, gap, atom_val, radius, pocket_val, pocket_base_rate in zip(pair_infos, ligand_rmsd_values, ligand_rmsd_loss_values, embedding_similarity_values, corr_rmsd_values, gap_values, atom_type_values, radius_values, pocket_fraction_values, pocket_base_rate_values):
                 protein_rmsd_data.append({
                     **{k: pair_info[k] for k in keys_to_keep},
                     'src_ligand': pair_info.get('ligand_id', ''),
@@ -104,6 +105,7 @@ class SoftBBBase(L.LightningModule, ABC):
                     'atom_type_fraction': atom_val,
                     'radius_of_gyration': radius,
                     'binding_site_correspondence_fraction': pocket_val,
+                    'binding_site_base_rate': pocket_base_rate,
                 })
         
         if protein_rmsd_data and hasattr(self.logger.experiment, 'get_name'):
