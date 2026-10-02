@@ -3,11 +3,6 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 
-try:
-    from scripts.unsquash_ligand_rmsd import SUFFIX as ANGSTROM_COPY_SUFFIX, to_angstrom
-except ImportError:
-    from unsquash_ligand_rmsd import SUFFIX as ANGSTROM_COPY_SUFFIX, to_angstrom
-
 # Configuration: Success criteria thresholds
 SUCCESS_CRITERIA = {
     'corr_rmsd': 2.0,
@@ -43,11 +38,7 @@ def evaluate_success(row, ligand_rmsd_threshold=4.0, criteria=SUCCESS_CRITERIA):
 def process_experiment(csv_path, experiment_name, criteria=SUCCESS_CRITERIA):
     """
     Load experiment CSV and evaluate success for each row with multiple ligand_rmsd thresholds.
-
-    Per-sample files logged between d6cc019 and the ligand_rmsd_loss fix hold the squashed loss
-    term s = r/(1+r/10) in ligand_rmsd instead of the RMSD r in Angstrom. These are detected and
-    inverted so that thresholds apply to r.
-
+    
     Args:
         csv_path: Path to experiment CSV file
         experiment_name: Name of the experiment
@@ -62,15 +53,6 @@ def process_experiment(csv_path, experiment_name, criteria=SUCCESS_CRITERIA):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     
-    df, report = to_angstrom(df)
-    for _, n, mx, detected, use in report:
-        if use == 'squashed':
-            print(f"WARNING: {csv_path}: ligand_rmsd looks squashed (n={n}, max={mx:.2f} < 10); "
-                  f"converted to Angstrom with r = s/(1-s/10). Original kept as ligand_rmsd_loss.")
-        elif detected == 'unknown':
-            print(f"WARNING: {csv_path}: cannot tell whether ligand_rmsd is in Angstrom or squashed "
-                  f"(n={n}, max={mx:.2f}); used as is.")
-
     # Add experiment identifier early so success eval can branch
     df['experiment'] = experiment_name
 
@@ -95,11 +77,7 @@ def process_experiment(csv_path, experiment_name, criteria=SUCCESS_CRITERIA):
 
 
 def main():
-    """Main function to process all experiments and combine results.
-
-    Corrected copies written by scripts/unsquash_ligand_rmsd.py are skipped, since
-    process_experiment already converts squashed inputs and gives the same numbers.
-    """
+    """Main function to process all experiments and combine results."""
     
     print("=" * 60)
     print("OFFLINE METRICS EVALUATION")
@@ -123,7 +101,7 @@ def main():
                           'experiment_summary_easy.csv', 'experiment_summary_hard.csv', 'success_rates.csv',
                           'baseline.csv', 'baseline_sample_1000_without_src_motif.csv', 'baseline_sample_1000_with_src_motif.csv'}
         for csv_path in Path(ablation_dir).glob("*.csv"):
-            if csv_path.name not in excluded_files and not csv_path.name.endswith(ANGSTROM_COPY_SUFFIX):
+            if csv_path.name not in excluded_files:
                 csv_files.append(csv_path)
         
         if not csv_files:
