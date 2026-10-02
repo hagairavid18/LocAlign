@@ -118,11 +118,11 @@ def _resolve_side(found: bool, hit: dict | None, orig_protein: str, orig_chain: 
 
 
 def build_apo_tables(df_paths: list[str], lookup_df: pd.DataFrame) -> dict[str, int]:
-    """From the apo_lookup_results and each original val.csv, build the three new
+    """From the apo_lookup_results and each original test.csv, build the three new
     pair tables per the confirmed partition rule: holo-holo = superset (apo exists
     for >=1 side, untouched structures); apo-apo = apo exists for both sides;
     apo-holo = apo exists for exactly one side. Written alongside each source CSV
-    as val_{holo_holo_subset,apo_apo,apo_holo}.csv.
+    as test_{holo_holo_subset,apo_apo,apo_holo}.csv.
     """
     lookup_index = {
         (r["ref_pdb_id"], r["ref_chain_id"], r["ligand_id"]): r

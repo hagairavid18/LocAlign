@@ -1,6 +1,7 @@
 """
 Report exact per-partition counts (pairs, unique chains, ligands, sequence clusters, CATH
-groups) and train/val leakage checks for both released splits.
+groups) and train/test leakage checks for both released splits. The held-out partition is
+test.csv.
 
 Joins each split's manifests against the raw CATH domain classification file for per-chain
 CATH (Class.Architecture.Topology.Homology) group labels, using the same chain-key convention
@@ -19,7 +20,7 @@ import os
 
 import pandas as pd
 
-PARTITIONS = ["train", "val", "test"]
+PARTITIONS = ["train", "test"]
 
 
 def load_cath_chain_groups(cath_domain_list_path: str) -> dict[str, set[str]]:
@@ -48,9 +49,8 @@ _EMPTY_COLUMNS = ["tar_protein", "tar_chain", "src_protein", "src_chain", "ligan
 
 def load_partition(csv_dir: str, partition: str) -> pd.DataFrame:
     """Load one partition CSV, normalizing to an empty (0-row) frame with the expected
-    columns when the file is missing, blank, or (as with ligand_25_10/test.csv) a stale
-    header in an old column-naming convention with no data rows - all of these mean the
-    same thing here: this partition is unused, as documented in docs/REPRODUCIBILITY.md."""
+    columns when the file is missing, blank, or a header in an old column-naming convention
+    with no data rows - all of these mean the same thing here: this partition is unused."""
     path = os.path.join(csv_dir, f"{partition}.csv")
     if not os.path.exists(path):
         return pd.DataFrame(columns=_EMPTY_COLUMNS)
@@ -106,18 +106,18 @@ def summarize_split(csv_dir: str, chain_to_groups: dict[str, set[str]]) -> tuple
     counts_df = pd.DataFrame(rows)
 
     leak_rows = []
-    if "train" in parsed and "val" in parsed:
-        train, val = parsed["train"], parsed["val"]
-        chain_overlap = len(val["chains"] & train["chains"])
-        ligand_overlap = len(val["ligands"] & train["ligands"])
-        if val["clusters"] is not None and train["clusters"] is not None:
-            cluster_overlap = len(val["clusters"] & train["clusters"])
-            cluster_str = f"{cluster_overlap}/{len(val['clusters'])}"
+    if "train" in parsed and "test" in parsed:
+        train, test = parsed["train"], parsed["test"]
+        chain_overlap = len(test["chains"] & train["chains"])
+        ligand_overlap = len(test["ligands"] & train["ligands"])
+        if test["clusters"] is not None and train["clusters"] is not None:
+            cluster_overlap = len(test["clusters"] & train["clusters"])
+            cluster_str = f"{cluster_overlap}/{len(test['clusters'])}"
         else:
             cluster_str = "n/a"
         leak_rows.append({
-            "chain_overlap": f"{chain_overlap}/{len(val['chains'])}",
-            "ligand_overlap": f"{ligand_overlap}/{len(val['ligands'])}",
+            "chain_overlap": f"{chain_overlap}/{len(test['chains'])}",
+            "ligand_overlap": f"{ligand_overlap}/{len(test['ligands'])}",
             "sequence_cluster_overlap": cluster_str,
         })
     leak_df = pd.DataFrame(leak_rows)
@@ -142,7 +142,7 @@ def main() -> None:
         print(f"\n{'='*60}\n{split_name}\n{'='*60}")
         print(counts_df.to_string(index=False))
         if not leak_df.empty:
-            print("\nTrain/val leakage (overlap/val_total):")
+            print("\nTrain/test leakage (overlap/test_total):")
             print(leak_df.to_string(index=False))
 
         counts_path = os.path.join(args.out_dir, f"{split_name}_partition_counts.csv")

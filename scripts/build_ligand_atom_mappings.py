@@ -60,7 +60,7 @@ def build_mapping(manifest_csv: Path, ligand_dir: Path, out_path: Path) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--manifest", required=True, type=Path, help="Pair manifest CSV (e.g. datasets/csv_files/homology_25_10/val.csv)")
+    ap.add_argument("--manifest", required=True, type=Path, help="Pair manifest CSV (e.g. datasets/csv_files/homology_25_10/test.csv)")
     ap.add_argument("--ligand-dir", default=Path(LIGAND_DIR), type=Path, help="Directory of per-ligand-id ligand-only PDB files (aligner_dl.utils.constants.LIGAND_DIR)")
     ap.add_argument("--output", required=True, type=Path, help="Output JSONL path")
     args = ap.parse_args()
