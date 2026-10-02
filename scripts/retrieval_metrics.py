@@ -1,0 +1,404 @@
+"""Retrieval benchmark: metrics from the per-query ranked hit lists.
+
+Hits are ranked by --score (normalized_pLRMSD = pLRMSD / eLRMSD by default, or
+pLRMSD) ascending, with the query chain removed. Hits without a score (pairs
+that failed feature loading) are ignored. A hit "has the same ligand" if its
+src_ligand equals the query's src_ligand; it is "in the query's cluster" if its
+Foldseek (TM >= 0.6) cluster_id equals the query's cluster_id (chains with no
+cluster never match).
+
+  Top_K_retrieval               fraction of queries with >= 1 of the top-K hits
+                                having the same ligand OR the same cluster.
+  Top_K_retrieval_not_FoldSeek  drop all hits in the query's cluster; fraction of
+                                queries with >= 1 of the top-K remaining hits
+                                having the same ligand.
+metrics.csv has one block per stratum: 'all' (headline numbers) and queries whose
+ligand has < 10 / >= 10 heavy atoms (src_ligand_n_atoms of the query entry).
+Ties in the score (common: the calibration models are boosted trees) are broken
+by database order in the two main columns; the *_random_ties columns give the
+expectation under uniformly random tie-breaking.
+
+Inputs
+  --hits_dir      <hits_dir>/qIII.csv.gz from scripts/retrieval_search.py or
+                  scripts/retrieval_fast.py, sorted by normalized_pLRMSD in
+                  database order. With another --score the file needs that
+                  column; it is re-sorted stably, so ties in that score are then
+                  broken by normalized_pLRMSD order instead of database order.
+  --partials_dir  rebuild each query's full hit list from the per-shard scores
+                  of scripts/retrieval_fast.py (<partials_dir>/<tag>/pairs.csv and
+                  shard_XXX.csv.gz), in database order, and rank it by --score.
+                  Pairs are mapped to queries by (tar_protein, tar_chain,
+                  tar_ligand, tar_motif); tag dirs of the same query are merged.
+                  A query is used only if every pair whose DB chain is 'ok' in
+                  --manifest has a score, and, when --hits_dir is also given,
+                  only if <hits_dir>/qIII.csv.gz exists. --check_against_hits
+                  asserts that the rebuilt normalized_pLRMSD lists match the
+                  hit files (see check_against_hits: partial scores have 6
+                  decimals, so near-ties can be ordered differently).
+Outputs go to --out_dir (default <work>/results): metrics.csv, per_query.csv and,
+with --export, hits_top200.csv.gz. The compact list keeps, per query, the top-200
+hits overall plus the top-200 hits outside the query's cluster, so every metric
+here is exactly reproducible from it.
+
+Usage
+  python3 scripts/retrieval_metrics.py --hits_dir <work>/hits_fast --export
+  python3 scripts/retrieval_metrics.py --partials_dir <work>/fast_partials \\
+      --hits_dir <work>/hits_fast --check_against_hits
+  python3 scripts/retrieval_metrics.py --partials_dir <work>/fast_partials --score pLRMSD
+"""
+import argparse
+import ast
+import glob
+import os
+import sys
+from math import comb
+
+import numpy as np
+import pandas as pd
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'aligner_dl'))
+from utils.constants import (  # noqa: E402
+    RETRIEVAL_CLUSTERS_CSV,
+    RETRIEVAL_HIT_FILE_FORMAT,
+    RETRIEVAL_HIT_FILE_PATTERN,
+    RETRIEVAL_LIGAND_SIZE_CUT,
+    RETRIEVAL_PACKED_MANIFEST,
+    RETRIEVAL_PARTIAL_PAIRS_CSV,
+    RETRIEVAL_PARTIAL_SHARD_PATTERN,
+    RETRIEVAL_QUERIES_CSV,
+    RETRIEVAL_RESULTS_DIR,
+    RETRIEVAL_TOP_KS,
+)
+
+KEEP = 200
+SCORES = ('normalized_pLRMSD', 'pLRMSD')
+SCORE_COLUMNS = ('normalized_pLRMSD', 'pLRMSD', 'eLRMSD')
+COMPACT_NAME = 'hits_top200.csv.gz'
+METRICS_NAME = 'metrics.csv'
+PER_QUERY_NAME = 'per_query.csv'
+QUERY_KEY = ['src_protein', 'src_chain', 'src_ligand', 'src_motif']
+TARGET_KEY = ['tar_protein', 'tar_chain', 'tar_ligand', 'tar_motif']
+HIT_DTYPES = {'chain_id': str, 'cluster_id': str, 'ligand': str}
+QUERY_DTYPES = {c: str for c in ('chain_id', 'src_protein', 'src_chain', 'src_ligand', 'src_motif', 'cluster_id')}
+
+
+def load_hit_files(
+    hits_dir: str,
+    score: str,
+) -> dict[int, pd.DataFrame]:
+    """Read <hits_dir>/qIII.csv.gz; return {query_idx: hits sorted by `score`}."""
+    out = {}
+    for path in sorted(glob.glob(os.path.join(hits_dir, RETRIEVAL_HIT_FILE_PATTERN))):
+        h = pd.read_csv(path, dtype=HIT_DTYPES)
+        if score not in h.columns:
+            raise ValueError(f'{path} has no {score} column; use --partials_dir')
+        if score != 'normalized_pLRMSD':
+            h = h.sort_values(score, ascending=True, na_position='last', kind='mergesort')
+        out[int(os.path.basename(path)[1:4])] = h.reset_index(drop=True)
+    return out
+
+
+def rebuild_from_partials(
+    partials_dir: str,
+    queries: pd.DataFrame,
+    clusters_csv: str,
+    manifest_csv: str | None,
+    score: str,
+    only: set[int] | None = None,
+) -> dict[int, pd.DataFrame]:
+    """Rebuild full per-query hit lists from scripts/retrieval_fast.py partial scores.
+
+    Every <partials_dir>/<tag>/ with a readable pairs.csv contributes its pairs; the
+    scores come from the shard_XXX.csv.gz files present (pair_idx, pLRMSD, eLRMSD).
+    A pair is identified by (query, src_protein, src_chain, src_ligand, src_motif);
+    a pair scored in any tag dir counts as scored. Queries are kept if they are in
+    `only` (when given) and, when `manifest_csv` exists, every pair whose DB chain
+    has status 'ok' is scored. Returns {query_idx: frame} with chain_id, cluster_id,
+    ligand, normalized_pLRMSD, pLRMSD and eLRMSD, in database order with the query
+    chain removed, stably sorted by `score` with unscored pairs last.
+    """
+    qmap = {
+        (r.src_protein, r.src_chain, r.src_ligand, parse_motif(r.src_motif)): int(r.query_idx)
+        for r in queries.itertuples()
+    }
+    frames = []
+    for tag_dir in sorted(glob.glob(os.path.join(partials_dir, '*', ''))):
+        try:
+            pairs = pd.read_csv(os.path.join(tag_dir, RETRIEVAL_PARTIAL_PAIRS_CSV), dtype=str,
+                                usecols=TARGET_KEY + QUERY_KEY + ['pair_idx'])
+        except (FileNotFoundError, pd.errors.EmptyDataError, pd.errors.ParserError, ValueError) as e:
+            print(f'skipping {tag_dir}: {e!r}')
+            continue
+        pairs['pair_idx'] = pairs['pair_idx'].astype(int)
+        pairs['query_idx'] = [qmap.get((a, b, c, parse_motif(d)), -1)
+                              for a, b, c, d in pairs[TARGET_KEY].itertuples(index=False)]
+        pairs = pairs[pairs['query_idx'] >= 0]
+        if only is not None:
+            pairs = pairs[pairs['query_idx'].isin(only)]
+        if pairs.empty:
+            continue
+        pairs['db_order'] = pairs.groupby('query_idx').cumcount()
+        shard_paths = sorted(glob.glob(os.path.join(tag_dir, RETRIEVAL_PARTIAL_SHARD_PATTERN)))
+        if shard_paths:
+            scores = pd.concat([pd.read_csv(p) for p in shard_paths], ignore_index=True)
+        else:
+            scores = pd.DataFrame(columns=['pair_idx', 'pLRMSD', 'eLRMSD'])
+        scores['pair_idx'] = scores['pair_idx'].astype(int)
+        frames.append(pairs.merge(scores[['pair_idx', 'pLRMSD', 'eLRMSD']], on='pair_idx', how='left'))
+    if not frames:
+        return {}
+    allp = pd.concat(frames, ignore_index=True)
+    allp['scored'] = allp['pLRMSD'].notna()
+    allp = allp.sort_values('scored', ascending=False, kind='mergesort') \
+        .drop_duplicates(['query_idx'] + QUERY_KEY) \
+        .sort_values(['query_idx', 'db_order'])
+    allp['chain_id'] = allp['src_protein'] + allp['src_chain']
+    ok_chains = None
+    if manifest_csv and os.path.exists(manifest_csv):
+        man = pd.read_csv(manifest_csv, dtype={'chain_id': str})
+        ok_chains = set(man.loc[man['status'] == 'ok', 'chain_id'])
+    else:
+        print(f'WARNING: no manifest {manifest_csv}; completeness of partial scores is not checked')
+    cmap = pd.read_csv(clusters_csv, dtype=str).set_index('chain_id')['cluster_id']
+    q = queries.set_index('query_idx')
+    out, incomplete = {}, []
+    for qi, p in allp.groupby('query_idx', sort=True):
+        if ok_chains is not None and not p.loc[p['chain_id'].isin(ok_chains), 'scored'].all():
+            incomplete.append(int(qi))
+            continue
+        p = p[p['chain_id'] != q.at[qi, 'src_protein'] + q.at[qi, 'src_chain']]
+        plrmsd, elrmsd = p['pLRMSD'].astype(float), p['eLRMSD'].astype(float)
+        h = pd.DataFrame({
+            'chain_id': p['chain_id'].values,
+            'cluster_id': p['chain_id'].map(cmap).values,
+            'ligand': p['src_ligand'].values,
+            'normalized_pLRMSD': (plrmsd / elrmsd).values,
+            'pLRMSD': plrmsd.values,
+            'eLRMSD': elrmsd.values,
+        })
+        out[int(qi)] = h.sort_values(score, ascending=True, na_position='last', kind='mergesort') \
+            .reset_index(drop=True)
+    if incomplete:
+        print(f'partial scores incomplete for queries {incomplete}; they are excluded')
+    return out
+
+
+def check_against_hits(
+    rebuilt: dict[int, pd.DataFrame],
+    hits_dir: str,
+    rtol: float = 1e-5,
+    atol: float = 1e-5,
+) -> None:
+    """Assert that each rebuilt list matches <hits_dir>/qIII.csv.gz.
+
+    The partial scores are stored with 6 decimals while the hit files were sorted on
+    full-precision scores, so hits whose normalized_pLRMSD differ by ~1e-6 can swap.
+    A query passes if its chain_id order is identical, or if every (chain_id, ligand)
+    has the same normalized_pLRMSD in both lists within `rtol`/`atol` (both lists are
+    sorted by it, so the orders then differ only within such near-ties).
+    """
+    exact, near, bad = [], [], []
+    for qi, h in rebuilt.items():
+        ref = pd.read_csv(os.path.join(hits_dir, RETRIEVAL_HIT_FILE_FORMAT.format(qi)), dtype=HIT_DTYPES)
+        if ref['chain_id'].tolist() == h['chain_id'].tolist():
+            exact.append(qi)
+        elif same_hit_scores(h, ref, rtol, atol):
+            near.append(qi)
+        else:
+            bad.append(qi)
+    print(f'check_against_hits: {len(exact) + len(near)}/{len(rebuilt)} queries match the hit files '
+          f'({len(exact)} identical order, {len(near)} {near} differing only within near-ties)')
+    assert not bad, f'rebuilt hits differ from the hit files for queries {bad}'
+
+
+def rank_hits(
+    per_query: dict[int, pd.DataFrame],
+    score: str,
+) -> pd.DataFrame:
+    """Drop unscored hits and add query_idx and rank (1-based, in list order)."""
+    frames = []
+    for qi, h in sorted(per_query.items()):
+        h = h[h[score].notna()].reset_index(drop=True)
+        h.insert(0, 'rank', range(1, len(h) + 1))
+        h.insert(0, 'query_idx', qi)
+        frames.append(h)
+    return pd.concat(frames, ignore_index=True)
+
+
+def annotate(
+    hits: pd.DataFrame,
+    queries: pd.DataFrame,
+) -> pd.DataFrame:
+    q = queries.set_index('query_idx')
+    hits = hits.copy()
+    hits['same_ligand'] = hits['ligand'].values == q.loc[hits['query_idx'], 'src_ligand'].values
+    hits['same_cluster'] = (hits['cluster_id'].values == q.loc[hits['query_idx'], 'cluster_id'].values) \
+        & hits['cluster_id'].notna().values
+    return hits
+
+
+def compact(
+    hits: pd.DataFrame,
+) -> pd.DataFrame:
+    keep = []
+    for _, h in hits.groupby('query_idx', sort=True):
+        h = h.sort_values('rank')
+        keep.append(pd.concat([h.head(KEEP), h[~h['same_cluster']].head(KEEP)]).drop_duplicates('rank'))
+    return pd.concat(keep).sort_values(['query_idx', 'rank'])
+
+
+def p_hit_random_ties(
+    scores,
+    pos,
+    k: int,
+) -> float:
+    """P(>=1 positive in the top-k) when ties in score are broken uniformly at random.
+
+    `scores` must be sorted ascending. The calibrated pLRMSD / eLRMSD models are
+    gradient-boosted trees, so scores are piecewise constant and ties are common. The
+    main metric breaks ties by the stable database order; this is the
+    tie-order-independent expectation.
+    """
+    scores, pos = np.asarray(scores), np.asarray(pos, bool)
+    if len(scores) <= k:
+        return float(pos.any())
+    s_k = scores[k - 1]
+    better = scores < s_k
+    if pos[better].any():
+        return 1.0
+    tied = scores == s_k
+    if tied[-1]:
+        raise ValueError('tie group reaches the end of the available hit list')
+    g, p, m = int(tied.sum()), int(pos[tied].sum()), k - int(better.sum())
+    return 1.0 - comb(g - p, m) / comb(g, m)
+
+
+def metrics(
+    hits: pd.DataFrame,
+    queries: pd.DataFrame,
+    score: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Per-stratum metrics and per-query rows; query ligand size is the sum of src_ligand_n_atoms."""
+    per_q = []
+    for qi in queries['query_idx']:
+        h = hits[hits['query_idx'] == qi].sort_values('rank')
+        row = {'query_idx': qi, 'n_hits_scored': len(h)}
+        nc = h[~h['same_cluster']]
+        for k in RETRIEVAL_TOP_KS:
+            top, top_nc = h.head(k), nc.head(k)
+            row[f'top{k}_hit'] = bool((top['same_ligand'] | top['same_cluster']).any())
+            row[f'top{k}_hit_not_foldseek'] = bool(top_nc['same_ligand'].any())
+            row[f'top{k}_p_random_ties'] = p_hit_random_ties(
+                h[score], h['same_ligand'] | h['same_cluster'], k)
+            row[f'top{k}_p_random_ties_not_foldseek'] = p_hit_random_ties(
+                nc[score], nc['same_ligand'], k)
+        lig = h[h['same_ligand']]
+        row['first_same_ligand_rank'] = int(lig['rank'].iloc[0]) if len(lig) else None
+        lig_nc = nc[nc['same_ligand']]
+        row['first_same_ligand_rank_not_foldseek'] = int(lig_nc['rank'].iloc[0]) if len(lig_nc) else None
+        per_q.append(row)
+    per_q = pd.DataFrame(per_q)
+    n_atoms = queries.set_index('query_idx')['src_ligand_n_atoms'].map(lambda v: sum(ast.literal_eval(str(v))))
+    per_q['query_ligand_n_atoms'] = per_q['query_idx'].map(n_atoms)
+    cut = RETRIEVAL_LIGAND_SIZE_CUT
+    strata = [('all', per_q),
+              (f'ligand<{cut}', per_q[per_q['query_ligand_n_atoms'] < cut]),
+              (f'ligand>={cut}', per_q[per_q['query_ligand_n_atoms'] >= cut])]
+    rows = []
+    for name, pq in strata:
+        for k in RETRIEVAL_TOP_KS:
+            rows.append({'stratum': name, 'K': k,
+                         'Top_K_retrieval': pq[f'top{k}_hit'].mean(),
+                         'Top_K_retrieval_not_FoldSeek': pq[f'top{k}_hit_not_foldseek'].mean(),
+                         'Top_K_retrieval_random_ties': pq[f'top{k}_p_random_ties'].mean(),
+                         'Top_K_retrieval_not_FoldSeek_random_ties': pq[f'top{k}_p_random_ties_not_foldseek'].mean(),
+                         'n_queries': len(pq)})
+    return pd.DataFrame(rows), per_q
+
+
+def same_hit_scores(
+    a: pd.DataFrame,
+    b: pd.DataFrame,
+    rtol: float,
+    atol: float,
+) -> bool:
+    """True if `a` and `b` hold the same (chain_id, ligand) hits with close normalized_pLRMSD."""
+    if len(a) != len(b):
+        return False
+    key = ['chain_id', 'ligand', 'normalized_pLRMSD']
+    sa = a.sort_values(key, kind='mergesort', na_position='last')
+    sb = b.sort_values(key, kind='mergesort', na_position='last')
+    if not (sa[key[:2]].values == sb[key[:2]].values).all():
+        return False
+    return bool(np.allclose(sa[key[2]].values, sb[key[2]].values, rtol=rtol, atol=atol, equal_nan=True))
+
+
+def parse_motif(
+    val,
+) -> tuple[int | str, ...]:
+    """Residues of a motif string such as '[1, 2, 3]' or '1,2,3', as ints.
+
+    Residues with an insertion code (e.g. '95C') are kept as stripped strings.
+    """
+    tokens = (x.strip().strip('\'"') for x in str(val).strip('[]() ').split(','))
+    return tuple(int(x) if x.lstrip('-').isdigit() else x for x in tokens if x)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--hits_dir', default=None, help='per-query hit lists; required unless --partials_dir is given')
+    ap.add_argument('--partials_dir', default=None, help='rebuild the hit lists from retrieval_fast.py partial scores')
+    ap.add_argument('--score', choices=SCORES, default='normalized_pLRMSD', help='column the hits are ranked by')
+    ap.add_argument('--check_against_hits', action='store_true',
+                    help='assert the rebuilt order equals the hit files (needs --partials_dir, --hits_dir and '
+                         '--score normalized_pLRMSD)')
+    ap.add_argument('--out_dir', default=RETRIEVAL_RESULTS_DIR)
+    ap.add_argument('--export', action='store_true', help=f'write <out_dir>/{COMPACT_NAME}')
+    ap.add_argument('--queries', default=RETRIEVAL_QUERIES_CSV)
+    ap.add_argument('--clusters', default=RETRIEVAL_CLUSTERS_CSV)
+    ap.add_argument('--manifest', default=RETRIEVAL_PACKED_MANIFEST,
+                    help='packing manifest, used to check that partial scores are complete')
+    args = ap.parse_args()
+    if not args.hits_dir and not args.partials_dir:
+        ap.error('--hits_dir is required unless --partials_dir is given')
+    if args.check_against_hits and not (args.hits_dir and args.partials_dir and args.score == 'normalized_pLRMSD'):
+        ap.error('--check_against_hits needs --partials_dir, --hits_dir and --score normalized_pLRMSD')
+
+    queries = pd.read_csv(args.queries, dtype=QUERY_DTYPES)
+    if args.partials_dir:
+        only = None
+        if args.hits_dir:
+            only = {int(os.path.basename(p)[1:4])
+                    for p in glob.glob(os.path.join(args.hits_dir, RETRIEVAL_HIT_FILE_PATTERN))}
+        per_query = rebuild_from_partials(args.partials_dir, queries, args.clusters, args.manifest,
+                                          args.score, only=only)
+        if args.check_against_hits:
+            check_against_hits(per_query, args.hits_dir)
+    else:
+        per_query = load_hit_files(args.hits_dir, args.score)
+    if not per_query:
+        raise SystemExit('no hit lists found')
+    hits = annotate(rank_hits(per_query, args.score), queries)
+    missing = sorted(set(queries['query_idx']) - set(hits['query_idx']))
+    if missing:
+        print(f'WARNING: no hit list for queries {missing}; they are excluded')
+        queries = queries[~queries['query_idx'].isin(missing)]
+
+    os.makedirs(args.out_dir, exist_ok=True)
+    if args.export:
+        c = compact(hits)
+        cols = ['query_idx', 'rank', 'chain_id', 'cluster_id', 'ligand'] + [s for s in SCORE_COLUMNS if s in c.columns]
+        out_path = os.path.join(args.out_dir, COMPACT_NAME)
+        c[cols].to_csv(out_path, index=False, float_format='%.5f')
+        print(f'Wrote {len(c)} rows to {out_path}')
+
+    m, per_q = metrics(hits, queries, args.score)
+    m.to_csv(os.path.join(args.out_dir, METRICS_NAME), index=False, float_format='%.4f')
+    per_q.merge(queries[['query_idx', 'chain_id', 'src_ligand', 'cluster_id', 'cluster_size']],
+                on='query_idx').to_csv(os.path.join(args.out_dir, PER_QUERY_NAME), index=False)
+    print(f'ranked by {args.score}')
+    print(m.to_string(index=False))
+
+
+if __name__ == '__main__':
+    main()
