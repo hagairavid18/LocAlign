@@ -44,7 +44,6 @@ class PocketRMSD(Module):
             # Try to pull precomputed metrics from loss_dict; if missing, leave as None
             per_sample = outputs.get('loss_dict', {}).get('per_sample', {}) if isinstance(outputs, dict) else {}
 
-            # 'ligand_rmsd' is the RMSD in Angstrom; 'ligand_rmsd_loss' is the loss-scale value (may be absent).
             ligand_rmsd = per_sample.get('ligand_rmsd', None)
             ligand_rmsd_loss = per_sample.get('ligand_rmsd_loss', None)
             embedding_val = per_sample.get('embedding', None)

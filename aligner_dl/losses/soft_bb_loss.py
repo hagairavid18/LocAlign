@@ -54,18 +54,20 @@ class LocAlignLoss(nn.Module):
         # self._reduce = reduce
 
     def forward(self, batch, outputs, inference: bool = False, per_sample: bool = False, epoch: int = 1):
+        """Quality loss plus the weighted ligand RMSD loss.
+
+        The per-sample dict feeds per_sample_results_*.csv: 'ligand_rmsd' is the RMSD in Angstrom and
+        'ligand_rmsd_loss' is the loss term, r / (1 + r/rmsd0) when return_non_linear is set.
+        """
         rotation_ab_pred = outputs['pred_R']
         translation_ab_pred = outputs['pred_t']
         quality_loss, quality_loss_dict = self._quality_loss(outputs, epoch)
         if inference:
             quality_loss_dict['loss'] = quality_loss
             return quality_loss, quality_loss_dict
-        # Raw ligand RMSD in Angstrom, and the (optionally squashed) value used as the loss term.
         ligand_rmsd_raw = self._ligand_loss(batch, rotation_ab_pred, translation_ab_pred, reduce=False, non_linear=False)
         ligand_rmsd = self._ligand_loss.transform(ligand_rmsd_raw)
         total_loss = quality_loss + self._ligand_loss_weight * ligand_rmsd.mean()
-        # Per-sample outputs feed per_sample_results_*.csv: 'ligand_rmsd' is the RMSD in Angstrom,
-        # 'ligand_rmsd_loss' is the loss term (r / (1 + r/rmsd0) when return_non_linear is set).
         quality_loss_dict['per_sample']['ligand_rmsd'] = ligand_rmsd_raw
         quality_loss_dict['per_sample']['ligand_rmsd_loss'] = ligand_rmsd
         ligand_loss_dict = {'ligand_rmsd': ligand_rmsd.mean()}

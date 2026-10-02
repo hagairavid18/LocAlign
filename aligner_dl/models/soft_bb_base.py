@@ -96,8 +96,8 @@ class SoftBBBase(L.LightningModule, ABC):
                     **{k: pair_info[k] for k in keys_to_keep},
                     'src_ligand': pair_info.get('ligand_id', ''),
                     'tar_ligand': pair_info.get('ligand_id', ''),
-                    'ligand_rmsd': ligand_rmsd,  # Angstrom
-                    'ligand_rmsd_loss': ligand_rmsd_loss,  # loss-scale value (squashed if return_non_linear)
+                    'ligand_rmsd': ligand_rmsd,
+                    'ligand_rmsd_loss': ligand_rmsd_loss,
                     'embedding_similarity': embedding_similarity,
                     'corr_rmsd': corr_rmsd,
                     'entropy': gap,
