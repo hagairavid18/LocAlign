@@ -7,6 +7,21 @@
 - Do not leave commented-out code, and do not narrate what the next line does.
 - Linter directives (`# noqa`, `# type: ignore`) are fine.
 
+## Python
+
+- Use built-in generic types and `X | None`: `dict[str, int]`, `list[str]`, `str | None`, not `typing.Dict`, `List` or `Optional`.
+- Put each argument of a function or method on its own line below the `def` line:
+
+  ```python
+  def fetch_smiles(
+      ccd_id: str,
+      timeout: float = 15.0,
+  ) -> str | None:
+  ```
+
+- Put helper functions in a utils module (for example `aligner_dl/utils/`), or at the bottom of the script, below the main logic and above the `if __name__ == "__main__":` block.
+- Do not hard-code literal strings such as URLs, API field names or file paths inside functions. Define them in `aligner_dl/utils/constants.py` and import them.
+
 ## Results and generated files
 
 - Do not commit result files (per-sample outputs, success-rate tables) by default. Commit the code, configs and run scripts needed to regenerate them, and document the commands in the PR description.

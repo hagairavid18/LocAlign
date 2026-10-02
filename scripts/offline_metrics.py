@@ -1,7 +1,12 @@
+import json
 import os
+import sys
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "aligner_dl"))
+from utils.constants import SYMMETRY_COUNTS_PATH, SYMMETRY_RELAXED_LIGAND_RMSD  # noqa: E402
 
 # Configuration: Success criteria thresholds
 SUCCESS_CRITERIA = {
@@ -15,6 +20,8 @@ ABLATION_DIRS = [
     "/home/iscb/wolfson/hagairavid/LocAlign/ablation_dfs/homology_split",
     "/home/iscb/wolfson/hagairavid/LocAlign/ablation_dfs/ligand_split"
 ]
+
+
 
 def evaluate_success(row, ligand_rmsd_threshold=4.0, criteria=SUCCESS_CRITERIA):
     """
@@ -35,7 +42,12 @@ def evaluate_success(row, ligand_rmsd_threshold=4.0, criteria=SUCCESS_CRITERIA):
     return success
 
 
-def process_experiment(csv_path, experiment_name, criteria=SUCCESS_CRITERIA):
+def process_experiment(
+    csv_path,
+    experiment_name,
+    criteria=SUCCESS_CRITERIA,
+    symmetric_ligands: set[str] | None = None,
+):
     """
     Load experiment CSV and evaluate success for each row with multiple ligand_rmsd thresholds.
     
@@ -46,6 +58,11 @@ def process_experiment(csv_path, experiment_name, criteria=SUCCESS_CRITERIA):
         
     Also adds `success_lrmsd_only<4` (ligand_rmsd < 4 alone, NaN counts as failure), the criterion
     used for the baseline aligners, so every experiment can be compared under it.
+
+    If symmetric_ligands is given, also adds an UPPER BOUND on symmetry-corrected success: a pair
+    with a symmetric ligand also counts as a success when the criterion holds at ligand_rmsd < 6
+    instead of < 4 (`success_sym_upper_bound<4`, and `success_lrmsd_only_sym_upper_bound<4` for
+    LRMSD-only). The RMSD is not recomputed under atom relabeling.
 
     Returns:
         DataFrame with success columns for different ligand_rmsd thresholds and experiment metadata
@@ -65,6 +82,13 @@ def process_experiment(csv_path, experiment_name, criteria=SUCCESS_CRITERIA):
         col_name = f'success_ligand_rmsd<{threshold}'
         df[col_name] = df.apply(lambda row: evaluate_success(row, ligand_rmsd_threshold=threshold, criteria=criteria), axis=1)
     df['success_lrmsd_only<4'] = df['ligand_rmsd'] < criteria['ligand_rmsd']
+    if symmetric_ligands is not None:
+        relaxed = SYMMETRY_RELAXED_LIGAND_RMSD
+        symmetric = df['ligand_id'].astype(str).isin(symmetric_ligands)
+        success_relaxed = df.apply(lambda row: evaluate_success(row, ligand_rmsd_threshold=relaxed, criteria=criteria), axis=1)
+        df['symmetric_ligand'] = symmetric
+        df['success_sym_upper_bound<4'] = df['success_ligand_rmsd<4'] | (symmetric & success_relaxed)
+        df['success_lrmsd_only_sym_upper_bound<4'] = df['success_lrmsd_only<4'] | (symmetric & (df['ligand_rmsd'] < relaxed))
     
     # Experiment already set above
     
@@ -87,8 +111,9 @@ def main():
     success_rates_by_cath_degree.csv and success_rates_lrmsd_only.csv. The last one has, for every
     experiment including the main model, the success rate in the Table 1 columns (different fold =
     cath_degree < 4, same fold = cath_degree == 4, and overall) under the Table 1 criterion and under
-    LRMSD-only.
+    LRMSD-only, plus the symmetry upper bound of both (see load_symmetric_ligands).
     """
+    symmetric_ligands = load_symmetric_ligands(ABLATION_DIRS)
     
     print("=" * 60)
     print("OFFLINE METRICS EVALUATION")
@@ -125,7 +150,7 @@ def main():
         for csv_path in sorted(csv_files):
             experiment_name = csv_path.stem  # Filename without extension
             try:
-                df_experiment = process_experiment(csv_path, experiment_name, SUCCESS_CRITERIA)
+                df_experiment = process_experiment(csv_path, experiment_name, SUCCESS_CRITERIA, symmetric_ligands)
                 all_experiments.append(df_experiment)
             except Exception as e:
                 print(f"Error processing {experiment_name}: {e}")
@@ -251,7 +276,7 @@ def main():
                           "baseline_sample_1000_without_src_motif.csv"]:
                 fpath = os.path.join(ablation_dir, fname)
                 if os.path.exists(fpath):
-                    mdf = process_experiment(fpath, Path(fname).stem, SUCCESS_CRITERIA)
+                    mdf = process_experiment(fpath, Path(fname).stem, SUCCESS_CRITERIA, symmetric_ligands)
                     main_model_frames.append(mdf)
             degree_source_df = pd.concat([combined_df] + main_model_frames, ignore_index=True) if main_model_frames else combined_df
 
@@ -279,13 +304,18 @@ def main():
                 for column, sub in (("different_fold", group[group["cath_degree"] < 4]),
                                     ("same_fold", group[group["cath_degree"] == 4]),
                                     ("overall", group)):
-                    fold_rows.append({
+                    row = {
                         "experiment": experiment,
                         "column": column,
                         "n": len(sub),
                         "success_rmsd<4": round(sub["success_ligand_rmsd<4"].mean(), 5),
                         "success_lrmsd_only<4": round(sub["success_lrmsd_only<4"].mean(), 5),
-                    })
+                    }
+                    if symmetric_ligands is not None:
+                        row["success_sym_upper_bound<4"] = round(sub["success_sym_upper_bound<4"].mean(), 5)
+                        row["success_lrmsd_only_sym_upper_bound<4"] = round(sub["success_lrmsd_only_sym_upper_bound<4"].mean(), 5)
+                        row["fraction_symmetric_ligand"] = round(sub["symmetric_ligand"].mean(), 5)
+                    fold_rows.append(row)
             fold_path = os.path.join(ablation_dir, "success_rates_lrmsd_only.csv")
             pd.DataFrame(fold_rows).to_csv(fold_path, index=False)
             print(f"LRMSD-only success rates saved to: {fold_path}")
@@ -297,6 +327,36 @@ def main():
         summary_path = os.path.join(ablation_dir, "success_rates.csv")
         summary_df.to_csv(summary_path)
         print(f"\nSuccess rates saved to: {summary_path}")
+
+
+def load_symmetric_ligands(
+    ablation_dirs: list[str],
+    path: str = SYMMETRY_COUNTS_PATH,
+) -> set[str] | None:
+    """Ligand codes with more than one RDKit graph automorphism, or None if they cannot be computed.
+
+    The codes are those of baseline.csv in each ablation dir, and the counts come from the JSON
+    cache at path. When codes are missing from the cache, scripts/ligand_symmetry.py fetches them
+    and rewrites the cache, which needs network access and RDKit. Codes whose fetch or parse failed
+    are treated as not symmetric.
+    """
+    codes = set()
+    for ablation_dir in ablation_dirs:
+        baseline_path = os.path.join(ablation_dir, "baseline.csv")
+        if os.path.exists(baseline_path):
+            codes |= set(pd.read_csv(baseline_path)["ligand_id"].astype(str))
+    counts = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            counts = json.load(f)
+    if codes - set(counts):
+        try:
+            from ligand_symmetry import load_or_build_symmetry_counts
+        except ImportError as e:
+            print(f"Cannot build {path} ({e}); skipping the symmetry upper bound.")
+            return None
+        counts = load_or_build_symmetry_counts(codes, path)
+    return {code for code in codes if counts.get(code) is not None and counts[code] > 1}
 
 
 if __name__ == "__main__":
