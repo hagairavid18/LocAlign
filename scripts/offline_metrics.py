@@ -44,6 +44,9 @@ def process_experiment(csv_path, experiment_name, criteria=SUCCESS_CRITERIA):
         experiment_name: Name of the experiment
         criteria: Success criteria dict
         
+    Also adds `success_lrmsd_only<4` (ligand_rmsd < 4 alone, NaN counts as failure), the criterion
+    used for the baseline aligners, so every experiment can be compared under it.
+
     Returns:
         DataFrame with success columns for different ligand_rmsd thresholds and experiment metadata
     """
@@ -61,6 +64,7 @@ def process_experiment(csv_path, experiment_name, criteria=SUCCESS_CRITERIA):
     for threshold in ligand_rmsd_thresholds:
         col_name = f'success_ligand_rmsd<{threshold}'
         df[col_name] = df.apply(lambda row: evaluate_success(row, ligand_rmsd_threshold=threshold, criteria=criteria), axis=1)
+    df['success_lrmsd_only<4'] = df['ligand_rmsd'] < criteria['ligand_rmsd']
     
     # Experiment already set above
     
@@ -77,7 +81,14 @@ def process_experiment(csv_path, experiment_name, criteria=SUCCESS_CRITERIA):
 
 
 def main():
-    """Main function to process all experiments and combine results."""
+    """Main function to process all experiments and combine results.
+
+    Per directory it writes all_experiments_with_success.csv, success_rates.csv,
+    success_rates_by_cath_degree.csv and success_rates_lrmsd_only.csv. The last one has, for every
+    experiment including the main model, the success rate in the Table 1 columns (different fold =
+    cath_degree < 4, same fold = cath_degree == 4, and overall) under the Table 1 criterion and under
+    LRMSD-only.
+    """
     
     print("=" * 60)
     print("OFFLINE METRICS EVALUATION")
@@ -262,6 +273,22 @@ def main():
             degree_path = os.path.join(ablation_dir, "success_rates_by_cath_degree.csv")
             degree_df.to_csv(degree_path, index=False)
             print(f"\nPer-exact-degree success rates saved to: {degree_path}")
+
+            fold_rows = []
+            for experiment, group in degree_source_df.groupby("experiment"):
+                for column, sub in (("different_fold", group[group["cath_degree"] < 4]),
+                                    ("same_fold", group[group["cath_degree"] == 4]),
+                                    ("overall", group)):
+                    fold_rows.append({
+                        "experiment": experiment,
+                        "column": column,
+                        "n": len(sub),
+                        "success_rmsd<4": round(sub["success_ligand_rmsd<4"].mean(), 5),
+                        "success_lrmsd_only<4": round(sub["success_lrmsd_only<4"].mean(), 5),
+                    })
+            fold_path = os.path.join(ablation_dir, "success_rates_lrmsd_only.csv")
+            pd.DataFrame(fold_rows).to_csv(fold_path, index=False)
+            print(f"LRMSD-only success rates saved to: {fold_path}")
         else:
             print("\nWarning: 'cath_degree' column not found. Cannot compute filtered success rates.")
             summary_df = pd.DataFrame(summary_data)
