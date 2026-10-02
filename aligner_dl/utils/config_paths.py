@@ -3,24 +3,23 @@ import os
 from utils.constants import (
     DATA_ROOT,
     DATA_ROOT_ENV,
-    EXTERNAL_PATH_PREFIX,
-    EXTERNAL_ROOT,
-    EXTERNAL_ROOT_ENV,
     MUST_EXIST_CONFIG_KEYS,
     PATH_CONFIG_KEYS,
+    PATH_PLACEHOLDERS,
 )
 
 
 def resolve_path(path: str) -> str:
     """Resolve a config path to an absolute one.
 
-    Absolute paths are returned unchanged. A path starting with EXTERNAL_PATH_PREFIX is
-    resolved against EXTERNAL_ROOT, any other relative path against DATA_ROOT.
+    Every ${NAME} with NAME in PATH_PLACEHOLDERS (for example ${SCANNET_DIR}) is replaced by
+    the corresponding constant. Absolute paths are then returned unchanged and relative paths
+    are resolved against DATA_ROOT.
     """
+    for name, value in PATH_PLACEHOLDERS.items():
+        path = path.replace('${' + name + '}', value)
     if os.path.isabs(path):
         return path
-    if path.startswith(EXTERNAL_PATH_PREFIX):
-        return str(EXTERNAL_ROOT / path[len(EXTERNAL_PATH_PREFIX):])
     return str(DATA_ROOT / path)
 
 
@@ -29,7 +28,7 @@ def resolve_config_paths(config):
 
     Walks nested dicts and lists. For the keys in MUST_EXIST_CONFIG_KEYS, raises
     FileNotFoundError when the resolved path does not exist, naming the environment
-    variables that relocate the data. Returns `config`.
+    variable that relocates the data. Returns `config`.
     """
     if isinstance(config, dict):
         for key, value in config.items():
@@ -37,8 +36,8 @@ def resolve_config_paths(config):
                 config[key] = resolve_path(value)
                 if key in MUST_EXIST_CONFIG_KEYS and not os.path.exists(config[key]):
                     raise FileNotFoundError(
-                        f'{key}: {config[key]} does not exist (data root {DATA_ROOT}, external root {EXTERNAL_ROOT}; '
-                        f'set {DATA_ROOT_ENV} or {EXTERNAL_ROOT_ENV} to relocate)'
+                        f'{key}: {config[key]} does not exist (data root {DATA_ROOT}; '
+                        f'set {DATA_ROOT_ENV} to relocate)'
                     )
             else:
                 resolve_config_paths(value)

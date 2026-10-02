@@ -87,7 +87,7 @@ dataset:
     name: ScanNetDataset
     args:
       df_path: datasets/csv_files/homology_25_10/train.csv
-      base_scannet_path: 'external/scannet_2212'
+      base_scannet_path: '${SCANNET_DIR}'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       esm_layer: 18
@@ -101,7 +101,7 @@ dataset:
     name: ScanNetDataset
     args:
       df_path: datasets/csv_files/homology_25_10/val.csv
-      base_scannet_path: 'external/scannet_2212'
+      base_scannet_path: '${SCANNET_DIR}'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
       # n_samples: 10

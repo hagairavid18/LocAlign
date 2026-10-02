@@ -3,7 +3,7 @@ Generate the 6 Lightning validation configs (3 apo/holo tables x 2 splits) neede
 regenerate LocAlign's per-sample metrics on the apo/holo reanalysis tables,
 by copying the real baseline checkpoint's saved model/dataset config and swapping in
 each new table's df_path. The generated paths are relative: checkpoints/ and datasets/
-resolve against the data root and external/ against the external root
+resolve against the data root and ${SCANNET_DIR} is substituted
 (aligner_dl/utils/config_paths.py).
 
 Usage:
@@ -21,13 +21,13 @@ import sys
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from aligner_dl.utils.constants import DATA_ROOT, REPO_ROOT  # noqa: E402
+from aligner_dl.utils.constants import DATA_ROOT  # noqa: E402
 
 # Real checkpoint behind the renamed checkpoints/baseline/ dir (confirmed byte-identical).
 CKPT_PATH = "checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt"
 MODEL_CONFIG_PATH = os.path.join(DATA_ROOT, "checkpoints/baseline/model_config.yaml")
 DATASET_CONFIG_PATH = os.path.join(DATA_ROOT, "checkpoints/baseline/dataset_config.yaml")
-CONFIG_OUT_DIR = os.path.join(REPO_ROOT, "aligner_dl/configs")
+CONFIG_OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "aligner_dl/configs")
 
 # checkpoints/baseline/dataset_config.yaml's saved base_scannet_path
 # ("scannet_atom_types") is a stale/unused snapshot with zero coverage of the real
@@ -37,7 +37,7 @@ CONFIG_OUT_DIR = os.path.join(REPO_ROOT, "aligner_dl/configs")
 # has 100% coverage of both val.csv splits, so it - not the checkpoint's saved
 # value - is what both Phase B (materialize_apo_artifacts.py) and this re-eval
 # config must point at.
-BASE_SCANNET_PATH = "external/scannet_2212"
+BASE_SCANNET_PATH = "${SCANNET_DIR}"
 
 SPLITS = {
     "homology": "datasets/csv_files/homology_25_10",

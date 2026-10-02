@@ -9,7 +9,7 @@ from collections import defaultdict
 import warnings
 
 from utils.constants import LIGAND_DIR, MMSEQS_BINARY_NAME
-from utils.path_roots import find_binary
+from utils.misc import find_binary
 from utils.misc import deserialize_nested_lists
 
 from Bio.PDB.PDBExceptions import PDBConstructionWarning

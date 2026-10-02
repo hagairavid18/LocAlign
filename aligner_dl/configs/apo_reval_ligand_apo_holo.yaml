@@ -68,7 +68,7 @@ dataset:
   validation:
     name: ScanNetDataset
     args:
-      base_scannet_path: external/scannet_2212
+      base_scannet_path: ${SCANNET_DIR}
       df_path: datasets/csv_files/ligand_25_10/val_apo_holo.csv
       esm_layer: 18
       esm_model: esm2_t30_150M_UR50D

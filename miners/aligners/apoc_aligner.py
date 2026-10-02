@@ -1,7 +1,7 @@
 import logging
 import os
 from aligner_dl.utils.constants import APOC_BINARY_NAME
-from aligner_dl.utils.path_roots import find_binary
+from aligner_dl.utils.misc import find_binary
 import subprocess
 import tempfile
 import numpy as np
