@@ -18,13 +18,11 @@ import os
 import yaml
 
 REPO_ROOT = "/home/iscb/wolfson/hagairavid/LocAlign"
-CKPT_PATHS = {
-    "homology": os.path.join(
-        REPO_ROOT,
-        "checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt",
-    ),
-    "ligand": os.path.join(REPO_ROOT, "checkpoints/baseline-ligand-split/epoch=8-step=97191.ckpt"),
-}
+# Real checkpoint behind the renamed checkpoints/baseline/ dir (confirmed byte-identical).
+CKPT_PATH = os.path.join(
+    REPO_ROOT,
+    "checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt",
+)
 MODEL_CONFIG_PATH = os.path.join(REPO_ROOT, "checkpoints/baseline/model_config.yaml")
 DATASET_CONFIG_PATH = os.path.join(REPO_ROOT, "checkpoints/baseline/dataset_config.yaml")
 CONFIG_OUT_DIR = os.path.join(REPO_ROOT, "aligner_dl/configs")
@@ -72,7 +70,7 @@ def main() -> None:
                     "validate_only": True,
                     "check_val_every_n_epoch": 1,
                     "gradient_clipping": 30.0,
-                    "ckpt_path": CKPT_PATHS[split_name],
+                    "ckpt_path": CKPT_PATH,
                 },
                 "model": model_config,
                 "dataset": {

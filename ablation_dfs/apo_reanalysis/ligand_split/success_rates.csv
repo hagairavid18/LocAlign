@@ -1,4 +1,0 @@
-experiment,mean_corr_rmsd,mean_ligand_rmsd,mean_atom_type_fraction,success_cath<4_rmsd<1,success_cath=4_rmsd<1,success_cath<4_rmsd<2,success_cath=4_rmsd<2,success_cath<4_rmsd<4,success_cath=4_rmsd<4
-apo_apo,1.41647,21.85443,0.8298,0.0,0.03846,0.00485,0.32692,0.05583,0.65385
-apo_holo,1.38694,16.5291,0.82109,0.00188,0.16185,0.01033,0.56069,0.09953,0.80925
-holo_holo_subset,1.39454,16.42776,0.82417,0.00406,0.20179,0.01285,0.60987,0.1021,0.79821
