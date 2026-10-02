@@ -105,3 +105,33 @@ RCSB_SMILES_KEYS = ('smiles', 'SMILES')
 
 SYMMETRY_COUNTS_PATH = str(DATA_ROOT / 'ablation_dfs' / 'ligand_symmetry_counts.json')
 SYMMETRY_RELAXED_LIGAND_RMSD = 6.0
+
+ESM_CACHE_NAME = 'esm_cache_esm2_t30_150M_UR50D_18'
+BIOLIP_NR_DB_PATH = str(DATA_ROOT / 'example_inputs' / 'biolip2_nr_database.csv')
+PLRMSD_AUC_DIR = str(DATA_ROOT / 'results' / 'plrmsd_auc')
+PAIR_KEY_COLUMNS = ['tar_protein', 'tar_chain', 'src_protein', 'src_chain']
+INFERENCE_RAW_COLUMNS = {
+    '_embedding': 'embedding_similarity',
+    '_gap': 'entropy',
+    '_corr_rmsd': 'corr_rmsd',
+    '_radius': 'radius_of_gyration',
+}
+PLRMSD_FEATURES = ['normalized_embedding_similarity', 'corr_rmsd', 'radius_of_gyration_ang', 'perplexity']
+PLRMSD_MONOTONIC = [-1, 1, 1, -1]
+PLRMSD_TARGET = 'ligand_rmsd'
+PLRMSD_TARGET_CUTOFF = 10.0
+PLRMSD_CAP_THRESHOLD = 9.99
+ELRMSD_QUANTILE = 0.2
+AUC_SCORE_DECIMALS = 3
+AUC_BOOTSTRAP_RESAMPLES = 2000
+AUC_LRMSD_SUCCESS_CUTOFF = 4.0
+PLRMSD_POSITIVES_CSV = 'positives_cv_predictions_{split}.csv'
+PLRMSD_NEGATIVES_CSV = 'negatives_{split}.csv'
+PLRMSD_FAILED_NEGATIVES_CSV = 'failed_negatives_{split}.csv'
+PLRMSD_CALIBRATION_PKL = 'calibration_model_{split}.pkl'
+ELRMSD_CALIBRATION_PKL = 'ligand_calibration_model_{split}.pkl'
+PLRMSD_BEST_PARAMS_JSON = 'best_params_{split}.json'
+PLRMSD_AUC_CSV = 'auc.csv'
+PLRMSD_BREAKDOWN_CSV = 'breakdown.csv'
+PLRMSD_ROC_PNG = 'roc_{split}.png'
+PLRMSD_NEGATIVES_INPUT_CSV = 'negatives_input_{split}.csv'
