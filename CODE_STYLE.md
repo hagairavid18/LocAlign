@@ -11,3 +11,4 @@
 
 - Do not commit result files (per-sample outputs, success-rate tables) by default. Commit the code, configs and run scripts needed to regenerate them, and document the commands in the PR description.
 - Do not keep one-off generator scripts once the files they generate are committed. Commit the generated configs instead.
+- Do not commit SLURM batch scripts (`*.sbatch`, `*.slurm`). Document the submit command in the PR description instead.
