@@ -59,3 +59,4 @@ logs/
 !/datasets/csv_files/*/excluded_pairs.csv
 !/datasets/ligand_atom_mappings/
 !/datasets/ligand_atom_mappings/**
+*.sbatch
