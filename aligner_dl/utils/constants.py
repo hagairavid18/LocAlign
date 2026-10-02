@@ -12,3 +12,11 @@ INVALID_LIGANDS = ['144', '15P', '1PE', '2F2', '2JC', '3HR', '3SY', '7N5', '7PE'
 CRYSTALIZATION_LIGANDS = ['SO4', 'GOL', 'EDO', 'PO4', 'ACT', 'PEG', 'DMS', 'TRS', 'PGE', 'PG4', 'FMT', 'EPE', 'MPD', 'MES', 'CD', 'IOD']
 
 ALL_INVALID_LIGANDS = INVALID_LIGANDS + CRYSTALIZATION_LIGANDS
+
+RCSB_CHEMCOMP_URL = 'https://data.rcsb.org/rest/v1/core/chemcomp/{ccd_id}'
+RCSB_DESCRIPTOR_KEY = 'rcsb_chem_comp_descriptor'
+RCSB_SMILES_STEREO_KEYS = ('smiles_stereo', 'SMILES_stereo')
+RCSB_SMILES_KEYS = ('smiles', 'SMILES')
+
+SYMMETRY_COUNTS_PATH = '/home/iscb/wolfson/hagairavid/LocAlign/ablation_dfs/ligand_symmetry_counts.json'
+SYMMETRY_RELAXED_LIGAND_RMSD = 6.0
