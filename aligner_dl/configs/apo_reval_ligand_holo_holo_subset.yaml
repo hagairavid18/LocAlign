@@ -8,7 +8,7 @@ trainer:
   validate_only: true
   check_val_every_n_epoch: 1
   gradient_clipping: 30.0
-  ckpt_path: /home/iscb/wolfson/hagairavid/LocAlign/checkpoints/baseline-embed01-ligand5-corr1-recycle4-radius05-sched-corr2/epoch=9-step=87120.ckpt
+  ckpt_path: /home/iscb/wolfson/hagairavid/LocAlign/checkpoints/baseline-ligand-split/epoch=8-step=97191.ckpt
 model:
   args:
     denoiser:

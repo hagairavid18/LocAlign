@@ -6,3 +6,8 @@
 - Put explanations in the docstring of the function, method or class instead. State what the code does and any non-obvious behavior, units or scale there.
 - Do not leave commented-out code, and do not narrate what the next line does.
 - Linter directives (`# noqa`, `# type: ignore`) are fine.
+
+## Results and generated files
+
+- Do not commit result files (per-sample outputs, success-rate tables) by default. Commit the code, configs and run scripts needed to regenerate them, and document the commands in the PR description.
+- Do not keep one-off generator scripts once the files they generate are committed. Commit the generated configs instead.
