@@ -258,7 +258,7 @@ def main():
             print(summary_df)
             print("=" * 60)
 
-            # Per-exact-cath_degree breakdown (Reviewer 1, comment 2): the split above folds
+            # Per-exact-cath_degree breakdown: the split above folds
             # cath_degree<4 and cath_degree==4 into two buckets. Report each degree separately
             # (0, 1, 2, 3, 4, ...) instead, so "no difference within 0-3" can actually be checked
             # rather than assumed by the fold.

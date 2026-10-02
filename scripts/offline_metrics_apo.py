@@ -1,5 +1,5 @@
 """
-Success-rate aggregation for the reviewer-comment-#1 apo/holo reanalysis tables.
+Success-rate aggregation for the apo/holo reanalysis tables.
 Reuses process_experiment/evaluate_success from scripts/offline_metrics.py UNCHANGED
 (so the paper's existing success_rates.csv generation is untouched), just pointed at a
 new sibling directory.

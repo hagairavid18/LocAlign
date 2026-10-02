@@ -1,6 +1,6 @@
 """
 Generate the 6 Lightning validation configs (3 apo/holo tables x 2 splits) needed to
-regenerate LocAlign's per-sample metrics on the reviewer-comment-#1 reanalysis tables,
+regenerate LocAlign's per-sample metrics on the apo/holo reanalysis tables,
 by copying the real baseline checkpoint's saved model/dataset config and swapping in
 each new table's df_path. The generated paths are relative: checkpoints/ and datasets/
 resolve against the data root and external/ against the external root

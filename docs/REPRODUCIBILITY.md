@@ -2,7 +2,7 @@
 
 This document describes the exact data, splits, and commands needed to reproduce LocAlign's
 training data, evaluation numbers, and (for the data pipeline) the pair manifests themselves.
-It responds to a reviewer request to release: pair manifests, split labels, ligand atom
+It covers the released pair manifests, split labels, ligand atom
 mappings, exclusion logs, the CATH version used, software commands, random seeds, and
 evaluation scripts.
 
