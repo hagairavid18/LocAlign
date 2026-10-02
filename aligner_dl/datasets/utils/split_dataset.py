@@ -99,7 +99,12 @@ def split_csv(
     base_data_path: str = LIGAND_DIR,
     group_by_ligand: bool = False
     ) -> None:
+    """Split `input_csv` into train and held-out partitions and write them to `output_dir`.
 
+    The partition drawn with `val_size` is the held-out evaluation set and is written as
+    test.csv. The partition drawn with `test_size` is written as extra_holdout.csv when it is
+    non-empty, so it cannot overwrite test.csv; it was empty in the released splits.
+    """
     # Read the CSV file
     os.makedirs(output_dir, exist_ok=True)
     df = pd.read_csv(input_csv)
@@ -303,8 +308,9 @@ def split_csv(
 
     # Save the splits into CSV files
     train_df.to_csv(os.path.join(output_dir, "train.csv"), index=False)
-    val_df.to_csv(os.path.join(output_dir, "val.csv"), index=False)
-    test_df.to_csv(os.path.join(output_dir, "test.csv"), index=False)
+    val_df.to_csv(os.path.join(output_dir, "test.csv"), index=False)
+    if len(test_df):
+        test_df.to_csv(os.path.join(output_dir, "extra_holdout.csv"), index=False)
 
     print(f"Data split completed. Files and histograms saved in {output_dir}")
 

@@ -33,6 +33,13 @@ def parse_args():
 
 # Main script
 def main():
+    """Train or validate a model from a YAML config.
+
+    `model.total_steps` sets the length of the step-based corr-RMSD loss-weight ramp
+    (LocAlignLoss.update_lambda). `trainer.schedule_epochs` (default: `trainer.max_epochs`)
+    lets a run stop early (max_epochs < schedule_epochs) without compressing that ramp. The
+    OneCycleLR length is set separately by the optimizer.scheduler args (epochs x steps_per_epoch).
+    """
     args = parse_args()
 
     # Set random seed
@@ -76,7 +83,8 @@ def main():
 
     # update number of training step per epoch by dividing the number of samples by batch size
     if 'train' in config['dataset']:
-        model.total_steps = len(train_loader) * config['trainer']['max_epochs']
+        schedule_epochs = config['trainer'].get('schedule_epochs', config['trainer']['max_epochs'])
+        model.total_steps = len(train_loader) * schedule_epochs
 
     # Setup logging with Comet
     log_exp = "delete" not in config['trainer']['exp_name']

@@ -1,12 +1,29 @@
+# ligandloss0 ablation (ligand_rmsd loss weight set to 0) on the
+# ligand-grouped split (datasets/csv_files/ligand_25_10). Reproduces the released
+# ligand-split checkpoint (checkpoints/baseline-ligand=split-ligandloss0/epoch=8-step=97191.ckpt).
+# Derived from loc_align.yaml plus the run's saved model_config.yaml / dataset_config.yaml
+# and the scheduler state stored in the checkpoint (OneCycleLR total_steps = 107800).
+#
+# Scheduler spans 10 epochs; training stopped after 9 to reproduce the released
+# ligand-split checkpoints.
+#  - trainer.max_epochs: 9 -> training ends at global step 9 x 10799 = 97191
+#    (10799 = len(train_loader) for ligand_25_10/train.csv at batch size 8).
+#  - trainer.schedule_epochs: 10 -> the corr-RMSD loss-weight ramp spans 10 x 10799 steps,
+#    as in the original run (see lightning_trainer.py).
+#  - optimizer.scheduler.args epochs: 10, steps_per_epoch: 10780 -> OneCycleLR
+#    total_steps = 107800, the value saved in the original checkpoint. The OneCycleLR length
+#    comes only from these args, never from trainer.max_epochs.
 trainer:
-  exp_name: baseline-homology
-  tags: ["baseline", "homology_split", "small_ligands"]
-  max_epochs: 10
+  exp_name: baseline-ligand=split-ligandloss0
+  tags: ["baseline", "ligand_split", "small_ligands", "ablation", "ligandloss0"]
+  # Scheduler spans 10 epochs; training stopped after 9 to reproduce the released
+  # ligand-split checkpoints.
+  max_epochs: 9
+  schedule_epochs: 10
   validate_only: false
   check_val_every_n_epoch: 1
   gradient_clipping: 30.0
   # profiler: false
-  # ckpt_path: "checkpoints/ablation-baseline-bn-fixed-bias-embed1/epoch=9-step=87120.ckpt"
 model:
   name: LocAlign
   args:
@@ -44,7 +61,7 @@ model:
           corr_rmsd: 1.0
           embedding: 0.5
           gap: 0.0
-          ligand_rmsd: 5.0
+          ligand_rmsd: 0.0  # ligandloss0 ablation
           radius: 0.5
         embedding_method: 'contrastive_clip_normalized'
     metric:
@@ -60,6 +77,8 @@ model:
             name: AtomTypeCorrespondence
             module: metrics.atom_type_correspondence
             args: {}
+          # binding_site: logging-only metric added after these runs (not in the saved
+          # model_config.yaml); it does not affect training.
           binding_site:
             name: BindingSiteCorrespondence
             module: metrics.binding_site_correspondence
@@ -73,12 +92,11 @@ model:
           name: OneCycleLR
           interval: step
           args:
-
+            # Scheduler spans 10 epochs (total_steps = 10 x 10780 = 107800, as saved in the
+            # original checkpoint); training stops after 9 (trainer.max_epochs).
             max_lr: 0.0005
             epochs: 10
-            steps_per_epoch: 8712 
-            # steps_per_epoch: 10779 
-            # steps_per_epoch: 4356 
+            steps_per_epoch: 10780
             div_factor: 25
             # final_div_factor: 1e4
 
@@ -86,7 +104,7 @@ dataset:
   train:
     name: ScanNetDataset
     args:
-      df_path: datasets/csv_files/homology_25_10/train.csv
+      df_path: datasets/csv_files/ligand_25_10/train.csv
       base_scannet_path: '${SCANNET_DIR}'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
@@ -100,7 +118,7 @@ dataset:
   validation:
     name: ScanNetDataset
     args:
-      df_path: datasets/csv_files/homology_25_10/test.csv
+      df_path: datasets/csv_files/ligand_25_10/test.csv
       base_scannet_path: '${SCANNET_DIR}'
       esm_model: "esm2_t30_150M_UR50D"
       use_esm: true
