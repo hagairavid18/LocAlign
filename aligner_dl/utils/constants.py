@@ -1,4 +1,42 @@
-LIGAND_DIR = '/home/iscb/wolfson/hagairavid/ligands_25_10_2025'
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from path_roots import (  # noqa: E402
+    DATA_ROOT_ENV,
+    EXTERNAL_ROOT_ENV,
+    find_data_root,
+    find_external_root,
+    find_repo_root,
+)
+
+REPO_ROOT = find_repo_root()
+DATA_ROOT = find_data_root(REPO_ROOT)
+EXTERNAL_ROOT = find_external_root(DATA_ROOT)
+EXTERNAL_PATH_PREFIX = 'external/'
+PATH_CONFIG_KEYS = ('ckpt_path', 'df_path', 'base_scannet_path')
+MUST_EXIST_CONFIG_KEYS = ('ckpt_path', 'df_path')
+
+CHECKPOINTS_DIR = str(DATA_ROOT / 'checkpoints')
+DATASETS_DIR = str(DATA_ROOT / 'datasets')
+ABLATION_DFS_DIR = str(DATA_ROOT / 'ablation_dfs')
+LIGAND_DIR = str(EXTERNAL_ROOT / 'ligands_25_10_2025')
+SCANNET_DIR_NAME = 'scannet_2212'
+SCANNET_DIR = str(EXTERNAL_ROOT / SCANNET_DIR_NAME)
+SOFTALIGN_DIR = str(EXTERNAL_ROOT / 'SoftAlign')
+PLASMA_DIR = str(EXTERNAL_ROOT / 'PLASMA-Protein-Local-Alignment')
+ABLATION_SPLIT_DIRS = [
+    str(DATA_ROOT / 'ablation_dfs' / 'homology_split'),
+    str(DATA_ROOT / 'ablation_dfs' / 'ligand_split'),
+]
+APO_REANALYSIS_SPLIT_DIRS = [
+    str(DATA_ROOT / 'ablation_dfs' / 'apo_reanalysis' / 'homology_split'),
+    str(DATA_ROOT / 'ablation_dfs' / 'apo_reanalysis' / 'ligand_split'),
+]
+HOMOLOGY_BASELINE_CSV = str(DATA_ROOT / 'ablation_dfs' / 'homology_split' / 'baseline.csv')
+DALI_DIR = str(EXTERNAL_ROOT / 'DaliLite.v5')
+MMSEQS_BINARY_NAME = 'mmseqs'
+APOC_BINARY_NAME = 'apoc'
 
 
 # now the invalid ligands are stored as strings, written one by one.
@@ -18,5 +56,5 @@ RCSB_DESCRIPTOR_KEY = 'rcsb_chem_comp_descriptor'
 RCSB_SMILES_STEREO_KEYS = ('smiles_stereo', 'SMILES_stereo')
 RCSB_SMILES_KEYS = ('smiles', 'SMILES')
 
-SYMMETRY_COUNTS_PATH = '/home/iscb/wolfson/hagairavid/LocAlign/ablation_dfs/ligand_symmetry_counts.json'
+SYMMETRY_COUNTS_PATH = str(DATA_ROOT / 'ablation_dfs' / 'ligand_symmetry_counts.json')
 SYMMETRY_RELAXED_LIGAND_RMSD = 6.0

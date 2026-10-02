@@ -1,5 +1,7 @@
 import logging
 import os
+from aligner_dl.utils.constants import APOC_BINARY_NAME
+from aligner_dl.utils.path_roots import find_binary
 import subprocess
 import tempfile
 import numpy as np
@@ -18,22 +20,7 @@ class APOCAligner:
         if apoc_path:
             self.apoc_path = apoc_path
         else:
-            paths_to_try = [
-                os.path.expanduser("~/LocAlign/apoc/bin/apoc"),
-                "/home/iscb/wolfson/hagairavid/LocAlign/apoc/bin/apoc",
-                "apoc",
-            ]
-            self.apoc_path = None
-            for path in paths_to_try:
-                if os.path.exists(path):
-                    self.apoc_path = path
-                    break
-                if subprocess.run(["which", path], capture_output=True).returncode == 0:
-                    self.apoc_path = path
-                    break
-
-            if not self.apoc_path:
-                raise FileNotFoundError("APOC executable not found. Please install it or provide the path.")
+            self.apoc_path = find_binary(APOC_BINARY_NAME)
 
         # Find fpocket executable
         if fpocket_path:

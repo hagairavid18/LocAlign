@@ -2,6 +2,8 @@ import logging
 import subprocess
 import numpy as np
 import os
+import sys
+from aligner_dl.utils.constants import SOFTALIGN_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class SoftAlignAligner():
-    HOME_PATH = "/home/iscb/wolfson/hagairavid"
+    ALIGN_SCRIPT = os.path.join(SOFTALIGN_DIR, "align.py")
+    MODEL_PATH = os.path.join(SOFTALIGN_DIR, "models", "CONT_SW_05_T_3_1")
     def __init__(self) -> None:  
         self.name = "SoftAlignAligner"
 
@@ -21,8 +24,7 @@ class SoftAlignAligner():
         src_path = os.path.join(ligand_dir, src_name + src_chain + '_non_ligand_.ent')
         tar_path = os.path.join(ligand_dir, tar_name + tar_chain + '_non_ligand_.ent')
         try:
-            align_log = subprocess.run(["/home/iscb/wolfson/hagairavid/miniforge3/envs/miner/bin/python", "/home/iscb/wolfson/hagairavid/SoftAlign/align.py", "--pdb_source", "custom", "--pdb1_id", tar_path, "--pdb2_id", src_path, "--output_dir", ligand_dir, "--model_path", "/home/iscb/wolfson/hagairavid/SoftAlign/models/CONT_SW_05_T_3_1"],
-            # align_log = subprocess.run(["/home/iscb/wolfson/hagairavid/miniforge3/envs/miner/bin/python", "/home/iscb/wolfson/hagairavid/SoftAlign/align.py", "--pdb_source", "custom", "--pdb1_id", tar_path, "--pdb2_id", src_path, "--output_dir", ligand_dir, "--model_type", "Smith-Waterman"],
+            align_log = subprocess.run([sys.executable, self.ALIGN_SCRIPT, "--pdb_source", "custom", "--pdb1_id", tar_path, "--pdb2_id", src_path, "--output_dir", ligand_dir, "--model_path", self.MODEL_PATH],
                                        capture_output=True, text=True)
             npy_path = os.path.join(ligand_dir, f"soft_alignment_{tar_name}{tar_chain}_vs_{src_name}{src_chain}.npz")
             if not os.path.exists(npy_path):

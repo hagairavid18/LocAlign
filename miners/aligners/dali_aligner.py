@@ -6,6 +6,7 @@ import tempfile
 # from objects import Protein 
 import numpy as np
 import os
+from aligner_dl.utils.constants import DALI_DIR as DALI_INSTALL_DIR
 
 
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
@@ -15,16 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 class DaliAligner():
-    HOME_PATH = "/home/iscb/wolfson/hagairavid"
-    DAT_PATH = os.path.join(HOME_PATH, "DaliLite.v5/DAT")
-    IMPORT_PATH = os.path.join(HOME_PATH, "DaliLite.v5/bin/import.pl")
-    DALI_PATH = os.path.join(HOME_PATH, "DaliLite.v5/bin/dali.pl")
+    DALI_DIR = DALI_INSTALL_DIR
+    DAT_PATH = os.path.join(DALI_DIR, "DAT")
+    IMPORT_PATH = os.path.join(DALI_DIR, "bin/import.pl")
+    DALI_PATH = os.path.join(DALI_DIR, "bin/dali.pl")
     def __init__(self) -> None:  
         self.name = "DaliAligner"
         self._check_paths()
     
     def _check_paths(self):
-        assert os.path.exists(self.HOME_PATH), f"{self.HOME_PATH} dosn't exist, can't use Dali"
+        assert os.path.exists(self.DALI_DIR), f"{self.DALI_DIR} dosn't exist, can't use Dali"
         assert os.path.exists(self.DAT_PATH), f"{self.DAT_PATH} dosn't exist, can't use Dali"
         assert os.path.exists(self.IMPORT_PATH), f"{self.IMPORT_PATH} dosn't exist, can't use Dali"
         assert os.path.exists(self.DALI_PATH), f"{self.DALI_PATH} dosn't exist, can't use Dali"
@@ -54,8 +55,9 @@ class DaliAligner():
         tar_name, tar_chain = tar_protein._pdb_name, tar_protein._chain_id
         src_path = os.path.join('..', src_name + src_chain + '_non_ligand_.ent')
         tar_path = os.path.join('..', tar_name + tar_chain + '_non_ligand_.ent')
+        original_cwd = os.getcwd()
         try:
-            temp_dir = tempfile.mkdtemp(prefix=os.path.join(self.HOME_PATH, "LocAlign", ligand_dir + '/'))
+            temp_dir = tempfile.mkdtemp(prefix=ligand_dir + '/')
             os.makedirs(temp_dir, exist_ok=True)
             os.chdir(temp_dir)
             import_1 = subprocess.run([self.IMPORT_PATH, '--pdbfile', src_path, '--pdbid', src_name, '--dat', self.DAT_PATH], capture_output=True, text=True, check=True)
@@ -66,7 +68,7 @@ class DaliAligner():
                                               ], capture_output=True, text=True, check=True)
 
             matrix, rmsd, _ = DaliAligner.extract_matrices_combined(f'{tar_name}{tar_chain}.txt')
-            os.chdir('/home/iscb/wolfson/hagairavid/LocAlign')
+            os.chdir(original_cwd)
             try:
                 shutil.rmtree(temp_dir)
             except OSError as e:
@@ -81,7 +83,7 @@ class DaliAligner():
                 return [], [], [], []
             
         except Exception as e:
-            os.chdir('/home/iscb/wolfson/hagairavid/LocAlign')
+            os.chdir(original_cwd)
             logging.info(e)
             try:
                 shutil.rmtree(temp_dir)

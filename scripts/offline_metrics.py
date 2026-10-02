@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "aligner_dl"))
-from utils.constants import SYMMETRY_COUNTS_PATH, SYMMETRY_RELAXED_LIGAND_RMSD  # noqa: E402
+from utils.constants import ABLATION_SPLIT_DIRS, SYMMETRY_COUNTS_PATH, SYMMETRY_RELAXED_LIGAND_RMSD  # noqa: E402
 
 # Configuration: Success criteria thresholds
 SUCCESS_CRITERIA = {
@@ -16,10 +16,7 @@ SUCCESS_CRITERIA = {
 }
 
 # Directories containing experiment CSVs
-ABLATION_DIRS = [
-    "/home/iscb/wolfson/hagairavid/LocAlign/ablation_dfs/homology_split",
-    "/home/iscb/wolfson/hagairavid/LocAlign/ablation_dfs/ligand_split"
-]
+ABLATION_DIRS = ABLATION_SPLIT_DIRS
 
 
 

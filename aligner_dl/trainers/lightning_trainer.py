@@ -1,3 +1,4 @@
+import copy
 import glob
 import torch
 import logging
@@ -12,10 +13,12 @@ import argparse
 import lightning as L
 import sys
 
-# add aligner_dl to path
-sys.path.append("./aligner_dl")
+# put this checkout first on sys.path, ahead of any other checkout installed in the environment
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.utils.collate import custom_collate_fn
 from models.utils.misc import build_object, flatten_dict
+from utils.config_paths import resolve_config_paths
 
 
 # Argument parser setup
@@ -43,7 +46,8 @@ def main():
 
     # Load configuration
     with open(args.config) as f:
-        config = yaml.safe_load(f)
+        raw_config = yaml.safe_load(f)
+    config = resolve_config_paths(copy.deepcopy(raw_config))
 
     # Setup datasets and data loaders
     if 'train' in config['dataset']:
@@ -92,7 +96,12 @@ def main():
         
         api = API(api_key=comet_api_key)
 
-        workspace = "hagairavid18"
+        workspace = config['trainer'].get('comet_workspace') or os.getenv("COMET_WORKSPACE")
+        if not workspace:
+            raise ValueError(
+                "Comet workspace not set. Set trainer.comet_workspace in the config "
+                "or export COMET_WORKSPACE='your_workspace'"
+            )
         project = "pocket-aligner"
         experiment_name = config['trainer']['exp_name']
 
@@ -163,7 +172,7 @@ def main():
     
     val_dataset_config_path = os.path.join(f"checkpoints/{config['trainer']['exp_name']}", "dataset_config.yaml")
     with open(val_dataset_config_path, 'w') as f:
-        yaml.dump(config['dataset']['validation'], f)
+        yaml.dump(raw_config['dataset']['validation'], f)
 
     print(f"Saved model config to {model_config_path}")
 

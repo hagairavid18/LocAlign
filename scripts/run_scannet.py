@@ -3,8 +3,9 @@ import argparse
 import pickle
 import numpy as np
 import sys
-sys.path.append(os.getcwd())
-sys.path.append(os.path.join(os.getcwd(), 'ScanNet_mini'))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO_ROOT)
+sys.path.insert(0, os.path.join(REPO_ROOT, 'ScanNet_mini'))
 os.environ["KERAS_BACKEND"] = "torch"
 import warnings
 warnings.simplefilter("ignore")

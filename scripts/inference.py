@@ -13,8 +13,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 import pickle
-sys.path.append(os.getcwd())
-sys.path.append(os.path.join(os.getcwd(), 'aligner_dl'))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO_ROOT, 'aligner_dl'))
+sys.path.insert(0, REPO_ROOT)
 
 from aligner_dl.datasets import ScanNetDataset
 from aligner_dl.models.utils.collate import custom_collate_fn

@@ -7,9 +7,10 @@ import pandas as pd
 from multiprocessing import Pool, cpu_count
 import os
 
-sys.path.append('/home/iscb/wolfson/hagairavid/LocAlign')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from miners.objects import Protein
+from aligner_dl.utils.constants import HOMOLOGY_BASELINE_CSV  # noqa: E402
+from miners.objects import Protein  # noqa: E402
 
 
 def compute_pocket_for_tuple(args_tuple: tuple[str, str, str], distance_thresh: float = 4.0) -> tuple:
@@ -41,7 +42,7 @@ def compute_pocket_for_tuple(args_tuple: tuple[str, str, str], distance_thresh: 
 
 def main():
     # Load baseline.csv
-    baseline_path = '/home/iscb/wolfson/hagairavid/LocAlign/ablation_dfs/homology_split/baseline.csv'
+    baseline_path = HOMOLOGY_BASELINE_CSV
     print(f"Loading {baseline_path}...")
     df = pd.read_csv(baseline_path, index_col=0)
     
