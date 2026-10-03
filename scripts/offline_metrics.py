@@ -177,7 +177,7 @@ def main():
                 fig, ax = plt.subplots(figsize=(8, 4))
                 ax.bar(counts.index, counts.values, color="#4C6FFF")
                 ax.set_xlabel("CATH degree", fontsize=13)
-                ax.set_ylabel("Number of pairs (validation set)", fontsize=13)
+                ax.set_ylabel("Number of pairs (test set)", fontsize=13)
                 ax.set_title("Baseline: pairs per CATH degree (homology split, validation)", fontsize=16)
                 ax.tick_params(axis="both", labelsize=11)
                 ax.spines["top"].set_visible(False)

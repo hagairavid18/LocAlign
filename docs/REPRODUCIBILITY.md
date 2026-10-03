@@ -20,8 +20,12 @@ evaluation scripts.
 | Evaluation scripts | `scripts/offline_metrics.py`, `scripts/offline_metrics_apo.py` |
 | Training entrypoint | `aligner_dl/trainers/lightning_trainer.py` |
 
-**Not released**: trained model checkpoints other than the homology-split checkpoint
-`checkpoints/baseline/epoch=9-step=87120.ckpt` (the remaining ones are not distributed);
+**Released checkpoints**: the homology-split model `checkpoints/baseline/epoch=9-step=87120.ckpt`
+and the ligand-split model `checkpoints/baseline-ligand-split/epoch=8-step=97191.ckpt`, each with
+its `model_config.yaml`, `dataset_config.yaml` and pLRMSD/eLRMSD calibration models, which
+`scripts/inference.py` loads from the checkpoint's directory by default.
+
+**Not released**: the ablation checkpoints;
 raw PDB/mmCIF structures, the raw BioLiP text dump, and the full CATH classification files
 (all large, third-party, publicly redownloadable — see version pins below instead of
 redistributing them); the `train.csv` splits' row-level ligand atom mappings (~80k-100k pairs —
@@ -239,8 +243,8 @@ still `validation`); it was run once per epoch and logged (Comet metrics and
 
 - **Homology split** (`checkpoints/baseline/epoch=9-step=87120.ckpt`): trained on `train.csv`
   for the full 10-epoch schedule; the final checkpoint was used.
-- **Ligand split**: for the ligand split, the checkpoint after 9 of the 10 scheduled epochs was
-  used (the learning-rate schedule spans 10 epochs). To reproduce, use
+- **Ligand split** (`checkpoints/baseline-ligand-split/epoch=8-step=97191.ckpt`): the checkpoint
+  after 9 of the 10 scheduled epochs was used (the learning-rate schedule spans 10 epochs). To reproduce, use
   `aligner_dl/configs/loc_align_ligand_split.yaml` (and `loc_align_ligand_split_quality0.yaml` /
   `loc_align_ligand_split_ligandloss0.yaml` for the two ablations). These set
   `trainer.max_epochs: 9` while keeping the OneCycleLR length at 10 epochs
@@ -298,8 +302,8 @@ unittest discover -s tests`. The AUC tests are skipped when scikit-learn is not 
 
 ## Known limitations
 
-- Only the homology-split checkpoint (`checkpoints/baseline/epoch=9-step=87120.ckpt`) is released; retrain
-  the others from the documented commands to reproduce the reported numbers.
+- Only the homology-split and ligand-split main checkpoints are released; retrain the ablations
+  from the documented commands to reproduce their numbers.
 - Per-pair evaluation outputs depend on the GPU type. The same checkpoint and config give identical
   per-pair results on GPUs of one type (V100), but on another type (L40S) most per-pair values
   change while the aggregates agree. For example, the ligand-split binding-site fraction is 0.1615

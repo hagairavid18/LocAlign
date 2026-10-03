@@ -177,7 +177,7 @@ def split_csv(
         # Create datasets for each split based on ligand_id
         train_df = df[df['ligand_id'].isin(train_ligands)]
         val_df = df[df['ligand_id'].isin(val_ligands)]
-        val_df = val_df.groupby('ligand_id').head(300)  # Ensure each ligand is present in the validation set
+        val_df = val_df.groupby('ligand_id').head(300)
         test_df = df[df['ligand_id'].isin(test_ligands)]
     else:
 
@@ -319,8 +319,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Split CSV by ligand_id column or regular row-based split")
     parser.add_argument('--input_csv', type=str, required=True, help="Path to the input CSV file")
     parser.add_argument('--output_dir', type=str, required=True, help="Directory to save the output CSV files")
-    parser.add_argument('--test_size', type=float, default=0.2, help="Fraction of the data to be used as the test set")
-    parser.add_argument('--val_size', type=float, default=0.1, help="Fraction of the total data to be used as validation set")
+    parser.add_argument('--test_size', type=float, default=0.2, help="Fraction drawn as an extra held-out partition, written as extra_holdout.csv when non-empty")
+    parser.add_argument('--val_size', type=float, default=0.1, help="Fraction of the total data drawn as the held-out set, written as test.csv")
     parser.add_argument('--mmseq_id_threshold', type=float, default=0.5, help="MMseqs2 sequence identity threshold for clustering")
     parser.add_argument('--group_by_ligand', action='store_true', help="Whether to group by ligand_id when splitting")
 
