@@ -217,15 +217,8 @@ class ScanNetDataset(BasePairDataset):
         ligand_id: str,
         esm_embedding_dict: dict[int, torch.Tensor] | None = None
         ) -> tuple[torch.Tensor, torch.Tensor]:
-        scannet_embedding_path = os.path.join(self._scannet_dir, chain + '_scannet_atoms.pkl')
-        if not os.path.exists(scannet_embedding_path):
-            logger.info(f"Can't find embedding path for protein: {chain}")
-            raise ValueError(
-                f"Can't find scannet embedding path for protein: {chain}"
-            )
-        with gzip.open(scannet_embedding_path, 'rb') as f:
-            data = pickle.load(f)
-        
+        data = self._load_scannet_data(chain)
+
         residue_embeddings = data["residue_embeddings"]
         residue_ids = data["residue_ids"]
         atom_residue_index = np.clip(data["sequence_indices_atom"], 0, len(residue_ids)-1)  # Residue index for each atom. Clip to guarantee out of index.
@@ -294,6 +287,17 @@ class ScanNetDataset(BasePairDataset):
             "atom_original_indices": kept_idx
         }
         return {key: torch.tensor(value) for key, value in ret_dict.items()}
+
+    def _load_scannet_data(self, chain: str) -> dict:
+        """Load the raw ScanNet feature dict for a chain (overridable, e.g. for packed in-memory features)."""
+        scannet_embedding_path = os.path.join(self._scannet_dir, chain + '_scannet_atoms.pkl')
+        if not os.path.exists(scannet_embedding_path):
+            logger.info(f"Can't find embedding path for protein: {chain}")
+            raise ValueError(
+                f"Can't find scannet embedding path for protein: {chain}"
+            )
+        with gzip.open(scannet_embedding_path, 'rb') as f:
+            return pickle.load(f)
 
     def _read_ligand(self, ligand_id: str, chain: str) -> tuple[torch.Tensor, list[str]]:
         ligand_model_path = os.path.join(self._base_data_path, ligand_id,  chain + '_ligand.pdb')
