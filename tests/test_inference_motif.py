@@ -66,25 +66,31 @@ class DatabaseSearchMotifTest(unittest.TestCase):
             self.assertTrue(all(pair.tar_motif is None for pair in runner._pairs))
 
 
+@unittest.skipIf(InferenceRunner is None, "inference dependencies are not installed")
 class ParseMotifTest(unittest.TestCase):
-    @unittest.skipIf(InferenceRunner is None, "inference dependencies are not installed")
     def test_accepted_formats(self):
         parse = InferenceRunner._parse_motif
         self.assertEqual(parse("10,11,12"), [10, 11, 12])
         self.assertEqual(parse("[10, 11]"), [10, 11])
         self.assertEqual(parse(7), [7])
+        self.assertEqual(parse("[-3,5]"), [-3, 5])
         self.assertIsNone(parse(None))
+        self.assertIsNone(parse(float("nan")))
         self.assertIsNone(parse(""))
 
-    @unittest.skipIf(InferenceRunner is None, "inference dependencies are not installed")
+    def test_insertion_code_maps_to_residue_number(self):
+        parse = InferenceRunner._parse_motif
+        self.assertEqual(parse("[32,95C]"), [32, 95])
+        self.assertEqual(parse("[35H,393,96H]"), [35, 393, 96])
+
     def test_unparsable_motif_warns_instead_of_vanishing_silently(self):
         import contextlib
         import io
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
-            result = InferenceRunner._parse_motif("[32, 95C]")
+            result = InferenceRunner._parse_motif("[A, B]")
         self.assertIsNone(result)
-        self.assertIn("95C", buffer.getvalue())
+        self.assertIn("[A, B]", buffer.getvalue())
 
 
 if __name__ == "__main__":

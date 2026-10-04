@@ -50,6 +50,7 @@ import argparse
 import ast
 import glob
 import os
+import re
 import sys
 from math import comb
 
@@ -370,12 +371,14 @@ def same_hit_scores(
 def parse_motif(
     val,
 ) -> tuple[int | str, ...]:
-    """Residues of a motif string such as '[1, 2, 3]' or '1,2,3', as ints.
+    """Residue numbers of a motif string such as '[1, 2, 3]' or '1,2,3', as ints.
 
-    Residues with an insertion code (e.g. '95C') are kept as stripped strings.
+    A residue with an insertion code (e.g. '95C') maps to its residue number (95), as in
+    InferenceRunner._parse_motif; tokens that are not residues are kept as strings.
     """
     tokens = (x.strip().strip('\'"') for x in str(val).strip('[]() ').split(','))
-    return tuple(int(x) if x.lstrip('-').isdigit() else x for x in tokens if x)
+    matches = ((x, re.fullmatch(r'(-?\d+)[A-Za-z]?', x)) for x in tokens if x)
+    return tuple(int(m.group(1)) if m else x for x, m in matches)
 
 
 def main():
