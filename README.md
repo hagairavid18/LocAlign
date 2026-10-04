@@ -42,6 +42,8 @@ python scripts/inference.py \
 
 The CSV must contain columns: `tar_protein`, `tar_chain`, `src_protein`, `src_chain`. Optional columns: `tar_motif`, `src_motif` (list of residue IDs), `tar_ligand`, `src_ligand`, `ligand` (defaults to 'general').
 
+Inference processes one pair at a time and runs every chain at its full size: there is no limit on the number of atoms and no subsampling. Use `--max_atoms N` to cap each chain at `N` atoms (larger chains are randomly subsampled and every chain is padded to `N`), for example to bound memory.
+
 **Supported protein identifiers:**
 - PDB IDs (e.g., `1ABC`)
 - UniProt IDs (e.g., `P12345`, `Q8WZ42`)

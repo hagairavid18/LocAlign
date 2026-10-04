@@ -34,7 +34,7 @@ class ScanNetDataset(BasePairDataset):
             min_cath: int = 0, 
             max_cath: int = 8, 
             bbc_filter_ratio: float = 0.0, 
-            max_length: int = 2000, 
+            max_length: int | None = 2000, 
             seed: int| None = None, 
             inference: bool = False, 
             ligand_column: str = 'ligand_id',
@@ -43,7 +43,8 @@ class ScanNetDataset(BasePairDataset):
             esm_model: str = None,
             base_esm_embedding_path: str = LIGAND_DIR,
             use_esm: bool = True,
-            esm_layer: int = 28
+            esm_layer: int = 28,
+            min_length: int = 0
             ) -> None:
         """
         Initializes the ScanNetDataset.
@@ -57,7 +58,13 @@ class ScanNetDataset(BasePairDataset):
             max_cath (int, optional): _description_. Defaults to 8.
             bbc_filter_ratio (float, optional): _description_. Defaults to 0.0.
             seed (int | None, optional): _seed for random operations. Defaults to None.
-            max_length (int, optional): _maximum number of atoms to consider. Defaults to 2000.
+            max_length (int | None, optional): Maximum number of atoms per chain. Chains above it are randomly
+                subsampled and every chain is padded to exactly this length. None removes the cap: no
+                chain is subsampled and each chain is padded only to its own number of atoms (at least
+                `min_length`), so samples of different sizes cannot be stacked and the batch size must
+                be 1. Only allowed with inference=True. Defaults to 2000.
+            min_length (int, optional): Minimum padded length when max_length is None. The keypoint
+                selection takes the top_k + 1 atoms of every chain, so inference sets this to top_k + 1.
             inference (bool, optional): Whether the dataset is used for inference. Defaults to False.
             ligand_column (str, optional): Column name for ligand IDs in the dataframe. Defaults to ''.
             esm_model (str, optional): Name of the ESM model to use. Defaults to None.
@@ -80,7 +87,10 @@ class ScanNetDataset(BasePairDataset):
         self._src_ligand_column = src_ligand_column or ligand_column
         
         self._mmcif_parser = PDBParser()
+        if max_length is None and not inference:
+            raise ValueError("max_length=None (no cap, per-chain padding) is only supported with inference=True")
         self._max_atoms = max_length 
+        self._min_atoms = min_length
         self._scannet_dir = base_scannet_path
                 
         self._with_esm = use_esm
@@ -141,14 +151,15 @@ class ScanNetDataset(BasePairDataset):
         for key in ["src", "tar"]:
             embedding_dict = embedding_dicts[key]
             n_atoms = embedding_dict['atom_embeddings'].shape[0]
+            n_pad = self._padded_length(n_atoms) - n_atoms
 
-            ret[f'{key}_pretrained_embeddings'] = F.pad(embedding_dict[f'atom_embeddings'], (0, 0, 0, self._max_atoms - n_atoms))
-            ret[f'{key}_frames'] = F.pad(embedding_dict[f'atom_frames'], (0, 0, 0, 0, 0, self._max_atoms - n_atoms))
-            ret[f'{key}_neighbors'] = F.pad(embedding_dict[f'atom_neighbors'], (0, 0, 0, self._max_atoms - n_atoms), value=-1)
-            ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'atom_residue_indices'], (0, self._max_atoms - n_atoms))
-            ret[f'{key}_atom_types'] = F.pad(embedding_dict[f'atom_types'], (0, self._max_atoms - n_atoms))
-            ret[f'{key}_atom_original_indices'] = F.pad(embedding_dict[f'atom_original_indices'], (0, self._max_atoms - n_atoms))
-            ret[f'{key}_mask'] = F.pad(torch.ones(n_atoms), (0, self._max_atoms - n_atoms), value=0).bool()
+            ret[f'{key}_pretrained_embeddings'] = F.pad(embedding_dict[f'atom_embeddings'], (0, 0, 0, n_pad))
+            ret[f'{key}_frames'] = F.pad(embedding_dict[f'atom_frames'], (0, 0, 0, 0, 0, n_pad))
+            ret[f'{key}_neighbors'] = F.pad(embedding_dict[f'atom_neighbors'], (0, 0, 0, n_pad), value=-1)
+            ret[f'{key}_residue_indices'] = F.pad(embedding_dict[f'atom_residue_indices'], (0, n_pad))
+            ret[f'{key}_atom_types'] = F.pad(embedding_dict[f'atom_types'], (0, n_pad))
+            ret[f'{key}_atom_original_indices'] = F.pad(embedding_dict[f'atom_original_indices'], (0, n_pad))
+            ret[f'{key}_mask'] = F.pad(torch.ones(n_atoms), (0, n_pad), value=0).bool()
 
         ret['metadata'] = row.to_dict()
         ret['metadata']['tar_ligand'] = tar_ligand_id
@@ -166,9 +177,9 @@ class ScanNetDataset(BasePairDataset):
                     initial_importance = torch.zeros(n_atoms, dtype=torch.float32)
                     for res_id in motif_val:
                         initial_importance[residue_indices == res_id] = 1e6
-                    ret[f'{key}_initial_importance'] = F.pad(initial_importance, (0, self._max_atoms - n_atoms))
+                    ret[f'{key}_initial_importance'] = F.pad(initial_importance, (0, self._padded_length(n_atoms) - n_atoms))
                 else:
-                    ret[f'{key}_initial_importance'] = torch.zeros(self._max_atoms, dtype=torch.float32)       
+                    ret[f'{key}_initial_importance'] = torch.zeros(self._padded_length(embedding_dicts[key]['atom_embeddings'].shape[0]), dtype=torch.float32)
         
         if self.inference:
             return ret
@@ -190,9 +201,18 @@ class ScanNetDataset(BasePairDataset):
             atom_coordinates = embedding_dicts[key]['atom_frames'][:, 0, :]
             pocket_mask = self._compute_pocket_mask(
                 atom_coordinates, ligand_coordinates, embedding_dicts[key]['atom_residue_indices'])
-            ret[f'{key}_pocket_mask'] = F.pad(pocket_mask, (0, self._max_atoms - n_atoms), value=0).bool()
+            ret[f'{key}_pocket_mask'] = F.pad(pocket_mask, (0, self._padded_length(n_atoms) - n_atoms), value=0).bool()
 
         return ret
+
+    def _padded_length(
+        self,
+        n_atoms: int,
+    ) -> int:
+        """Length a chain of n_atoms atoms is padded to: max_length, or its own size (at least min_length) without a cap."""
+        if self._max_atoms is not None:
+            return self._max_atoms
+        return max(n_atoms, self._min_atoms)
 
     def _compute_pocket_mask(
         self,
@@ -250,7 +270,7 @@ class ScanNetDataset(BasePairDataset):
 
         # --- Subsample to at most max_atoms ---
         max_atoms = self._max_atoms 
-        if len(kept_idx) > max_atoms:
+        if max_atoms is not None and len(kept_idx) > max_atoms:
             kept_idx = np.random.choice(kept_idx, size=max_atoms, replace=False)
 
         # Now build the original->new index map for only those kept
