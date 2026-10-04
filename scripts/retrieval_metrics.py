@@ -381,6 +381,49 @@ def parse_motif(
     return tuple(int(m.group(1)) if m else x for x, m in matches)
 
 
+def patch_hits(
+    per_query: dict[int, pd.DataFrame],
+    patch_dirs: list[str],
+    score: str,
+) -> dict[int, pd.DataFrame]:
+    """Replace scores with those of re-scored entries and re-rank.
+
+    For each query with a hit list in a patch dir, the rows of the same (chain_id, ligand)
+    take the patch's normalized_pLRMSD, pLRMSD and eLRMSD (whichever the patch has). A patch
+    that covers every row of the query replaces its list. Lists are then stably re-sorted by
+    `score`, so ties keep their previous order (database order for unpatched rows). A patch
+    row missing from the query's list raises.
+    """
+    key = ['chain_id', 'ligand']
+    patched = {}
+    for patch_dir in patch_dirs:
+        for path in sorted(glob.glob(os.path.join(patch_dir, RETRIEVAL_HIT_FILE_PATTERN))):
+            qi = int(os.path.basename(path)[1:4])
+            if qi not in per_query:
+                continue
+            patch = pd.read_csv(path, dtype={'chain_id': str, 'cluster_id': str, 'ligand': str})
+            base = per_query[qi].set_index(key)
+            pidx = patch.set_index(key)
+            unknown = pidx.index.difference(base.index)
+            if len(unknown):
+                raise ValueError(f'{path}: {len(unknown)} entries not in the hit list of query {qi}')
+            cols = [c for c in SCORE_COLUMNS if c in pidx.columns]
+            if base.index.isin(pidx.index).all():
+                base = pidx[['cluster_id'] + cols].copy()
+                patched[qi] = 'replaced'
+            else:
+                for c in cols:
+                    if c not in base.columns:
+                        base[c] = np.nan
+                    base.loc[pidx.index, c] = pidx[c].values
+                patched[qi] = len(pidx)
+            per_query[qi] = base.reset_index() \
+                .sort_values(score, na_position='last', kind='mergesort').reset_index(drop=True)
+    replaced = sorted(q for q, v in patched.items() if v == 'replaced')
+    print(f'patched {len(patched)} queries' + (f'; replaced the lists of queries {replaced}' if replaced else ''))
+    return per_query
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--hits_dir', default=None, help='per-query hit lists; required unless --partials_dir is given')
@@ -393,6 +436,9 @@ def main():
     ap.add_argument('--export', action='store_true', help=f'write <out_dir>/{COMPACT_NAME}')
     ap.add_argument('--queries', default=RETRIEVAL_QUERIES_CSV)
     ap.add_argument('--clusters', default=RETRIEVAL_CLUSTERS_CSV)
+    ap.add_argument('--patch_hits_dir', nargs='+', default=None,
+                    help='hit lists of re-scored entries (retrieval_fast.py on a database subset, or a full '
+                         're-run of a query); their scores replace those of the same (chain_id, ligand)')
     ap.add_argument('--manifest', default=RETRIEVAL_PACKED_MANIFEST,
                     help='packing manifest, used to check that partial scores are complete')
     args = ap.parse_args()
@@ -415,6 +461,8 @@ def main():
         per_query = load_hit_files(args.hits_dir, args.score)
     if not per_query:
         raise SystemExit('no hit lists found')
+    if args.patch_hits_dir:
+        per_query = patch_hits(per_query, args.patch_hits_dir, args.score)
     hits = annotate(rank_hits(per_query, args.score), queries)
     missing = sorted(set(queries['query_idx']) - set(hits['query_idx']))
     if missing:
