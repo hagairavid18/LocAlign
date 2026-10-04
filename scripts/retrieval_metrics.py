@@ -110,10 +110,14 @@ def rebuild_from_partials(
 
     Every <partials_dir>/<tag>/ with a readable pairs.csv contributes its pairs; the
     scores come from the shard_XXX.csv.gz files present (pair_idx, pLRMSD, eLRMSD).
-    A pair is identified by (query, src_protein, src_chain, src_ligand, src_motif);
-    a pair scored in any tag dir counts as scored. Queries are kept if they are in
-    `only` (when given) and, when `manifest_csv` exists, every pair whose DB chain
-    has status 'ok' is scored. Returns {query_idx: frame} with chain_id, cluster_id,
+    Each query is taken from a single tag dir, never merged across dirs (another dir
+    can hold an earlier run of the same query with different settings): the dir in
+    which every pair whose DB chain has status 'ok' in `manifest_csv` is scored; if
+    several qualify, the most recently modified one; without a manifest, the dir with
+    the most scored pairs. Queries are kept if they are in `only` (when given) and a
+    complete dir exists. A query whose pairs were written with an empty tar_motif (a
+    motif the inference parser could not read) is matched on protein, chain and ligand
+    when that is unique. Returns {query_idx: frame} with chain_id, cluster_id,
     ligand, normalized_pLRMSD, pLRMSD and eLRMSD, in database order with the query
     chain removed, stably sorted by `score` with unscored pairs last.
     """
@@ -121,6 +125,28 @@ def rebuild_from_partials(
         (r.src_protein, r.src_chain, r.src_ligand, parse_motif(r.src_motif)): int(r.query_idx)
         for r in queries.itertuples()
     }
+    site_counts = queries.groupby(['src_protein', 'src_chain', 'src_ligand']).size()
+    qmap_no_motif = {
+        (r.src_protein, r.src_chain, r.src_ligand): int(r.query_idx)
+        for r in queries.itertuples()
+        if site_counts[(r.src_protein, r.src_chain, r.src_ligand)] == 1
+    }
+    matched_without_motif = set()
+
+    def query_of(
+        protein: str,
+        chain: str,
+        ligand: str,
+        motif: str,
+    ) -> int:
+        motif = parse_motif(motif) if isinstance(motif, str) else ()
+        qi = qmap.get((protein, chain, ligand, motif), -1)
+        if qi < 0 and not motif:
+            qi = qmap_no_motif.get((protein, chain, ligand), -1)
+            if qi >= 0:
+                matched_without_motif.add(qi)
+        return qi
+
     frames = []
     for tag_dir in sorted(glob.glob(os.path.join(partials_dir, '*', ''))):
         try:
@@ -130,14 +156,15 @@ def rebuild_from_partials(
             print(f'skipping {tag_dir}: {e!r}')
             continue
         pairs['pair_idx'] = pairs['pair_idx'].astype(int)
-        pairs['query_idx'] = [qmap.get((a, b, c, parse_motif(d)), -1)
-                              for a, b, c, d in pairs[TARGET_KEY].itertuples(index=False)]
+        pairs['query_idx'] = [query_of(a, b, c, d) for a, b, c, d in pairs[TARGET_KEY].itertuples(index=False)]
         pairs = pairs[pairs['query_idx'] >= 0]
         if only is not None:
             pairs = pairs[pairs['query_idx'].isin(only)]
         if pairs.empty:
             continue
         pairs['db_order'] = pairs.groupby('query_idx').cumcount()
+        pairs['tag_dir'] = tag_dir
+        pairs['tag_mtime'] = os.path.getmtime(tag_dir)
         shard_paths = sorted(glob.glob(os.path.join(tag_dir, RETRIEVAL_PARTIAL_SHARD_PATTERN)))
         if shard_paths:
             scores = pd.concat([pd.read_csv(p) for p in shard_paths], ignore_index=True)
@@ -145,13 +172,13 @@ def rebuild_from_partials(
             scores = pd.DataFrame(columns=['pair_idx', 'pLRMSD', 'eLRMSD'])
         scores['pair_idx'] = scores['pair_idx'].astype(int)
         frames.append(pairs.merge(scores[['pair_idx', 'pLRMSD', 'eLRMSD']], on='pair_idx', how='left'))
+    if matched_without_motif:
+        print(f'queries {sorted(matched_without_motif)} were scored without a motif (empty tar_motif in '
+              f'pairs.csv) and are matched on protein, chain and ligand')
     if not frames:
         return {}
     allp = pd.concat(frames, ignore_index=True)
     allp['scored'] = allp['pLRMSD'].notna()
-    allp = allp.sort_values('scored', ascending=False, kind='mergesort') \
-        .drop_duplicates(['query_idx'] + QUERY_KEY) \
-        .sort_values(['query_idx', 'db_order'])
     allp['chain_id'] = allp['src_protein'] + allp['src_chain']
     ok_chains = None
     if manifest_csv and os.path.exists(manifest_csv):
@@ -162,10 +189,17 @@ def rebuild_from_partials(
     cmap = pd.read_csv(clusters_csv, dtype=str).set_index('chain_id')['cluster_id']
     q = queries.set_index('query_idx')
     out, incomplete = {}, []
-    for qi, p in allp.groupby('query_idx', sort=True):
-        if ok_chains is not None and not p.loc[p['chain_id'].isin(ok_chains), 'scored'].all():
+    for qi, pq in allp.groupby('query_idx', sort=True):
+        candidates = []
+        for tag_dir, p in pq.groupby('tag_dir', sort=False):
+            complete = ok_chains is None or p.loc[p['chain_id'].isin(ok_chains), 'scored'].all()
+            if complete:
+                candidates.append((int(p['scored'].sum()), p['tag_mtime'].iat[0], tag_dir, p))
+        if not candidates:
             incomplete.append(int(qi))
             continue
+        key = (lambda c: c[1]) if ok_chains is not None else (lambda c: c[0])
+        p = max(candidates, key=key)[3].sort_values('db_order')
         p = p[p['chain_id'] != q.at[qi, 'src_protein'] + q.at[qi, 'src_chain']]
         plrmsd, elrmsd = p['pLRMSD'].astype(float), p['eLRMSD'].astype(float)
         h = pd.DataFrame({
