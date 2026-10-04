@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset
 
 from utils.misc import deserialize_nested_lists
-from utils.constants import ALL_INVALID_LIGANDS
+from utils.constants import ALL_INVALID_LIGANDS, PAIR_ID_COLUMNS
 
 import random
 import numpy as np
@@ -59,7 +59,7 @@ class BasePairDataset(Dataset):
 
     def _read_data_path(self) -> pd.DataFrame:
         assert os.path.exists(self._df_path), f"Can't find path {self._df_path}"
-        pairs = pd.read_csv(self._df_path)
+        pairs = pd.read_csv(self._df_path, dtype={c: str for c in PAIR_ID_COLUMNS})
         if 'index' in pairs.columns:
             pairs = pairs.drop('index', axis=1)
         if not self.inference:
