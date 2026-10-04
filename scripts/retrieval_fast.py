@@ -22,7 +22,8 @@ features come from the per-file cache (identical content).
 
 Resumable and preemption-safe: finished queries (<hits_dir>/qIII.csv.gz) are
 skipped; per-shard partial scores are written atomically to
-<partials_dir>/<group-hash>/shard_XXX.csv.gz (pair_idx, pLRMSD, eLRMSD; pair_idx
+<partials_dir>/<group-hash>/shard_XXX.csv.gz (the hash covers the queries, seed,
+subsampling, database content, checkpoint and motif parser version) (pair_idx, pLRMSD, eLRMSD; pair_idx
 indexes <partials_dir>/<group-hash>/pairs.csv) and reused after a restart, so a
 preempted job resumes at the next unfinished shard.
 
@@ -78,6 +79,7 @@ from utils.constants import (  # noqa: E402
     RETRIEVAL_DATABASE_CSV,
     RETRIEVAL_HIT_FILE_FORMAT,
     RETRIEVAL_HITS_FAST_DIR,
+    RETRIEVAL_MOTIF_PARSER_VERSION,
     RETRIEVAL_PACKED_DIR,
     RETRIEVAL_PARTIAL_PAIRS_CSV,
     RETRIEVAL_PARTIAL_SHARD_FORMAT,
@@ -203,6 +205,17 @@ def load_shard(
                 raise
 
 
+def file_digest(
+    path: str,
+) -> str:
+    """SHA-1 of a file's content (part of the partials tag, so a changed database starts a new tag)."""
+    h = hashlib.sha1()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 20), b''):
+            h.update(block)
+    return h.hexdigest()[:12]
+
+
 def seed_everything(
     seed,
 ):
@@ -269,7 +282,8 @@ def main():
     print(f'queries {qidx}; to do {todo}', flush=True)
     if not todo:
         return
-    tag_str = ','.join(map(str, todo)) + f'|{args.seed}|{args.random_subsample}'
+    tag_str = ','.join(map(str, todo)) + f'|{args.seed}|{args.random_subsample}' \
+        + f'|{file_digest(args.database)}|{os.path.abspath(args.checkpoint)}|motif_parser={RETRIEVAL_MOTIF_PARSER_VERSION}'
     if args.fp16_roundtrip:
         tag_str += '|fp16'
     tag = hashlib.sha1(tag_str.encode()).hexdigest()[:10]

@@ -121,6 +121,7 @@ ESM_CACHE_NAME = 'esm_cache_esm2_t30_150M_UR50D_18'
 BIOLIP_NR_DB_PATH = str(CHECKOUT_ROOT / 'example_inputs' / 'biolip2_nr_database.csv')
 PLRMSD_AUC_DIR = str(DATA_ROOT / 'results' / 'plrmsd_auc')
 PAIR_KEY_COLUMNS = ['tar_protein', 'tar_chain', 'src_protein', 'src_chain']
+PAIR_ID_COLUMNS = PAIR_KEY_COLUMNS + ['ligand', 'tar_ligand', 'src_ligand', 'ligand_id']
 INFERENCE_RAW_COLUMNS = {
     '_embedding': 'embedding_similarity',
     '_gap': 'entropy',
@@ -178,3 +179,5 @@ RETRIEVAL_PARTIAL_SHARD_FORMAT = 'shard_{:03d}.csv.gz'
 RETRIEVAL_PARTIAL_SHARD_PATTERN = 'shard_[0-9][0-9][0-9].csv.gz'
 RETRIEVAL_TOP_KS = (1, 3, 5, 10)
 RETRIEVAL_LIGAND_SIZE_CUT = 10
+RETRIEVAL_MOTIF_PARSER_VERSION = 2
+RETRIEVAL_HOMOLOG_MIN_TM = 0.6

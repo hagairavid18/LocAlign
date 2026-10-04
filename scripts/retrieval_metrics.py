@@ -1,15 +1,18 @@
 """Retrieval benchmark: metrics from the per-query ranked hit lists.
 
 Hits are ranked by --score (normalized_pLRMSD = pLRMSD / eLRMSD by default, or
-pLRMSD) ascending, with the query chain removed. Hits without a score (pairs
-that failed feature loading) are ignored. A hit "has the same ligand" if its
-src_ligand equals the query's src_ligand; it is "in the query's cluster" if its
-Foldseek (TM >= 0.6) cluster_id equals the query's cluster_id (chains with no
-cluster never match).
+pLRMSD) ascending, with the query chain and (unless --keep_same_pdb) the other
+chains of the query's PDB entry removed. Hits without a score (pairs that failed
+feature loading) are ignored. A hit "has the same ligand" if its src_ligand equals
+the query's src_ligand. It is a "homolog" of the query if its Foldseek (TM >= 0.6)
+cluster_id equals the query's cluster_id (chains with no cluster never match) or,
+with --homologs, if its TM-score to the query, max(qtmscore, ttmscore) from a
+Foldseek query-vs-database search, is >= --homolog_tm. Cluster membership alone
+misses homologs assigned to another cluster representative.
 
   Top_K_retrieval               fraction of queries with >= 1 of the top-K hits
-                                having the same ligand OR the same cluster.
-  Top_K_retrieval_not_FoldSeek  drop all hits in the query's cluster; fraction of
+                                having the same ligand OR being a homolog.
+  Top_K_retrieval_not_FoldSeek  drop all homologs of the query; fraction of
                                 queries with >= 1 of the top-K remaining hits
                                 having the same ligand.
 metrics.csv has one block per stratum: 'all' (headline numbers) and queries whose
@@ -62,6 +65,7 @@ from utils.constants import (  # noqa: E402
     RETRIEVAL_CLUSTERS_CSV,
     RETRIEVAL_HIT_FILE_FORMAT,
     RETRIEVAL_HIT_FILE_PATTERN,
+    RETRIEVAL_HOMOLOG_MIN_TM,
     RETRIEVAL_LIGAND_SIZE_CUT,
     RETRIEVAL_PACKED_MANIFEST,
     RETRIEVAL_PARTIAL_PAIRS_CSV,
@@ -263,13 +267,37 @@ def rank_hits(
 def annotate(
     hits: pd.DataFrame,
     queries: pd.DataFrame,
+    homolog_pairs: set[tuple[str, str]] | None = None,
 ) -> pd.DataFrame:
+    """Mark hits with the query's ligand (same_ligand) and structural homologs of the query (homolog).
+
+    A hit is a homolog if it is in the query's Foldseek cluster, or if (query chain, hit
+    chain) is in `homolog_pairs` (TM-score to the query at or above the threshold).
+    """
     q = queries.set_index('query_idx')
     hits = hits.copy()
     hits['same_ligand'] = hits['ligand'].values == q.loc[hits['query_idx'], 'src_ligand'].values
     hits['same_cluster'] = (hits['cluster_id'].values == q.loc[hits['query_idx'], 'cluster_id'].values) \
         & hits['cluster_id'].notna().values
+    hits['homolog'] = hits['same_cluster']
+    if homolog_pairs is not None:
+        query_chain = q.loc[hits['query_idx'], 'chain_id'].values
+        hits['homolog'] = hits['homolog'].values | np.array(
+            [(a, b) in homolog_pairs for a, b in zip(query_chain, hits['chain_id'].values)], dtype=bool)
     return hits
+
+
+def load_homolog_pairs(
+    m8_path: str,
+    min_tm: float,
+) -> set[tuple[str, str]]:
+    """(query chain, DB chain) pairs with max(qtmscore, ttmscore) >= min_tm in a Foldseek
+    easy-search table (columns query,target,fident,alntmscore,qtmscore,ttmscore,...)."""
+    cols = ['query', 'target', 'fident', 'alntmscore', 'qtmscore', 'ttmscore']
+    m8 = pd.read_csv(m8_path, sep='\t', header=None, usecols=range(len(cols)), names=cols)
+    strip = lambda s: s.str.replace(r'\.pdb$', '', regex=True)  # noqa: E731
+    keep = m8[np.maximum(m8['qtmscore'], m8['ttmscore']) >= min_tm]
+    return set(zip(strip(keep['query']), strip(keep['target'])))
 
 
 def compact(
@@ -278,7 +306,7 @@ def compact(
     keep = []
     for _, h in hits.groupby('query_idx', sort=True):
         h = h.sort_values('rank')
-        keep.append(pd.concat([h.head(KEEP), h[~h['same_cluster']].head(KEEP)]).drop_duplicates('rank'))
+        keep.append(pd.concat([h.head(KEEP), h[~h['homolog']].head(KEEP)]).drop_duplicates('rank'))
     return pd.concat(keep).sort_values(['query_idx', 'rank'])
 
 
@@ -318,13 +346,13 @@ def metrics(
     for qi in queries['query_idx']:
         h = hits[hits['query_idx'] == qi].sort_values('rank')
         row = {'query_idx': qi, 'n_hits_scored': len(h)}
-        nc = h[~h['same_cluster']]
+        nc = h[~h['homolog']]
         for k in RETRIEVAL_TOP_KS:
             top, top_nc = h.head(k), nc.head(k)
-            row[f'top{k}_hit'] = bool((top['same_ligand'] | top['same_cluster']).any())
+            row[f'top{k}_hit'] = bool((top['same_ligand'] | top['homolog']).any())
             row[f'top{k}_hit_not_foldseek'] = bool(top_nc['same_ligand'].any())
             row[f'top{k}_p_random_ties'] = p_hit_random_ties(
-                h[score], h['same_ligand'] | h['same_cluster'], k)
+                h[score], h['same_ligand'] | h['homolog'], k)
             row[f'top{k}_p_random_ties_not_foldseek'] = p_hit_random_ties(
                 nc[score], nc['same_ligand'], k)
         lig = h[h['same_ligand']]
@@ -439,6 +467,12 @@ def main():
     ap.add_argument('--patch_hits_dir', nargs='+', default=None,
                     help='hit lists of re-scored entries (retrieval_fast.py on a database subset, or a full '
                          're-run of a query); their scores replace those of the same (chain_id, ligand)')
+    ap.add_argument('--homologs', default=None,
+                    help='Foldseek easy-search table of query vs DB chains; hits with TM-score >= --homolog_tm '
+                         'to the query count as homologs in addition to the query cluster')
+    ap.add_argument('--homolog_tm', type=float, default=RETRIEVAL_HOMOLOG_MIN_TM)
+    ap.add_argument('--keep_same_pdb', action='store_true',
+                    help="keep the other chains of the query's PDB entry (dropped by default)")
     ap.add_argument('--manifest', default=RETRIEVAL_PACKED_MANIFEST,
                     help='packing manifest, used to check that partial scores are complete')
     args = ap.parse_args()
@@ -463,7 +497,11 @@ def main():
         raise SystemExit('no hit lists found')
     if args.patch_hits_dir:
         per_query = patch_hits(per_query, args.patch_hits_dir, args.score)
-    hits = annotate(rank_hits(per_query, args.score), queries)
+    if not args.keep_same_pdb:
+        pdb_of = queries.set_index('query_idx')['src_protein']
+        per_query = {qi: h[h['chain_id'].str[:4] != pdb_of[qi]].reset_index(drop=True) for qi, h in per_query.items()}
+    homolog_pairs = load_homolog_pairs(args.homologs, args.homolog_tm) if args.homologs else None
+    hits = annotate(rank_hits(per_query, args.score), queries, homolog_pairs)
     missing = sorted(set(queries['query_idx']) - set(hits['query_idx']))
     if missing:
         print(f'WARNING: no hit list for queries {missing}; they are excluded')
