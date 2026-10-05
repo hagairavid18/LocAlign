@@ -44,7 +44,8 @@ class ScanNetDataset(BasePairDataset):
             base_esm_embedding_path: str = LIGAND_DIR,
             use_esm: bool = True,
             esm_layer: int = 28,
-            min_length: int = 0
+            min_length: int = 0,
+            resample_on_error: bool | None = None
             ) -> None:
         """
         Initializes the ScanNetDataset.
@@ -70,6 +71,12 @@ class ScanNetDataset(BasePairDataset):
             esm_model (str, optional): Name of the ESM model to use. Defaults to None.
             use_esm (bool, optional): Whether to use ESM embeddings. Defaults to True.
             esm_layer (int, optional): Layer of the ESM model to extract embeddings from.
+            resample_on_error (bool | None, optional): When a pair cannot be loaded (missing or
+                unreadable features, ligand too large or empty), return a random other pair instead
+                if True, or None if False, so that the pair is dropped by custom_collate_fn and
+                reported as missing. Defaults to True for training and False for inference;
+                evaluation datasets must pass False so that a failed pair is not replaced by a
+                duplicate of another pair.
         """        
         super().__init__(
             df_path, 
@@ -94,6 +101,7 @@ class ScanNetDataset(BasePairDataset):
         self._scannet_dir = base_scannet_path
                 
         self._with_esm = use_esm
+        self._resample_on_error = (not inference) if resample_on_error is None else resample_on_error
         if esm_model is not None:
             self._esm_layer= esm_layer
             self._init_esm_model(esm_model, base_esm_embedding_path)
@@ -144,8 +152,7 @@ class ScanNetDataset(BasePairDataset):
 
         except Exception as e:
             print(f"Error reading embeddings for {row['tar_protein']} {row['src_protein']}: {e}")
-            idx = torch.randint(0, len(self), (1,)).item()
-            return self.__getitem__(idx)
+            return self._on_error()
 
         ret = {}
         for key in ["src", "tar"]:
@@ -187,8 +194,7 @@ class ScanNetDataset(BasePairDataset):
 
         if len(src_ligand_coordinates) > self._MAX_LIGAND_LENGTH or len(src_ligand_coordinates) == 0:
             print(f"Source ligand length {len(src_ligand_coordinates)} exceeds max length {self._MAX_LIGAND_LENGTH} or is zero")
-            idx = torch.randint(0, len(self), (1,)).item()
-            return self.__getitem__(idx)
+            return self._on_error()
         
         ret['src_ligand_coordinates'] = F.pad(src_ligand_coordinates, (0, 0, 0, self._MAX_LIGAND_LENGTH - len(src_ligand_coordinates)))
         ret['tar_ligand_coordinates'] = F.pad(tar_ligand_coordinates, (0, 0, 0, self._MAX_LIGAND_LENGTH - len(tar_ligand_coordinates)))
@@ -213,6 +219,13 @@ class ScanNetDataset(BasePairDataset):
         if self._max_atoms is not None:
             return self._max_atoms
         return max(n_atoms, self._min_atoms)
+
+    def _on_error(self) -> dict[str, torch.Tensor] | None:
+        """A random other pair when resampling on error, else None (dropped by custom_collate_fn)."""
+        if not self._resample_on_error:
+            return None
+        idx = torch.randint(0, len(self), (1,)).item()
+        return self.__getitem__(idx)
 
     def _compute_pocket_mask(
         self,

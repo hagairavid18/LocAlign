@@ -12,11 +12,12 @@ class AtomTypeCorrespondence(Module):
     """Compute weighted fraction of correspondences preserving atom type.
 
         Expects:
-            - batch contains `src_residue_indices` / `tar_residue_indices` (per-atom residue id numbers),
-              `src_mask` / `tar_mask`, and the lists `src_residue_ids`, `tar_residue_ids`,
-              plus `src_aa_to_atom_indices` and `tar_aa_to_atom_indices` (per-residue atom index lists).
-            - outputs contains `corr_values` and `corr_indices` (residue-level pairs shaped [B, N, 2]).
-        This implementation assumes the required keys are present (no defensive try/excepts).
+            - batch contains `metadata`, `src_atom_types` / `tar_atom_types` and `src_mask` / `tar_mask`
+              ([B, max_atoms]).
+            - outputs contains `corr_values` ([B, N]) and `corr_atom_types` ([B, N, 2]).
+
+        The random baseline is computed from the atom-type frequencies of the real (unpadded) atoms
+        of each chain; padded slots have type 0 (carbon) and are excluded.
     """
 
     def __init__(self):
@@ -27,7 +28,7 @@ class AtomTypeCorrespondence(Module):
         self.weighted_same_per_degree = {deg: 0.0 for deg in range(0, 9)}
         self.weighted_same_per_degree_protein = {deg: [] for deg in range(0, 9)}
         self.random_baseline_per_degree = {deg: 0.0 for deg in range(0, 9)}
-        self.sample_metrics = {'weighted_same_type_per_sample': [], 'cath_degree_per_sample': [], 'pair_infos': [], 'random_baseline_per_sample': []}
+        self.sample_metrics = {'weighted_same_type_per_sample': [], 'cath_degree_per_sample': [], 'random_baseline_per_sample': []}
         self.count_per_degree = {deg: 0 for deg in range(0, 9)}
         self.total_count = 0
 
@@ -63,8 +64,8 @@ class AtomTypeCorrespondence(Module):
 
             # --- 2. Compute Random Expectation Baseline ---
             # Get distribution of types in the full protein structures
-            s_types = src_atom_types_all[batch_id]
-            t_types = tar_atom_types_all[batch_id]
+            s_types = src_atom_types_all[batch_id][batch['src_mask'][batch_id].bool()]
+            t_types = tar_atom_types_all[batch_id][batch['tar_mask'][batch_id].bool()]
             
             # Calculate P(type) for src and tar
             num_types = len(tw)

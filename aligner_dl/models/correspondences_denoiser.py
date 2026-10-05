@@ -93,8 +93,10 @@ class CDM(nn.Module):
         ) -> torch.Tensor:
         """
         Extract the top K correspondences from the entire matrix by flattening it.
+
+        soft_correspondences is [B, tar_size, src_size]; the returned indices are (tar, src) pairs.
         """
-        B, N, _ = soft_correspondences.shape
+        B, _, n_src = soft_correspondences.shape
         
         # Flatten the distance matrix to a 1D vector
         flat_correspondences = soft_correspondences.reshape(B, -1)  # Flatten each batch
@@ -105,7 +107,7 @@ class CDM(nn.Module):
         top_k_indices_flat = top_k_plus_one_indices_flat[:, :self._n_nodes] 
         
         # Convert the flattened indices back to (i, j) pairs in the original 2D matrix
-        top_k_indices = torch.stack((top_k_indices_flat // N, top_k_indices_flat % N), dim=-1)  # Convert to (i, j) index pairs
+        top_k_indices = torch.stack((top_k_indices_flat // n_src, top_k_indices_flat % n_src), dim=-1)  # Convert to (i, j) index pairs
 
         return top_k_values, top_k_indices
 

@@ -361,8 +361,10 @@ class LocAlign(SoftBBBase):
             batch (dict[str, torch.Tensor]): 
 
         Returns:
-            dict[str, torch.Tensor]: 
+            dict[str, torch.Tensor] | None: None when the batch is None, i.e. every pair in it failed to load.
         """
+        if batch is None:
+            return None
         batch = move_batch_to_device(batch, self.device)
         all_iter_outputs, corr_values, corr_residue_indices, corr_atom_indices, corr_atom_types, corr_pocket_mask = self._run_step(batch, return_correspondences=True)
         loss = torch.tensor(0.0, device=self.device, dtype=batch['tar_pretrained_embeddings'].dtype)
@@ -383,8 +385,10 @@ class LocAlign(SoftBBBase):
             batch (dict[str, torch.Tensor]): 
 
         Returns:
-            dict[str, torch.Tensor]: 
+            dict[str, torch.Tensor] | None: None when the batch is None, i.e. every pair in it failed to load.
         """
+        if batch is None:
+            return None
         batch = move_batch_to_device(batch, self.device)
         all_iter_results, corr_values, corr_residue_indices, corr_atom_indices, corr_atom_types, corr_pocket_mask = self._run_step(batch, return_correspondences=True)
         curr_loss, loss_dict = self._loss(batch, all_iter_results[-1], inference=True)

@@ -118,7 +118,7 @@ class SoftBBBase(L.LightningModule, ABC):
         self._metrics.reset()
     
     def on_validation_batch_end(self, outputs, batch, batch_idx):
-        if 'loss_dict' not in outputs:
+        if not outputs or 'loss_dict' not in outputs:
             return
         outputs['loss_dict'].pop('per_sample', None)
         if not 'loss' in outputs:

@@ -39,6 +39,9 @@ def main():
     (LocAlignLoss.update_lambda). `trainer.schedule_epochs` (default: `trainer.max_epochs`)
     lets a run stop early (max_epochs < schedule_epochs) without compressing that ramp. The
     OneCycleLR length is set separately by the optimizer.scheduler args (epochs x steps_per_epoch).
+
+    The validation dataset defaults to `resample_on_error: false`: a pair that fails to load is
+    dropped from the metrics instead of being replaced by a random other pair.
     """
     args = parse_args()
 
@@ -69,6 +72,7 @@ def main():
             # sampler=RandomSampler(train_dataset, num_samples=10000, replacement=True)
         )
     
+    config['dataset']['validation'].setdefault('args', {}).setdefault('resample_on_error', False)
     valid_dataset = build_object(config['dataset']['validation'], 'datasets')
     val_loader = DataLoader(
         valid_dataset, 

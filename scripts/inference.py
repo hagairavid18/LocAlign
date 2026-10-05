@@ -521,9 +521,13 @@ class InferenceRunner:
     def _run_inference(self) -> None:
         """
         Run inference on all batches.
-        
+
+        Pairs the dataset failed to load (for example missing ScanNet features) get no prediction;
+        their `message` and `failure_message` are set so they appear as failures in
+        inference_results.csv.
+
         Returns:
-            None: Processes all batches and saves results to self._output_dir
+            None: Processes all batches and writes per-pair output folders to self._output_dir
         """
         print("Running inference...")
         all_outputs = []
@@ -531,16 +535,21 @@ class InferenceRunner:
             pbar = tqdm(self._dataloader, total=len(self._dataloader), desc="Running inference")
             for idx, batch in enumerate(pbar):
                 curr_outputs = self._model.inference_step(batch)
-                all_outputs.append(curr_outputs)
-        
+                if curr_outputs is not None:
+                    all_outputs.append(curr_outputs)
+
+        processed = set()
         for idx, preds in enumerate(tqdm(all_outputs, total=len(all_outputs), desc="Processing and saving results")):
             batch_size = len(preds['metadata'])
             for b in range(batch_size):
-                pair_idx = preds['metadata'][b]['pair_idx']
+                pair_idx = int(preds['metadata'][b]['pair_idx'])
                 ph = self._pairs[pair_idx]
                 self._process_visualization(ph, preds, b)
-        self._save_results()
-        print(f"✅ All predictions processed and visualized, saved to {self._output_dir}")
+                processed.add(pair_idx)
+        for pair_idx, ph in enumerate(self._pairs):
+            if pair_idx not in processed:
+                ph.message = ph.failure_message = 'feature_loading_failed'
+        print(f"✅ {len(processed)}/{len(self._pairs)} predictions processed and visualized, saved to {self._output_dir}")
     
     def _process_visualization(self, ph: PairHolder, preds: dict, batch_idx: int = 0) -> int:
         """

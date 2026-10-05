@@ -1,8 +1,15 @@
 import torch
 
 
-def custom_collate_fn(batch: list[dict[torch.Tensor, dict]]):
-    # Assume batch is a list of dictionaries
+def custom_collate_fn(batch: list[dict[torch.Tensor, dict] | None]):
+    """Stack a list of samples into a batch.
+
+    None samples (pairs the dataset failed to load) are dropped; returns None when every sample
+    in the batch is None.
+    """
+    batch = [item for item in batch if item is not None]
+    if not batch:
+        return None
     batch_dict = {}
     for key, val in batch[0].items():
         # Stack all tensors for a given key
