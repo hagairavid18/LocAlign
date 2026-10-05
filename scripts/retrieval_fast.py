@@ -260,6 +260,9 @@ def main():
     ap.add_argument('--stage_streams', type=int, default=8)
     ap.add_argument('--fp16_roundtrip', action='store_true',
                     help='evaluation only: round float32 features through float16 (simulates fp16 shards)')
+    ap.add_argument('--no_query_motif', action='store_true',
+                    help='run the queries without their motif (no binding-site prior on the query side); '
+                         'database entries keep theirs')
     ap.add_argument('--random_subsample', action='store_true',
                     help='subsample >5000-atom chains with the global RNG, as inference.py does')
     args = ap.parse_args()
@@ -286,6 +289,8 @@ def main():
         + f'|{file_digest(args.database)}|{os.path.abspath(args.checkpoint)}|motif_parser={RETRIEVAL_MOTIF_PARSER_VERSION}'
     if args.fp16_roundtrip:
         tag_str += '|fp16'
+    if args.no_query_motif:
+        tag_str += '|no_query_motif'
     tag = hashlib.sha1(tag_str.encode()).hexdigest()[:10]
     part_dir = os.path.join(args.partials_dir, tag)
     os.makedirs(part_dir, exist_ok=True)
@@ -300,7 +305,7 @@ def main():
         q = queries[queries['query_idx'] == qi].iloc[0]
         r = InferenceRunner(checkpoint_path=args.checkpoint, base_save_dir=part_dir,
                             protein_database_search=(q.src_protein, q.src_chain, args.database),
-                            tar_motif=q.src_motif, tar_ligand_id=q.src_ligand,
+                            tar_motif=None if args.no_query_motif else q.src_motif, tar_ligand_id=q.src_ligand,
                             max_pLRMSD=-np.inf, max_pLRMSD_normed=-np.inf)
         r._prepare_dataframe()
         runners[qi] = r
