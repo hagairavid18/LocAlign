@@ -64,6 +64,7 @@ class InferenceRunner:
         max_pLRMSD_normed: float | None = None,
         tar_ligand_id: str | None = None,
         src_ligand_id: str | None = None,
+        max_atoms: int | None = None,
     ) -> None:
         """
         Initialize the inference runner.
@@ -76,6 +77,9 @@ class InferenceRunner:
             protein_database_search (tuple[str,str,str] | None): Database search (tar_protein, tar_chain, database_csv)
             tar_ligand_id (str | None): Ligand for target (pair/database mode, default: 'general')
             src_ligand_id (str | None): Ligand for source (pair/database mode, default: 'general')
+            max_atoms (int | None): Cap on the number of atoms per chain. None (default) runs every chain
+                at its full size, with no subsampling and no padding beyond the keypoint selection minimum;
+                the batch size is always 1. A value subsamples larger chains and pads every chain to it.
             src_motif (str | None): Comma-separated residue IDs for source motif
             tar_motif (str | None): Comma-separated residue IDs for target motif
         """
@@ -101,6 +105,7 @@ class InferenceRunner:
         self._tar_motif = tar_motif
         self._max_pLRMSD = max_pLRMSD
         self._max_pLRMSD_normed = max_pLRMSD_normed
+        self._max_atoms = max_atoms
         
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self._experiment_name = None
@@ -452,6 +457,9 @@ class InferenceRunner:
         dataset_config['args']['base_scannet_path'] = self._cache_paths['scannet_embeddings']
         dataset_config['args']['base_esm_embedding_path'] = self._cache_paths['esm_embeddings']
         dataset_config['args']['inference'] = True
+        dataset_config['args']['max_length'] = self._max_atoms
+        if self._max_atoms is None:
+            dataset_config['args']['min_length'] = self._model._keypoints_selection._top_k + 1
         dataset_config['args']['ligand_column'] = 'ligand'
         dataset_config['args']['tar_ligand_column'] = 'tar_ligand'
         dataset_config['args']['src_ligand_column'] = 'src_ligand'
@@ -460,7 +468,7 @@ class InferenceRunner:
         num_workers = min(16, cpu_count()//2) if ( (cpu_count() > 8) & (len(self._df)>=10) ) else 0 # Use workers if many examples and machine with many cpus, else do not.
         self._dataloader = DataLoader(
             dataset,
-            batch_size=8,
+            batch_size=1,
             num_workers=  num_workers,
             collate_fn=custom_collate_fn,
             pin_memory=True,
@@ -703,8 +711,8 @@ class InferenceRunner:
         t_end_preprocessing = time.time()
         # persist resrced pairs (with messages) now, before creating the dataloader/model
         self._write_resrced_pairs()
-        self._prepare_dataloader()
         self._load_model()
+        self._prepare_dataloader()
         t_start_inference = time.time()
         self._run_inference()
         t_end_inference = time.time()
@@ -786,6 +794,13 @@ def parse_args():
     )    
     
     parser.add_argument(
+        "--max_atoms",
+        type=int,
+        default=None,
+        help="Cap on the atoms per chain (larger chains are randomly subsampled and all chains padded to it). "
+             "Default: no cap, every chain runs at its full size."
+    )
+    parser.add_argument(
         "--calibration_model_path",
         type=str,
         default=None,
@@ -818,7 +833,8 @@ def main():
         max_pLRMSD=args.max_pLRMSD,
         max_pLRMSD_normed=args.max_pLRMSD_normed,
         src_motif=args.src_motif,
-        tar_motif=args.tar_motif
+        tar_motif=args.tar_motif,
+        max_atoms=args.max_atoms
     )
     
     # Run the complete inference pipeline

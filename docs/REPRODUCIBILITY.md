@@ -309,6 +309,8 @@ unittest discover -s tests`. The AUC tests are skipped when scikit-learn is not 
   change while the aggregates agree. For example, the ligand-split binding-site fraction is 0.1615
   on both. The top-k correspondence selection turns small numeric differences into different
   correspondences. Pairs with a chain above `max_length` atoms are also randomly subsampled, so
-  they depend on the seed.
+  they depend on the seed. `scripts/inference.py` has no such cap by default (batch size 1, every
+  chain at its full size; `--max_atoms` restores a cap), so its results for chains above the
+  `max_length` of a validation run can differ from that run's.
 - `miners/utils/process_pair.py`'s `min_ligand_atoms=3` parameter is declared but never applied
   in the function body — a dead filter, not a functioning exclusion criterion.

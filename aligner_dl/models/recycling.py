@@ -45,7 +45,7 @@ class RecyclingModule(nn.Module):
         
     def _build_tarerence_frame(self, coordinates):
         mean = torch.mean(coordinates, axis=-2)
-        U, eigenvalues, Vh = torch.linalg.svd(coordinates - mean.unsqueeze(-2))
+        U, eigenvalues, Vh = torch.linalg.svd(coordinates - mean.unsqueeze(-2), full_matrices=False)
         V = torch.swapaxes(Vh,-2,-1)
         return torch.cat([mean.unsqueeze(-2),V],axis=-2)
     
@@ -79,8 +79,9 @@ class RecyclingModule(nn.Module):
         src_fourier_embeddings *= fourier_scalings.unsqueeze(0).unsqueeze(0)
         
         if self.recycle_scalar & (top_corr_values is not None) & (top_corr_indices is not None):
-            B,N = src_coords.shape[:-1]
-            src_scalar, tgt_scalar = torch.zeros([B,N],device=top_corr_indices.device), torch.zeros([B,N],device=top_corr_indices.device)            
+            B = src_coords.shape[0]
+            src_scalar = torch.zeros(src_coords.shape[:-1], device=top_corr_indices.device)
+            tgt_scalar = torch.zeros(tgt_coords.shape[:-1], device=top_corr_indices.device)
             tgt_scalar.scatter_add_(1,top_corr_indices[:,:,0], top_corr_values.detach()) # Detach to stop backpropagation here.
             src_scalar.scatter_add_(1,top_corr_indices[:,:,1], top_corr_values.detach()) # Detach to stop backpropagation here.
             tgt_scalar *= self.scalar_scale
