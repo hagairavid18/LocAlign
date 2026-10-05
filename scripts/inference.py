@@ -459,7 +459,7 @@ class InferenceRunner:
         dataset_config['args']['inference'] = True
         dataset_config['args']['max_length'] = self._max_atoms
         if self._max_atoms is None:
-            dataset_config['args']['min_length'] = self._keypoints_top_k() + 1
+            dataset_config['args']['min_length'] = self._model._keypoints_selection._top_k + 1
         dataset_config['args']['ligand_column'] = 'ligand'
         dataset_config['args']['tar_ligand_column'] = 'tar_ligand'
         dataset_config['args']['src_ligand_column'] = 'src_ligand'
@@ -475,12 +475,6 @@ class InferenceRunner:
             shuffle=False
         )
     
-    def _keypoints_top_k(self) -> int:
-        """Number of keypoints the checkpoint's model selects per chain (from its model_config.yaml)."""
-        with open(os.path.join(self._checkpoint_dir, "model_config.yaml")) as f:
-            model_config = yaml.safe_load(f)
-        return model_config['args']['keypoints_selection']['args'].get('top_k', 1000)
-
     def _load_model(self) -> None:
         """
         Build model and load checkpoint.
@@ -717,8 +711,8 @@ class InferenceRunner:
         t_end_preprocessing = time.time()
         # persist resrced pairs (with messages) now, before creating the dataloader/model
         self._write_resrced_pairs()
-        self._prepare_dataloader()
         self._load_model()
+        self._prepare_dataloader()
         t_start_inference = time.time()
         self._run_inference()
         t_end_inference = time.time()
