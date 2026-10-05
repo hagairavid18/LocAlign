@@ -119,7 +119,8 @@ class InferenceRunner:
         Accepts: None/NaN, an already-parsed list, a bare int, a comma-separated
         string (e.g. "10,11,12", the documented CLI/CSV format), or a
         stringified Python literal (e.g. "[10, 11, 12]"). Anything else
-        returns None.
+        returns None, with a warning, so that an unreadable motif (for example one with an
+        insertion code such as "95C") is not dropped without notice.
         """
         if val is None or (isinstance(val, float) and np.isnan(val)):
             return None
@@ -141,6 +142,7 @@ class InferenceRunner:
         try:
             return [int(x) for x in s.split(',')]
         except Exception:
+            print(f"Warning: could not parse '{s}' as a list of residue numbers; it is ignored.")
             return None
 
     @staticmethod
@@ -253,7 +255,7 @@ class InferenceRunner:
             # Add target protein info to all rows
             df['tar_protein'] = tar_norm
             df['tar_chain'] = tar_chain
-            df['tar_motif'] = self._tar_motif
+            df['tar_motif'] = [self._parse_motif(self._tar_motif)] * len(df)
             df['tar_ligand'] = self._tar_ligand_id
         
             for _, row in df.iterrows():
@@ -764,7 +766,7 @@ def parse_args():
         "--tar_motif",
         type=str,
         default=None,
-        help="Comma-separated residue IDs for target motif (e.g., '20,21,22'). Only used with --protein_pair."
+        help="Comma-separated residue IDs for target motif (e.g., '20,21,22'). Used with --protein_pair and --protein_database_search."
     )
     parser.add_argument(
         "--src_motif",
