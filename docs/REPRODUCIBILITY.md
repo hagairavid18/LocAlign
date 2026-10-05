@@ -285,6 +285,11 @@ the top of the script — adjust to your environment) and reports success rate u
 aligners are judged on `ligand_rmsd` alone). `scripts/offline_metrics_apo.py` is the analogous
 script for the apo/holo reanalysis (tracked separately, see that script's own splits under
 `test_apo_apo.csv`/`test_apo_holo.csv`/`test_holo_holo_subset.csv`).
+It reads only `holo_holo_subset.csv`, `apo_apo.csv` and `apo_holo.csv` of each directory in
+`APO_REANALYSIS_SPLIT_DIRS`, each with `ligand_rmsd` in Angstrom (a column that is below 10 for
+every pair is the loss-scale value and is rejected), and writes `all_experiments_with_success.csv`
+and `success_rates.csv` next to them. Each split's tables must come from that split's own
+checkpoint: the ligand-split directory holds the evaluation with the ligand-split checkpoint.
 
 ## Tests
 

@@ -10,6 +10,7 @@ from Bio.PDB import MMCIFParser
 from Bio.PDB.Atom import Atom
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Model import Model
+from Bio.PDB.Structure import Structure
 from Bio.PDB.PDBIO import PDBIO
 from Bio.PDB.Polypeptide import is_aa
 from Bio.PDB.Residue import Residue
@@ -35,6 +36,9 @@ def download_raw_structure(pdb_id: str, cache_dir: str) -> Model | None:
     structure), so a fixed shared path would let concurrent writers corrupt each
     other's partial file. Atomic rename means any reader only ever sees either no
     file or a complete one.
+
+    Returns the first model of the entry, whether it is parsed now or read back from the
+    cache (the cache holds the whole parsed Structure).
     """
     os.makedirs(cache_dir, exist_ok=True)
     cache_file = os.path.join(cache_dir, f"{pdb_id}.pkl.gz")
@@ -42,7 +46,8 @@ def download_raw_structure(pdb_id: str, cache_dir: str) -> Model | None:
     if os.path.exists(cache_file):
         try:
             with gzip.open(cache_file, "rb") as f:
-                return pickle.load(f)
+                cached = pickle.load(f)
+            return cached[0] if isinstance(cached, Structure) else cached
         except Exception as e:
             logger.warning(f"Failed to load cached structure {pdb_id}: {e}")
 
