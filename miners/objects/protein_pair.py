@@ -165,7 +165,7 @@ class ProteinPair:
                 holder.__setattr__(f"{aligner_name}_ligand_rmsd", ligand_rmsd)
                 holder.__setattr__(f"{aligner_name}_corr_rmsd", corr_rmsd)
         
-        elif aligner.name in ["DaliAligner", "SoftAlignAligner", "APOCAligner"]:
+        elif aligner.name in ["DaliAligner", "SoftAlignAligner", "APOCAligner", "PlasmaAligner"]:
             R, t, corr_rmsd, _ = aligner.impose_structure(self._tar_protein, self._src_protein, f'{self._ligand_dir}/{self._ligand_name}')
             
             if self._save_transformed_models:

@@ -7,8 +7,12 @@ This aligner invokes PLASMA with pre-computed ESM embeddings:
       --output-dir /path/to/output
 
 It expects the non-ligand PDBs produced by the pipeline ("*_non_ligand_.ent") and
-uses the provided ligand directory as the output directory. ESM embeddings are
-extracted and cached before calling PLASMA to avoid redundant computation.
+the provided ligand directory for the ESM embedding cache. Every call writes its PLASMA
+output to a private temporary folder inside that directory, which is removed afterwards:
+the output files have fixed names, so a folder shared by all pairs of a ligand would let
+concurrent calls read each other's results, and a call that exits without writing would
+return the previous pair's. ESM embeddings are extracted and cached before calling PLASMA
+to avoid redundant computation.
 """
 
 from __future__ import annotations
@@ -19,8 +23,10 @@ import logging
 import os
 from aligner_dl.utils.constants import PLASMA_DIR
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from typing import List, Tuple
 
@@ -206,6 +212,8 @@ class PlasmaAligner:
             logger.error("Failed to extract ESM embeddings: %s", e)
             return [], [], None, []
 
+        output_dir = tempfile.mkdtemp(prefix=".plasma_", dir=ligand_dir)
+
         # PLASMA aligns pdb1 to pdb2, pass src as pdb1 and tar as pdb2
         cmd = [
             sys.executable,
@@ -215,7 +223,7 @@ class PlasmaAligner:
             tar_path,  # pdb2 (target - reference)
             tar_chain,  # chain2
             "--output-dir",
-            ligand_dir,
+            output_dir,
             "--embed1-path",
             src_embed_path,
             "--embed2-path",
@@ -229,10 +237,10 @@ class PlasmaAligner:
                 return [], [], None, []
 
             # Attempt to load rotation/translation matrices and metadata.
-            rot_path = os.path.join(ligand_dir, "rotation_matrix.npy")
-            trans_path = os.path.join(ligand_dir, "translation_vector.npy")
-            align_path = os.path.join(ligand_dir, "soft_alignment.npy")
-            meta_path = os.path.join(ligand_dir, "metadata.json")
+            rot_path = os.path.join(output_dir, "rotation_matrix.npy")
+            trans_path = os.path.join(output_dir, "translation_vector.npy")
+            align_path = os.path.join(output_dir, "soft_alignment.npy")
+            meta_path = os.path.join(output_dir, "metadata.json")
 
             R: list[np.ndarray] = []
             t: list[np.ndarray] = []
@@ -269,3 +277,5 @@ class PlasmaAligner:
         except Exception as exc:  # defensive
             logger.error("Error running PLASMA aligner: %s", exc)
             return [], [], None, []
+        finally:
+            shutil.rmtree(output_dir, ignore_errors=True)
