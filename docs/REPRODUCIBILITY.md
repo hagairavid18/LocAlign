@@ -12,6 +12,7 @@ evaluation scripts.
 |---|---|
 | Homology-safe split (main model) | `datasets/csv_files/homology_25_10/{train,test}.csv` |
 | Ligand-grouped split | `datasets/csv_files/ligand_25_10/{train,test}.csv` |
+| A posteriori train/val assignment of `train.csv` (made after training) | `datasets/csv_files/{homology,ligand}_25_10/train_val_assignment.csv`, `aligner_dl/datasets/utils/posthoc_val_split.py` |
 | Baseline-comparison manifests (same pairs + precomputed baseline results) | `datasets/csv_files/{homology,ligand}_25_10/test_baseline*.csv` |
 | Ligand atom-name correspondence (evaluation pairs) | `datasets/ligand_atom_mappings/{homology,ligand}_25_10/test.jsonl` |
 | Data pipeline scripts | `miners/parsers/biolip_reader.ipynb`, `miners/scripts/align.py`, `aligner_dl/datasets/utils/split_dataset.py` |
@@ -96,7 +97,8 @@ row counts.
 internal "test" partition was empty, and the "val" partition is the held-out set on which all
 reported numbers are computed. That set was originally saved as `val.csv` and has been renamed
 `test.csv` (with all derived files, e.g. `val_baseline*.csv` → `test_baseline*.csv`), because
-it served as the test set. `train.csv` was not re-split. See
+it served as the test set. `train.csv` was not re-split before training; a train/val split of
+it was made afterwards (see [A posteriori train/val split](#a-posteriori-trainval-split)). See
 [Training protocol](#training-protocol).
 
 ## Exclusion logs
@@ -204,6 +206,7 @@ documented explicitly rather than fixed, to avoid changing training/eval behavio
 | `aligner_dl/models/layers/norm.py` | hardcoded `torch.manual_seed(42)` | **not** controlled by `--seed`; fixed regardless of CLI value |
 | `aligner_dl/datasets/base_pair_dataset.py` `set_seed()` | see call sites | dataset construction |
 | `aligner_dl/datasets/utils/split_dataset.py` | hardcoded `random.seed(42)` | MMseqs2 clustering / split assignment |
+| `aligner_dl/datasets/utils/posthoc_val_split.py` | `POSTHOC_VAL_SEED` = 42 | a posteriori train/val assignment of `train.csv` |
 | `miners/parsers/biolip_reader.ipynb` | `random.seed(42)` / `np.random.seed(42)` (added by this change) | Stage B combination subsampling and probability-weighted sampling — **not seeded** in the run that produced the currently-released manifests; the manifests are released verbatim to sidestep this rather than claim retroactive reproducibility |
 
 To reproduce training as closely as possible: use `--seed 41` (the default) and note that
@@ -237,7 +240,9 @@ follow the same CLI, pointed at the corresponding `test_baseline*.csv` manifest.
 ### Training protocol
 
 The test set was never used for training. Hyperparameters were set using the training data only. No model was trained on `train.csv` + `test.csv`
-combined. The Lightning "validation" loop in the code evaluates `test.csv` (the config key is
+combined. Both released checkpoints were trained on the whole of `train.csv`, which is
+train + val of the [a posteriori split](#a-posteriori-trainval-split) (for the homology split,
+plus the pairs that straddle train and val). The Lightning "validation" loop in the code evaluates `test.csv` (the config key is
 still `validation`); it was run once per epoch and logged (Comet metrics and
 `per_sample_results_{epoch}.csv`).
 
@@ -252,6 +257,31 @@ still `validation`); it was run once per epoch and logged (Comet metrics and
   original checkpoints) and the corr-RMSD loss-weight ramp at 10 epochs
   (`trainer.schedule_epochs: 10`). Training therefore ends at global step 97,191
   (9 × 10,799 batches), matching the released checkpoints.
+
+### A posteriori train/val split
+
+`train.csv` was split into train and val after the released checkpoints were trained, so that
+it can be described as train + val and later work can tune on val without using `test.csv`.
+This split played no role in training, tuning or selecting the released checkpoints, which
+saw every row of `train.csv`.
+
+```bash
+python aligner_dl/datasets/utils/posthoc_val_split.py
+```
+
+It writes `datasets/csv_files/<split>/train_val_assignment.csv`, one row per row of
+`train.csv` in the same order: `row` (0-based row of `train.csv`) and `split`. The seed is fixed
+(`POSTHOC_VAL_SEED` = 42 in `aligner_dl/utils/constants.py`).
+
+- **Homology split (cluster-based):** 20% of the MMseqs2 clusters of `train.csv`
+  (`tar_cluster`/`src_cluster`, 50% identity, as in Stage D) are drawn. A pair is `val` if both
+  chains are in those clusters, `train` if neither is, and `straddling` otherwise: 51,504 train,
+  3,088 val (166 ligands) and 24,935 straddling pairs. Straddling pairs share a cluster with val,
+  so they belong to neither side; they were part of the released checkpoint's training data. The
+  pairs link almost all clusters into one connected component, so no split of whole clusters can
+  avoid them.
+- **Ligand split (ligand-based):** 10% of the ligands of `train.csv` are drawn; their pairs are
+  `val`: 90,951 train and 6,780 val pairs (67 ligands). No ligand is shared between train and val.
 
 Mechanics, for reference:
 - **Checkpointing.** `aligner_dl/trainers/lightning_trainer.py` registers one callback,

@@ -57,6 +57,7 @@ logs/
 !/datasets/csv_files/ligand_25_10/test_baseline_plasma.csv
 !/datasets/csv_files/ligand_25_10/test_baseline_usalign.csv
 !/datasets/csv_files/*/excluded_pairs.csv
+!/datasets/csv_files/*/train_val_assignment.csv
 !/datasets/ligand_atom_mappings/
 !/datasets/ligand_atom_mappings/**
 !/datasets/retrieval/
