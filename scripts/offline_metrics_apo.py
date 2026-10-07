@@ -7,6 +7,10 @@ new sibling directory.
 Expects, per split, the 3 per_sample_results_*.csv outputs from the apo-reval Lightning
 runs copied/renamed to:
     ablation_dfs/apo_reanalysis/{homology_split,ligand_split}/{holo_holo_subset,apo_apo,apo_holo}.csv
+Only these three files are read; the other CSVs in the directory (this script's own outputs,
+older copies of the inputs) are ignored. Each input must hold ligand_rmsd in Angstrom: a column
+whose values are all below 10 is the loss-scale r / (1 + r / 10), which is always below 10, and is
+rejected.
 
 Usage:
     python scripts/offline_metrics_apo.py
@@ -24,23 +28,43 @@ from scripts.offline_metrics import SUCCESS_CRITERIA, process_experiment  # noqa
 from utils.constants import APO_REANALYSIS_SPLIT_DIRS  # noqa: E402
 
 ABLATION_DIRS = APO_REANALYSIS_SPLIT_DIRS
+EXPERIMENTS = ("holo_holo_subset", "apo_apo", "apo_holo")
+LOSS_SCALE_LIMIT = 10.0
+MIN_PAIRS_FOR_UNIT_CHECK = 50
+
+
+def experiment_files(
+    ablation_dir: str,
+) -> list[Path]:
+    """The input CSVs of the apo/holo experiments that exist in `ablation_dir`, in EXPERIMENTS order."""
+    return [Path(ablation_dir) / f"{name}.csv" for name in EXPERIMENTS if (Path(ablation_dir) / f"{name}.csv").exists()]
+
+
+def check_ligand_rmsd_unit(
+    csv_path: Path,
+) -> None:
+    """Raise if the ligand_rmsd of `csv_path` looks like the loss-scale value instead of Angstrom."""
+    values = pd.read_csv(csv_path, usecols=["ligand_rmsd"]).ligand_rmsd.dropna()
+    if len(values) >= MIN_PAIRS_FOR_UNIT_CHECK and values.max() < LOSS_SCALE_LIMIT:
+        raise ValueError(
+            f"{csv_path}: ligand_rmsd is below {LOSS_SCALE_LIMIT:g} for all {len(values)} pairs (maximum {values.max():.2f}); "
+            "that is the loss-scale value r / (1 + r / 10), not Angstrom"
+        )
 
 
 def main() -> None:
     for ablation_dir in ABLATION_DIRS:
         dir_name = Path(ablation_dir).name
-        csv_files = sorted(Path(ablation_dir).glob("*.csv"))
+        csv_files = experiment_files(ablation_dir)
         if not csv_files:
-            print(f"No CSV files found in {ablation_dir}")
+            print(f"None of {', '.join(f'{name}.csv' for name in EXPERIMENTS)} found in {ablation_dir}")
             continue
 
         all_experiments = []
         for csv_path in csv_files:
             experiment_name = csv_path.stem
-            try:
-                all_experiments.append(process_experiment(csv_path, experiment_name, SUCCESS_CRITERIA))
-            except Exception as e:
-                print(f"Error processing {experiment_name}: {e}")
+            check_ligand_rmsd_unit(csv_path)
+            all_experiments.append(process_experiment(csv_path, experiment_name, SUCCESS_CRITERIA))
 
         if not all_experiments:
             print(f"No experiments were successfully processed in {dir_name}.")
