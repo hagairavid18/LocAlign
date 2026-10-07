@@ -137,3 +137,5 @@ PLRMSD_AUC_CSV = 'auc.csv'
 PLRMSD_BREAKDOWN_CSV = 'breakdown.csv'
 PLRMSD_ROC_PNG = 'roc_{split}.png'
 PLRMSD_NEGATIVES_INPUT_CSV = 'negatives_input_{split}.csv'
+PLRMSD_ROC_FIGURE_STEM = 'figS_plrmsd_roc'
+PLRMSD_ROC_FIGURE_DPI = 300
