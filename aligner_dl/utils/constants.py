@@ -1,4 +1,5 @@
 import os
+import warnings
 import subprocess
 from pathlib import Path
 
@@ -66,6 +67,8 @@ def env_path(
 DATA_ROOT = find_data_root()
 if load_dotenv is not None:
     load_dotenv(DATA_ROOT / '.env', override=False)
+elif (DATA_ROOT / '.env').exists():
+    warnings.warn(f'{DATA_ROOT / ".env"} exists but python-dotenv is not installed; it is ignored')
 PATH_CONFIG_KEYS = ('ckpt_path', 'df_path', 'base_scannet_path')
 UNTRACKED_PATH_CONFIG_KEYS = ('ckpt_path',)
 MUST_EXIST_CONFIG_KEYS = ('ckpt_path', 'df_path')

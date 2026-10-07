@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import sys
@@ -104,12 +105,18 @@ def process_experiment(
 def main():
     """Main function to process all experiments and combine results.
 
+    Inputs are read from each directory of ABLATION_SPLIT_DIRS (DATA_ROOT/ablation_dfs/<split>).
+    Outputs go to --out_dir/<split> when given, otherwise into the input directory itself.
     Per directory it writes all_experiments_with_success.csv, success_rates.csv,
     success_rates_by_cath_degree.csv and success_rates_lrmsd_only.csv. The last one has, for every
     experiment including the main model, the success rate in the Table 1 columns (different fold =
     cath_degree < 4, same fold = cath_degree == 4, and overall) under the Table 1 criterion and under
     LRMSD-only, plus the symmetry upper bound of both (see load_symmetric_ligands).
     """
+    ap = argparse.ArgumentParser(description=main.__doc__)
+    ap.add_argument('--out_dir', default=None,
+                    help='write the outputs to <out_dir>/<split> instead of the input directories')
+    args = ap.parse_args()
     symmetric_ligands = load_symmetric_ligands(ABLATION_DIRS)
     
     print("=" * 60)
@@ -124,6 +131,8 @@ def main():
     # Process each directory separately
     for ablation_dir in ABLATION_DIRS:
         dir_name = Path(ablation_dir).name
+        out_dir = os.path.join(args.out_dir, dir_name) if args.out_dir else ablation_dir
+        os.makedirs(out_dir, exist_ok=True)
         print(f"\n{'='*60}")
         print(f"Processing {dir_name}...")
         print(f"{'='*60}\n")
@@ -161,7 +170,7 @@ def main():
         combined_df = pd.concat(all_experiments, ignore_index=True)
         
         # Save combined results
-        output_path = os.path.join(ablation_dir, "all_experiments_with_success.csv")
+        output_path = os.path.join(out_dir, "all_experiments_with_success.csv")
         combined_df.to_csv(output_path, index=False)
         print("=" * 60)
         print(f"Combined results saved to: {output_path}")
@@ -170,7 +179,9 @@ def main():
 
         # === Baseline visualizations for homology_split ===
         if dir_name == "homology_split":
-            baseline_df = combined_df[combined_df["experiment"] == "baseline"].copy()
+            baseline_path = os.path.join(ablation_dir, "baseline.csv")
+            baseline_df = process_experiment(baseline_path, "baseline", SUCCESS_CRITERIA, symmetric_ligands) \
+                if os.path.exists(baseline_path) else pd.DataFrame()
             if not baseline_df.empty and "cath_degree" in baseline_df.columns:
                 # Figure 1: counts per cath_degree
                 counts = baseline_df.groupby("cath_degree").size()
@@ -184,7 +195,7 @@ def main():
                 ax.spines["right"].set_visible(False)
                 ax.yaxis.grid(True, linestyle="--", alpha=0.4)
                 fig.tight_layout()
-                fig_path = os.path.join(ablation_dir, "baseline_pairs_per_cath_degree.png")
+                fig_path = os.path.join(out_dir, "baseline_pairs_per_cath_degree.png")
                 fig.savefig(fig_path, dpi=300)
                 plt.close(fig)
 
@@ -225,7 +236,7 @@ def main():
                 fig.text(0.5, 0.02, "CATH degree similarity", ha="center", fontsize=16, fontweight="bold")
                 fig.suptitle("Baseline: metric distributions per CATH degree similarity (homology split, validation)", fontsize=18, fontweight="bold")
                 fig.tight_layout(rect=[0, 0.05, 1, 0.96])
-                fig_path = os.path.join(ablation_dir, "baseline_success_per_cath_degree.png")
+                fig_path = os.path.join(out_dir, "baseline_success_per_cath_degree.png")
                 fig.savefig(fig_path, dpi=300, bbox_inches="tight")
                 plt.close(fig)
         
@@ -292,7 +303,7 @@ def main():
             degree_df = pd.DataFrame(degree_rows).sort_values(
                 ["experiment", "ligand_rmsd_threshold", "cath_degree"]
             )
-            degree_path = os.path.join(ablation_dir, "success_rates_by_cath_degree.csv")
+            degree_path = os.path.join(out_dir, "success_rates_by_cath_degree.csv")
             degree_df.to_csv(degree_path, index=False)
             print(f"\nPer-exact-degree success rates saved to: {degree_path}")
 
@@ -313,7 +324,7 @@ def main():
                         row["success_lrmsd_only_sym_upper_bound<4"] = round(sub["success_lrmsd_only_sym_upper_bound<4"].mean(), 5)
                         row["fraction_symmetric_ligand"] = round(sub["symmetric_ligand"].mean(), 5)
                     fold_rows.append(row)
-            fold_path = os.path.join(ablation_dir, "success_rates_lrmsd_only.csv")
+            fold_path = os.path.join(out_dir, "success_rates_lrmsd_only.csv")
             pd.DataFrame(fold_rows).to_csv(fold_path, index=False)
             print(f"LRMSD-only success rates saved to: {fold_path}")
         else:
@@ -321,7 +332,7 @@ def main():
             summary_df = pd.DataFrame(summary_data)
 
         # Save summary for this directory
-        summary_path = os.path.join(ablation_dir, "success_rates.csv")
+        summary_path = os.path.join(out_dir, "success_rates.csv")
         summary_df.to_csv(summary_path)
         print(f"\nSuccess rates saved to: {summary_path}")
 
