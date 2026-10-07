@@ -137,3 +137,12 @@ PLRMSD_AUC_CSV = 'auc.csv'
 PLRMSD_BREAKDOWN_CSV = 'breakdown.csv'
 PLRMSD_ROC_PNG = 'roc_{split}.png'
 PLRMSD_NEGATIVES_INPUT_CSV = 'negatives_input_{split}.csv'
+
+POSTHOC_VAL_SEED = 42
+POSTHOC_VAL_CLUSTER_FRACTION = 0.2
+POSTHOC_VAL_LIGAND_FRACTION = 0.1
+POSTHOC_VAL_ASSIGNMENT_CSV = 'train_val_assignment.csv'
+POSTHOC_VAL_SPLITS = {
+    'homology_25_10': 'cluster',
+    'ligand_25_10': 'ligand',
+}
