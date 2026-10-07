@@ -14,12 +14,15 @@ dependencies:
   - scipy
   - scikit-learn
   - numba
+  - matplotlib
+  - python-dotenv
+  - rdkit
   - pip
 
   - pip:
       - keras
-      - fair-esm
-      - lightning
-      - torch
-      - torch_geometric
-      - --extra-index-url https://download.pytorch.org/whl/cu124
+      - fair-esm==2.0.0
+      - lightning==2.5.6
+      - torch==2.9.0
+      - torch_geometric==2.7.0
+      - --extra-index-url https://download.pytorch.org/whl/cu128

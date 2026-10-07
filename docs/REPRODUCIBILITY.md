@@ -26,7 +26,8 @@ and the ligand-split model `checkpoints/baseline-ligand-split/epoch=8-step=97191
 its `model_config.yaml`, `dataset_config.yaml` and pLRMSD/eLRMSD calibration models, which
 `scripts/inference.py` loads from the checkpoint's directory by default.
 
-**Not released**: the ablation checkpoints;
+**Not released**: the ablation checkpoints; the per-pair evaluation outputs under `ablation_dfs/`
+(see [Reproduce Table 1](#reproduce-table-1) for how to regenerate the main model's);
 raw PDB/mmCIF structures, the raw BioLiP text dump, and the full CATH classification files
 (all large, third-party, publicly redownloadable — see version pins below instead of
 redistributing them); the `train.csv` splits' row-level ligand atom mappings (~80k-100k pairs —
@@ -36,13 +37,17 @@ them here would just be a slow, redundant copy of what running the code already 
 
 ## Local setup
 
-All paths are resolved from `aligner_dl/utils/constants.py`. Tracked files (`datasets/`,
-`example_inputs/`, configs) are read from the code's own checkout; untracked data (`checkpoints/`,
-`ablation_dfs/`, `results/`) is found from the repo root (or the main checkout when run from a
-git worktree); data and tools outside the repo default to sibling directories of the repo
-(`../scannet_2212`, `../ligands_25_10_2025`, ...). If your layout differs, copy `.env.example` to
-`.env` and set the variables you need; it is loaded automatically, and variables set in the shell or
-job take precedence. `LOCALIGN_DATA_ROOT` relocates the untracked data and must be set in the real environment.
+All paths are resolved from `aligner_dl/utils/constants.py`.
+
+- **Read from the code's own checkout:** `datasets/`, `example_inputs/` and the configs.
+- **Read from DATA_ROOT:** `checkpoints/` (the released checkpoints are tracked), `ablation_dfs/` (not released) and `results/` (partly tracked).
+  - DATA_ROOT is the repo root, or the main checkout when run from a git worktree.
+  - Setting `LOCALIGN_DATA_ROOT` moves all of these, including `checkpoints/`. The checkpoints are then read from `$LOCALIGN_DATA_ROOT/checkpoints`, not from the clone.
+- **Outside the repo:** data and tools default to sibling directories of the repo (`../scannet_2212`, `../ligands_25_10_2025`, ...).
+
+If your layout differs, copy `.env.example` to `.env` and set the variables you need. It is loaded when `python-dotenv` is installed (it is in `inference_env.yaml`; without it, a warning is printed and the file is ignored). Variables set in the shell or job take precedence. `LOCALIGN_DATA_ROOT` must be set in the real environment.
+
+Environment: `conda env create -f inference_env.yaml` creates `inference_env` with the versions the evaluation and tests were run with: torch 2.9.0 (CUDA 12.8 wheels), lightning 2.5.6, torch_geometric 2.7.0, fair-esm 2.0.0, plus matplotlib, python-dotenv and rdkit.
 
 ## Pipeline stages and exact commands
 
@@ -146,11 +151,12 @@ Exact per-partition counts (pairs, unique protein chains, unique ligands, sequen
 CATH superfamily groups) and train/test overlap on each of those axes:
 ```bash
 python scripts/report_partition_stats.py \
-    --cath_domain_list cath-classification-data/cath-domain-list.txt \
+    --cath_domain_list /path/to/cath-domain-list.txt \
     --csv_dirs datasets/csv_files/homology_25_10 datasets/csv_files/ligand_25_10 \
     --out_dir results/partition_stats  # CATH version: see Version pins below
 ```
-Writes `{split}_partition_counts.csv` and `{split}_leakage_check.csv` per split to `--out_dir`.
+`cath-domain-list.txt` is not in the repo: download it from CATH (version in [Version pins](#version-pins)) and
+pass its path. Writes `{split}_partition_counts.csv` and `{split}_leakage_check.csv` per split to `--out_dir`.
 
 **Homology-safe split** (`datasets/csv_files/homology_25_10/`):
 
@@ -309,17 +315,60 @@ corr-RMSD loss weight (0.990151; 0 for `quality0`) exactly.
 ```bash
 python scripts/offline_metrics.py
 ```
-Reads per-experiment result CSVs from `ABLATION_DIRS` (currently hardcoded absolute paths at
-the top of the script — adjust to your environment) and reports success rate under
+Reads the per-experiment result CSVs in `ABLATION_SPLIT_DIRS`, i.e.
+`$DATA_ROOT/ablation_dfs/{homology,ligand}_split/` (see [Local setup](#local-setup)), and reports success rate under
 `SUCCESS_CRITERIA` (`corr_rmsd < 2.0`, `ligand_rmsd < 4.0`, `atom_type_fraction > 0.5`; baseline
 aligners are judged on `ligand_rmsd` alone). `scripts/offline_metrics_apo.py` is the analogous
 script for the apo/holo reanalysis (tracked separately, see that script's own splits under
 `test_apo_apo.csv`/`test_apo_holo.csv`/`test_holo_holo_subset.csv`).
 
+By default the outputs are written into those same input directories:
+`all_experiments_with_success.csv`, `success_rates.csv`, `success_rates_by_cath_degree.csv`,
+`success_rates_lrmsd_only.csv` and, for the homology split, two figures. With a shared
+`LOCALIGN_DATA_ROOT` this overwrites the files there. Pass `--out_dir DIR` to write them to
+`DIR/{homology,ligand}_split/` instead. The ligand-symmetry cache
+(`ablation_dfs/ligand_symmetry_counts.json`) is rewritten only when ligand codes are missing from
+it; filling them needs network access and RDKit.
+
+### Reproduce Table 1
+
+Table 1 (main model, success %) is computed from the main model's per-pair evaluation output,
+`ablation_dfs/{homology,ligand}_split/baseline.csv`. That file is the `per_sample_results_*.csv`
+written by the evaluation loop of the released checkpoint (`--validate_only`, see
+[Training](#training)), copied under that name. It is not released.
+
+- **Regenerating it:** re-running the evaluation on a GPU reproduces it, up to GPU-dependent
+  differences of about 1e-4 Å in ligand RMSD.
+- **Its size:** it has 2,313 (homology) and 3,186 (ligand) pairs, not 2,514 / 3,869. The dataset
+  drops pairs whose ligand is in `ALL_INVALID_LIGANDS` (`aligner_dl/utils/constants.py`) when it
+  loads the pairs: 201 homology and 683 ligand test pairs.
+
+```bash
+python scripts/offline_metrics.py --out_dir results/offline_metrics   # needs ablation_dfs/ under DATA_ROOT
+```
+
+Table 1 is in `results/offline_metrics/{homology,ligand}_split/success_rates_lrmsd_only.csv`, rows
+with `experiment == baseline`:
+- **Composite criterion:** column `success_rmsd<4`.
+- **LRMSD-only:** column `success_lrmsd_only<4`.
+- **Column split:** different fold = `cath_degree < 4`, same fold = `cath_degree == 4`.
+
+| Split | Column | n | Composite (%) | LRMSD-only (%) |
+|---|---|---|---|---|
+| Homology | different fold | 1,728 | 37.0 | 40.6 |
+| Homology | same fold | 585 | 87.0 | 87.0 |
+| Homology | overall | 2,313 | 49.6 | 52.3 |
+| Ligand | different fold | 2,770 | 13.1 | 13.5 |
+| Ligand | same fold | 416 | 87.0 | 87.0 |
+| Ligand | overall | 3,186 | 22.7 | 23.1 |
+
+`tests/test_reproducibility.py` checks these numbers (see [Tests](#tests)).
+
 ## Tests
 
 Thin unit tests and a Table 1 reproducibility check live in `tests/`. Run them from the repo root
-with the `localign_infer3` environment, which has every dependency the tests use:
+with the `inference_env` environment (`inference_env.yaml`, see [Local setup](#local-setup)),
+which has every dependency the tests use:
 
 ```bash
 python -m unittest discover -s tests -v
