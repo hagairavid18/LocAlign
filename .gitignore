@@ -60,4 +60,6 @@ logs/
 !/datasets/csv_files/*/train_val_assignment.csv
 !/datasets/ligand_atom_mappings/
 !/datasets/ligand_atom_mappings/**
+!/datasets/retrieval/
+!/datasets/retrieval/*.csv
 *.sbatch

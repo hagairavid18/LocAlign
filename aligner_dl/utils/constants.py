@@ -17,9 +17,9 @@ def find_data_root() -> Path:
 
     Tracked files hang off CHECKOUT_ROOT instead. Resolution order: the LOCALIGN_DATA_ROOT
     environment variable; CHECKOUT_ROOT if it contains DATA_ROOT_SENTINEL; the main checkout
-    of the repository (through the git common dir) when running from a worktree and it
-    contains DATA_ROOT_SENTINEL; CHECKOUT_ROOT otherwise (a fresh clone without the untracked
-    data).
+    of the repository (through the git common dir, or the worktree's .git file when git is
+    not on PATH) when running from a worktree and it contains DATA_ROOT_SENTINEL;
+    CHECKOUT_ROOT otherwise (a fresh clone without the untracked data).
     """
     env = os.environ.get(DATA_ROOT_ENV)
     if env:
@@ -29,14 +29,23 @@ def find_data_root() -> Path:
         return root
     if (CHECKOUT_ROOT / DATA_ROOT_SENTINEL).is_dir():
         return CHECKOUT_ROOT
-    result = subprocess.run(
-        ['git', 'rev-parse', '--git-common-dir'],
-        cwd=CHECKOUT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0:
+    try:
+        result = subprocess.run(
+            ['git', 'rev-parse', '--git-common-dir'],
+            cwd=CHECKOUT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        result = None
+    git_file = CHECKOUT_ROOT / '.git'
+    if result is not None and result.returncode == 0:
         main_checkout = (CHECKOUT_ROOT / result.stdout.strip()).resolve().parent
+    elif git_file.is_file() and git_file.read_text().startswith('gitdir:'):
+        main_checkout = Path(git_file.read_text().split(':', 1)[1].strip()).resolve().parents[2]
+    else:
+        main_checkout = None
+    if main_checkout is not None:
         if (main_checkout / DATA_ROOT_SENTINEL).is_dir():
             return main_checkout
     return CHECKOUT_ROOT
@@ -112,6 +121,7 @@ ESM_CACHE_NAME = 'esm_cache_esm2_t30_150M_UR50D_18'
 BIOLIP_NR_DB_PATH = str(CHECKOUT_ROOT / 'example_inputs' / 'biolip2_nr_database.csv')
 PLRMSD_AUC_DIR = str(DATA_ROOT / 'results' / 'plrmsd_auc')
 PAIR_KEY_COLUMNS = ['tar_protein', 'tar_chain', 'src_protein', 'src_chain']
+PAIR_ID_COLUMNS = PAIR_KEY_COLUMNS + ['ligand', 'tar_ligand', 'src_ligand', 'ligand_id']
 INFERENCE_RAW_COLUMNS = {
     '_embedding': 'embedding_similarity',
     '_gap': 'entropy',
@@ -146,3 +156,37 @@ POSTHOC_VAL_SPLITS = {
     'homology_25_10': 'cluster',
     'ligand_25_10': 'ligand',
 }
+PLRMSD_ROC_FIGURE_STEM = 'figS_plrmsd_roc'
+PLRMSD_ROC_FIGURE_DPI = 300
+
+RETRIEVAL_DATABASE_CSV = str(CHECKOUT_ROOT / 'example_inputs' / 'biolip2_nr_database_with_motif.csv')
+RETRIEVAL_CHECKPOINT = str(DATA_ROOT / 'checkpoints' / 'baseline' / 'epoch=9-step=87120.ckpt')
+RETRIEVAL_QUERIES_CSV = str(CHECKOUT_ROOT / 'datasets' / 'retrieval' / 'queries.csv')
+RETRIEVAL_CLUSTERS_CSV = str(CHECKOUT_ROOT / 'datasets' / 'retrieval' / 'foldseek_clusters_tm06.csv')
+RETRIEVAL_WORK_DIR = env_path('LOCALIGN_RETRIEVAL_WORK_DIR', DATA_ROOT.parent / 'LocAlign_retrieval_work')
+RETRIEVAL_STAGE_ROOT = env_path(
+    'LOCALIGN_RETRIEVAL_STAGE_ROOT',
+    Path('/tmp') / f"localign_retrieval_{os.environ.get('USER', 'user')}",
+)
+RETRIEVAL_SEARCH_DIR = str(Path(RETRIEVAL_WORK_DIR) / 'search')
+RETRIEVAL_CACHE_DIR = str(Path(RETRIEVAL_SEARCH_DIR) / '.cache')
+RETRIEVAL_PACKED_DIR = str(Path(RETRIEVAL_WORK_DIR) / 'packed_features')
+RETRIEVAL_PACKED_MANIFEST = str(Path(RETRIEVAL_PACKED_DIR) / 'manifest.csv')
+RETRIEVAL_HITS_DIR = str(Path(RETRIEVAL_WORK_DIR) / 'hits')
+RETRIEVAL_HITS_FAST_DIR = str(Path(RETRIEVAL_WORK_DIR) / 'hits_fast')
+RETRIEVAL_PARTIALS_DIR = str(Path(RETRIEVAL_WORK_DIR) / 'fast_partials')
+RETRIEVAL_CHAINS_DIR = str(Path(RETRIEVAL_WORK_DIR) / 'chains')
+RETRIEVAL_CHAINS_MISSING_CSV = str(Path(RETRIEVAL_WORK_DIR) / 'chains_missing.csv')
+RETRIEVAL_FOLDSEEK_DIR = str(Path(RETRIEVAL_WORK_DIR) / 'foldseek')
+RETRIEVAL_FOLDSEEK_CLUSTER_TSV = str(Path(RETRIEVAL_FOLDSEEK_DIR) / 'clu_tm06_cluster.tsv')
+RETRIEVAL_RESULTS_DIR = str(Path(RETRIEVAL_WORK_DIR) / 'results')
+RETRIEVAL_VIZ_DIR = str(Path(RETRIEVAL_WORK_DIR) / 'viz')
+RETRIEVAL_HIT_FILE_PATTERN = 'q[0-9][0-9][0-9].csv.gz'
+RETRIEVAL_HIT_FILE_FORMAT = 'q{:03d}.csv.gz'
+RETRIEVAL_PARTIAL_PAIRS_CSV = 'pairs.csv'
+RETRIEVAL_PARTIAL_SHARD_FORMAT = 'shard_{:03d}.csv.gz'
+RETRIEVAL_PARTIAL_SHARD_PATTERN = 'shard_[0-9][0-9][0-9].csv.gz'
+RETRIEVAL_TOP_KS = (1, 3, 5, 10)
+RETRIEVAL_LIGAND_SIZE_CUT = 10
+RETRIEVAL_MOTIF_PARSER_VERSION = 2
+RETRIEVAL_HOMOLOG_MIN_TM = 0.6

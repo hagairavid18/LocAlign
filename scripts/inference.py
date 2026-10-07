@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 import pickle
+import re
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO_ROOT, 'aligner_dl'))
 sys.path.insert(0, REPO_ROOT)
@@ -101,8 +102,13 @@ class InferenceRunner:
                 ligand_calibration_model_path = default_path                
         self._ligand_calibration_model_path = ligand_calibration_model_path
 
-        self._src_motif = src_motif
-        self._tar_motif = tar_motif
+        # Parse CLI motifs ("10,11,12") into lists here: the dataset only treats a
+        # motif as a pocket prior if it is a list (it is round-tripped through
+        # filtered_pairs.csv and json-parsed only when bracketed). A raw string
+        # was previously written as-is and silently ignored in pair and
+        # database-search modes.
+        self._src_motif = self._parse_motif(src_motif)
+        self._tar_motif = self._parse_motif(tar_motif)
         self._max_pLRMSD = max_pLRMSD
         self._max_pLRMSD_normed = max_pLRMSD_normed
         self._max_atoms = max_atoms
@@ -123,9 +129,11 @@ class InferenceRunner:
 
         Accepts: None/NaN, an already-parsed list, a bare int, a comma-separated
         string (e.g. "10,11,12", the documented CLI/CSV format), or a
-        stringified Python literal (e.g. "[10, 11, 12]"). Anything else
-        returns None, with a warning, so that an unreadable motif (for example one with an
-        insertion code such as "95C") is not dropped without notice.
+        stringified Python literal (e.g. "[10, 11, 12]"). Residues with a PDB
+        insertion code (e.g. "[32,95C]") map to their residue number (95), the
+        integer residue id the dataset matches motifs against. Anything else
+        returns None, with a warning, so that an unreadable motif is not dropped
+        without notice.
         """
         if val is None or (isinstance(val, float) and np.isnan(val)):
             return None
@@ -144,11 +152,12 @@ class InferenceRunner:
                 return [parsed]
         except Exception:
             pass
-        try:
-            return [int(x) for x in s.split(',')]
-        except Exception:
+        tokens = [x.strip().strip('\'"') for x in s.strip('[]() ').split(',')]
+        matches = [re.fullmatch(r'(-?\d+)[A-Za-z]?', x) for x in tokens if x]
+        if not matches or not all(matches):
             print(f"Warning: could not parse '{s}' as a list of residue numbers; it is ignored.")
             return None
+        return [int(m.group(1)) for m in matches]
 
     @staticmethod
     def _get_or_default(row, col: str, default):
